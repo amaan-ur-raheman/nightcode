@@ -1,7 +1,8 @@
 import { useRef, useCallback, useEffect } from "react";
 
-import type { KeyBinding, TextareaRenderable } from "@opentui/core";
+import { useToast } from "@/providers/toast";
 import { useRenderer } from "@opentui/react";
+import type { KeyBinding, TextareaRenderable } from "@opentui/core";
 
 import { EmptyBorder } from "@/components/border";
 import { StatusBar } from "@/components/status-bar";
@@ -25,6 +26,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
     const textareaRef = useRef<TextareaRenderable>(null);
     const onSubmitRef = useRef<() => void>(() => { });
     const renderer = useRenderer();
+    const toast = useToast();
 
     const {
         showCommandMenu,
@@ -66,12 +68,13 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
 
         if (command.action) {
             command.action({
-                exit: () => renderer.destroy()
+                exit: () => renderer.destroy(),
+                toast,
             });
         } else {
             textarea.insertText(command.value + " ");
         }
-    }, [renderer]);
+    }, [renderer, toast]);
 
     const handleCommandExecute = useCallback(
         (index: number) => {
@@ -113,7 +116,6 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                     ...EmptyBorder,
                     vertical: "┃",
                     bottomLeft: "╹",
-
                 }}
             >
                 <box
