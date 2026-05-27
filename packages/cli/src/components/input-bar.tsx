@@ -3,6 +3,7 @@ import { useRef, useCallback, useEffect } from "react";
 import { useRenderer } from "@opentui/react";
 import type { KeyBinding, TextareaRenderable } from "@opentui/core";
 
+import { useTheme } from "@/providers/theme";
 import { useToast } from "@/providers/toast";
 import { useDialog } from "@/providers/dialog";
 import { useKeyboardLayer } from "@/providers/keyboard-layer";
@@ -32,6 +33,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
     const toast = useToast();
     const { isTopLayer, setResponder } = useKeyboardLayer();
     const dialog = useDialog();
+    const { colors } = useTheme();
 
     const {
         showCommandMenu,
@@ -134,7 +136,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
             <box
                 width="100%"
                 border={["left"]}
-                borderColor="cyan"
+                borderColor={colors.primary}
                 customBorderChars={{
                     ...EmptyBorder,
                     vertical: "┃",
@@ -146,7 +148,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                     justifyContent="center"
                     paddingX={2}
                     paddingY={1}
-                    backgroundColor="#1A1A24"
+                    backgroundColor={colors.surface}
                     width="100%"
                     gap={1}
                 >
@@ -156,7 +158,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                             bottom="100%"
                             left={0}
                             width="100%"
-                            backgroundColor="#1A1A24"
+                            backgroundColor={colors.surface}
                             zIndex={10}
                         >
                             <CommandMenu
