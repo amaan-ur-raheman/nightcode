@@ -565,4 +565,4 @@ export const THEMES: Theme[] = [
     },
 ];
 
-export const DEFAULT_THEME = THEMES.find((t) => t.name === "Nightfox") ?? THEMES[0];
+export const DEFAULT_THEME = THEMES.find((t) => t.name === "Nightfox")!;
