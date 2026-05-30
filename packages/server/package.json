@@ -10,7 +10,9 @@
     },
     "dependencies": {
         "@hono/zod-validator": "^0.8.0",
+        "@nightcode/database": "workspace:*",
         "@nightcode/shared": "workspace:*",
+        "dotenv": "^17.4.2",
         "hono": "^4.12.23",
         "zod": "^4.4.3"
     }
