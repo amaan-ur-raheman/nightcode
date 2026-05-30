@@ -1,0 +1,24 @@
+{
+    "name": "@nightcode/database",
+    "type": "module",
+    "private": true,
+    "exports": {
+        ".": "./src/index.ts",
+        "./client": "./src/client.ts",
+        "./enums": "./src/enums.ts"
+    },
+    "scripts": {
+        "db:generate": "bunx prisma generate",
+        "db:migrate": "bunx prisma migrate dev"
+    },
+    "devDependencies": {
+        "@types/pg": "^8.20.0",
+        "prisma": "^7.8.0"
+    },
+    "dependencies": {
+        "@prisma/adapter-pg": "^7.8.0",
+        "@prisma/client": "^7.8.0",
+        "dotenv": "^17.4.2",
+        "pg": "^8.21.0"
+    }
+}
