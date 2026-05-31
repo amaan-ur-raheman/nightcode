@@ -5,9 +5,12 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useLocation, useNavigate } from "react-router";
 
 import { useChat } from "@/hooks/use-chat";
+import { useKeyboard } from "@opentui/react";
 import { useToast } from "@/providers/toast";
 import { apiClient } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/http-errors";
+import { MessageStatus } from "@nightcode/database/enums";
+import { useKeyboardLayer } from "@/providers/keyboard-layer";
 import type { Message, ClientMessagePart } from "@/hooks/use-chat";
 import { DEFAULT_CHAT_MODEL_ID, type SupportedChatModelId } from "@nightcode/shared";
 
@@ -49,7 +52,8 @@ function mapDBMessages(dbMessages: SessionData["messages"]): Message[] {
             model: m.model as SupportedChatModelId,
             mode: m.mode,
             parts: [{ type: "text", text: m.content }],
-            ...(m.duration != null ? { duration: prettyMs(m.duration) } : {})
+            ...(m.duration != null ? { duration: prettyMs(m.duration) } : {}),
+            interrupted: m.status === MessageStatus.INTERRUPTED
         };
     })
 }
@@ -72,18 +76,28 @@ function ChatMessage(
             model={msg.model}
             duration={msg.duration}
             streaming={false}
+            interrupted={msg.interrupted}
         />
     )
 }
 
 function SessionChat({ session }: { session: SessionData }) {
     const [initialMessages] = useState(() => mapDBMessages(session.messages));
-    const { messages, submit, abort, streaming } = useChat(session.id, initialMessages);
+    const { isTopLayer } = useKeyboardLayer();
+    const { messages, submit, abort, streaming, interrupt } = useChat(session.id, initialMessages);
 
     // Stop any pending replies when the user leaves this session
     useEffect(() => {
         return () => abort();
     }, [abort]);
+
+    // Let the user cancel a reply even before the first streamed chunks arrived
+    useKeyboard((key) => {
+        if (key.name === "escape" && isTopLayer("base") && streaming.status === "streaming") {
+            key.preventDefault();
+            interrupt();
+       }
+    });
 
     return (
         <SessionShell
@@ -91,6 +105,7 @@ function SessionChat({ session }: { session: SessionData }) {
                 submit({ userText: text, mode: "BUILD", model: DEFAULT_CHAT_MODEL_ID })
             }
             loading={streaming.status === "streaming"}
+            interruptible={streaming.status === "streaming"}
         >
             {messages.map((msg) => (
                 <ChatMessage key={msg.id} msg={msg} />

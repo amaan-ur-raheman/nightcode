@@ -9,6 +9,7 @@ type BotMessageProps = {
     mode: Mode
     duration?: string;
     streaming?: boolean;
+    interrupted?: boolean;
 };
 
 export function BotMessage({
@@ -16,7 +17,8 @@ export function BotMessage({
     model,
     mode,
     duration,
-    streaming = false
+    streaming = false,
+    interrupted = false,
 }: BotMessageProps) {
     const { colors } = useTheme();
     const text = parts
@@ -34,19 +36,30 @@ export function BotMessage({
 
             <box paddingX={3} paddingBottom={1} gap={1} width="100%">
                 <box flexDirection="row" gap={2}>
-                    <text fg={mode === Mode.PLAN ? colors.planMode : colors.primary}>◉</text>
+                    <text
+                        attributes={interrupted ? TextAttributes.DIM : 0}
+                        fg={interrupted ? undefined : mode === Mode.PLAN ? colors.planMode : colors.primary}
+                    >
+                        ◉
+                    </text>
                     <box flexDirection="row" gap={1}>
-                        <text>{mode === Mode.PLAN ? "Plan" : "Build"}</text>
+                        <text
+                            attributes={interrupted ? TextAttributes.DIM : 0}
+                        >
+                            {mode === Mode.PLAN ? "Plan" : "Build"}
+                        </text>
                         <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
                              ›
                         </text>
                         <text attributes={TextAttributes.DIM}>{model}</text>
-                        {duration && (
+                        {(duration || interrupted) && (
                             <>
                                 <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
                                      ›
                                 </text>
-                                <text attributes={TextAttributes.DIM}>{duration}</text>
+                                <text attributes={TextAttributes.DIM}>
+                                    {interrupted ? "Interrupted" : duration}
+                                </text>
                             </>
                         )}
                     </box>
