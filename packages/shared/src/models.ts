@@ -197,4 +197,4 @@ export function findSupportedChatModel(modelId: string) {
   return SUPPORTED_CHAT_MODELS.find((model) => model.id === modelId);
 }
 
-export const DEFAULT_CHAT_MODEL_ID: SupportedChatModelId = "stepfun-ai/step-3.7-flash";
+export const DEFAULT_CHAT_MODEL_ID: SupportedChatModelId = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
