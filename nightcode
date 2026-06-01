@@ -1,0 +1,50 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+PID_FILE="/tmp/nightcode-server.pid"
+PORT_FILE="/tmp/nightcode-server.port"
+REF_FILE="/tmp/nightcode-server.refs"
+
+find_free_port() {
+    local port=3000
+    while lsof -ti:$port &>/dev/null; do
+        ((port++))
+    done
+    echo $port
+}
+
+start_server() {
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        SERVER_PORT=$(cat "$PORT_FILE")
+    else
+        SERVER_PORT=$(find_free_port)
+        echo $SERVER_PORT > "$PORT_FILE"
+        PORT=$SERVER_PORT bun run --hot "$SCRIPT_DIR/packages/server/src/index.ts" &>/tmp/nightcode-server.log &
+        echo $! > "$PID_FILE"
+        for i in $(seq 1 20); do
+            curl -s "http://localhost:$SERVER_PORT/sessions" &>/dev/null && break
+            sleep 0.5
+        done
+    fi
+
+    # Increment ref count
+    local refs=$(cat "$REF_FILE" 2>/dev/null || echo 0)
+    echo $((refs + 1)) > "$REF_FILE"
+}
+
+stop_server() {
+    local refs=$(cat "$REF_FILE" 2>/dev/null || echo 1)
+    local new_refs=$((refs - 1))
+
+    if [ $new_refs -le 0 ]; then
+        kill "$(cat "$PID_FILE")" 2>/dev/null
+        rm -f "$PID_FILE" "$PORT_FILE" "$REF_FILE"
+    else
+        echo $new_refs > "$REF_FILE"
+    fi
+}
+
+trap stop_server EXIT
+
+start_server
+API_URL="http://localhost:$SERVER_PORT" bun run "$SCRIPT_DIR/packages/cli/src/index.tsx"
