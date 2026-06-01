@@ -2,6 +2,7 @@ import type { LanguageModel } from "ai";
 
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
+import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import {
     findSupportedChatModel,
     type SupportedChatModel,
@@ -19,6 +20,75 @@ export type ResolvedModel = {
     model: LanguageModel,
     provider: SupportedProvider,
     modelId: SupportedChatModelId,
+    providerOptions?: ProviderOptions,
+};
+
+const ANTHROPIC_PROVIDER_OPTIONS: Partial<Record<AnthropicModelId, ProviderOptions>> = {
+    "claude-opus-4-6": {
+        anthropic: {
+            thinking: {
+                type: "enabled",
+                budgetTokens: 10000,
+            }
+        },
+    },
+    "claude-sonnet-4-6": {
+        anthropic: {
+            thinking: {
+                type: "enabled",
+                budgetTokens: 10000,
+            },
+        },
+    },
+};
+
+const OPENAI_PROVIDER_OPTIONS: Partial<Record<OpenAIModelId, ProviderOptions>> = {
+    "gpt-5.4": {
+        openai: {
+            thinking: {
+                reasoningSummary: "detailed",
+            }
+        },
+    },
+};
+
+const NIM_PROVIDER_OPTIONS: Partial<Record<NimModelId, ProviderOptions>> = {
+    "deepseek-ai/deepseek-v4-pro": {
+        nim: { chat_template_kwargs: { thinking: true } },
+    },
+    "deepseek-ai/deepseek-v4-flash": {
+        nim: { chat_template_kwargs: { thinking: true } },
+    },
+    "qwen/qwen3.5-397b-a17b": {
+        nim: { chat_template_kwargs: { enable_thinking: true } },
+    },
+    "qwen/qwen3.5-122b-a10b": {
+        nim: { chat_template_kwargs: { enable_thinking: true } },
+    },
+    "moonshotai/kimi-k2.6": {
+        nim: { chat_template_kwargs: { thinking: true } },
+    },
+    "stepfun-ai/step-3.7-flash": {
+        nim: { reasoning_effort: "medium" },
+    },
+    "stepfun-ai/step-3.5-flash": {
+        nim: { reasoning_effort: "medium" },
+    },
+    "mistralai/mistral-medium-3.5-128b": {
+        nim: { reasoning_effort: "high" },
+    },
+    "mistralai/mistral-small-4-119b-2603": {
+        nim: { reasoning_effort: "high" },
+    },
+    "minimaxai/minimax-m2.7": {
+        nim: { reasoning_effort: "high" },
+    },
+    "z-ai/glm-5.1": {
+        nim: { chat_template_kwargs: { enable_thinking: true } },
+    },
+    "google/gemma-4-31b-it": {
+        nim: { chat_template_kwargs: { enable_thinking: true } },
+    },
 };
 
 function assertUnsupportedProvider(provider: never): never {
@@ -30,6 +100,7 @@ function resolveAnthropicModel(modelId: AnthropicModelId): ResolvedModel {
         model: anthropic(modelId),
         provider: "anthropic",
         modelId,
+        providerOptions: ANTHROPIC_PROVIDER_OPTIONS[modelId],
     };
 }
 
@@ -38,6 +109,7 @@ function resolveOpenAIModel(modelId: OpenAIModelId): ResolvedModel {
         model: openai(modelId),
         provider: "openai",
         modelId,
+        providerOptions: OPENAI_PROVIDER_OPTIONS[modelId],
     };
 }
 
@@ -46,6 +118,7 @@ function resolveNimModel(modelId: NimModelId): ResolvedModel {
         model: nim(modelId),
         provider: "nvidia",
         modelId,
+        providerOptions: NIM_PROVIDER_OPTIONS[modelId],
     };
 }
 
