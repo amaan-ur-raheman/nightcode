@@ -38,36 +38,57 @@ export function buildSystemPrompt({ cwd, mode }: SystemPromptParams): string {
     if (cwd && mode === "PLAN") {
         parts.push(`
         ## Tool Usage
-        You have these tools available:
-        - **readFile** — Read a file's contents
+        You have these read-only tools available:
+        - **readFile** — Read a file's contents (supports offset/limit for large files)
         - **listDirectory** — List entries in a directory
-        - **glob** — Find files matching a pattern (e.g. "**/*.ts")
+        - **tree** — Display the directory tree for a structural overview
+        - **glob** — Find files matching a pattern (e.g. \"**/*.ts\")
         - **grep** — Search file contents with regex
-    
-        ### Rules
-        1. **Be decisive.** Use glob/grep to find what's relevant, then read only those files. Don't read every file in the project.
-        2. **Never re-read files you already read** in this conversation.
-        3. **Batch your tool calls.** Call multiple tools in parallel when possible (e.g. read 5 files at once, not one at a time).`);
-    }
-    
-    if (cwd && mode === "BUILD") {
-        parts.push(`
-        ## Tool Usage
-        You have these tools available:
-        - **readFile** — Read a file's contents
-        - **writeFile** — Create or overwrite a file
-        - **editFile** — Make a targeted string replacement in a file (oldString must be unique)
-        - **listDirectory** — List entries in a directory
-        - **glob** — Find files matching a pattern (e.g. "**/*.ts")
-        - **grep** — Search file contents with regex
-        - **bash** — Run a shell command
-        
+        - **fileInfo** — Get metadata about a file or directory
+        - **getDiagnostics** — Run tsc / ESLint and return structured diagnostics
+        - **gitStatus** — Show the git working tree status
+        - **gitDiff** — Show the git diff for the working tree
+        - **webFetch** — Fetch a remote URL (internal addresses blocked)
         ### Rules
         1. **Be decisive.** Use glob/grep to find what's relevant, then read only those files. Don't read every file in the project.
         2. **Never re-read files you already read** in this conversation.
         3. **Batch your tool calls.** Call multiple tools in parallel when possible (e.g. read 5 files at once, not one at a time).
-        4. **Use editFile for small changes** to existing files. Only use writeFile when creating new files or rewriting most of a file.`);
+        4. **Check git status first** when you need context about what changed.`);
     }
-    
+
+    if (cwd && mode === "BUILD") {
+        parts.push(`
+        ## Tool Usage
+        You have these tools available:
+        - **readFile** — Read a file's contents (supports offset/limit for large files)
+        - **writeFile** — Create or overwrite a file
+        - **editFile** — Make a targeted string replacement in a file (oldString must be unique)
+        - **deleteFile** — Delete a file or directory
+        - **moveFile** — Move or rename a file or directory
+        - **createDirectory** — Create a directory and any missing parents
+        - **listDirectory** — List entries in a directory
+        - **tree** — Display the directory tree for a structural overview
+        - **glob** — Find files matching a pattern (e.g. \"**/*.ts\")
+        - **grep** — Search file contents with regex
+        - **fileInfo** — Get metadata about a file or directory
+        - **searchReplace** — Find and replace across multiple files using a regex
+        - **patch** — Apply a unified diff patch for multi-file changes
+        - **getDiagnostics** — Run tsc / ESLint and return structured diagnostics
+        - **runTests** — Run the project's test suite
+        - **bash** — Run a shell command
+        - **gitStatus** — Show the git working tree status
+        - **gitDiff** — Show the git diff for the working tree
+        - **webFetch** — Fetch a remote URL (internal addresses blocked)
+
+        ### Rules
+        1. **Be decisive.** Use glob/grep to find what's relevant, then read only those files. Don't read every file in the project.
+        2. **Never re-read files you already read** in this conversation.
+        3. **Batch your tool calls.** Call multiple tools in parallel when possible (e.g. read 5 files at once, not one at a time).
+        4. **Use editFile for small changes** to existing files. Only use writeFile when creating new files or rewriting most of a file.
+        5. **Use patch** when making multiple related changes across files. Use moveFile for renames.
+        6. **Run getDiagnostics or runTests** after making changes to verify correctness.
+        7. **Check git status and git diff** before and after changes to verify what you modified.`);
+    }
+
     return parts.join("\n");
 };
