@@ -22,9 +22,9 @@ export function createGrepTool(cwd: string) {
         execute: async ({ pattern, path, include }) => {
             const resolved = resolve(cwd, path);
 
-            if (!resolved.startsWith(cwd)) {
-                return { error: "Path is outside the project directory" };
-            }
+            if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
+                            return { error: "Path is outside the project directory" };
+                        }
 
             try {
                 const args = [
@@ -32,6 +32,7 @@ export function createGrepTool(cwd: string) {
                     "--color=never",
                     "--exclude-dir=node_modules",
                     "--exclude-dir=.git",
+                    "--binary-files=without-match",
                     "-E",
                 ];
 

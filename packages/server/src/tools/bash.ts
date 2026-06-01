@@ -25,7 +25,7 @@ export function createBashTool(cwd: string) {
                 });
 
                 const timer = setTimeout(() => {
-                    proc.kill();
+                    proc.kill("SIGKILL");
                 }, timeout);
 
                 const [stdout, stderr] = await Promise.all([
