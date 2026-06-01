@@ -18,7 +18,7 @@ export function createEditFileTool(cwd: string) {
         execute: async ({ path, oldString, newString }) => {
             const resolved = resolve(cwd, path);
 
-            if (!resolved.startsWith(cwd)) {
+            if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
                 return { error: "Path is outside the project directory" };
             }
 

@@ -17,15 +17,18 @@ export function createBashTool(cwd: string) {
         }),
         execute: async ({ command, timeout }) => {
             try {
+                let timedOut = false;
                 const proc = Bun.spawn(["bash", "-c", command], {
                     cwd,
                     stdout: "pipe",
                     stderr: "pipe",
                     env: { ...process.env, TERM: "dumb" },
+                    detached: true,
                 });
 
                 const timer = setTimeout(() => {
-                    proc.kill();
+                    timedOut = true;
+                    try { process.kill(-proc.pid!, 9); } catch { proc.kill(9); }
                 }, timeout);
 
                 const [stdout, stderr] = await Promise.all([
@@ -44,7 +47,8 @@ export function createBashTool(cwd: string) {
                 return {
                     stdout: truncate(stdout),
                     stderr: truncate(stderr),
-                    exitCode
+                    exitCode,
+                    timedOut
                 };
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);

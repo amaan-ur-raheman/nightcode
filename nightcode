@@ -1,0 +1,68 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PID_FILE="/tmp/nightcode-server.pid"
+PORT_FILE="/tmp/nightcode-server.port"
+REF_FILE="/tmp/nightcode-server.refs"
+
+find_free_port() {
+    local port=3000
+    while lsof -ti:"$port" &>/dev/null; do
+        ((port++))
+    done
+    echo $port
+}
+
+start_server() {
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        if [ -f "$PORT_FILE" ]; then
+            SERVER_PORT=$(cat "$PORT_FILE")
+        else
+            echo "Error: Server running but PORT_FILE missing" >&2
+            rm -f "$PID_FILE"
+            start_server
+            return
+        fi
+    else
+        command -v bun &>/dev/null || { echo "Error: bun not found in PATH" >&2; return 1; }
+        SERVER_PORT=$(find_free_port)
+        echo $SERVER_PORT > "$PORT_FILE"
+        PORT=$SERVER_PORT bun run --hot "$SCRIPT_DIR/packages/server/src/index.ts" &>/tmp/nightcode-server.log &
+        local server_pid=$!
+        kill -0 "$server_pid" 2>/dev/null || { echo "Error: server process failed to start (bun exited immediately)" >&2; rm -f "$PORT_FILE"; return 1; }
+        echo "$server_pid" > "$PID_FILE"
+        for i in $(seq 1 20); do
+            curl -s "http://localhost:$SERVER_PORT/sessions" &>/dev/null && break
+            sleep 0.5
+            [ "$i" -eq 20 ] && { kill "$server_pid" 2>/dev/null; rm -f "$PID_FILE" "$PORT_FILE"; echo "Error: server did not become ready on port $SERVER_PORT (see /tmp/nightcode-server.log)" >&2; return 1; }
+        done
+    fi
+
+    # Increment ref count
+    # Increment ref count
+    (
+        flock -x 200
+        local refs=$(cat "$REF_FILE" 2>/dev/null || echo 0)
+        echo $((refs + 1)) > "$REF_FILE"
+    ) 200>/tmp/nightcode-server.lock
+}
+
+stop_server() {
+    (
+        flock -x 200
+        local refs=$(cat "$REF_FILE" 2>/dev/null || echo 1)
+        local new_refs=$((refs - 1))
+
+        if [ $new_refs -le 0 ]; then
+            kill "$(cat "$PID_FILE")" 2>/dev/null
+            rm -f "$PID_FILE" "$PORT_FILE" "$REF_FILE"
+        else
+            echo $new_refs > "$REF_FILE"
+        fi
+    ) 200>/tmp/nightcode-server.lock
+}
+
+trap stop_server EXIT
+
+start_server || { echo "Error: start_server failed (SERVER_PORT=$SERVER_PORT)" >&2; exit 1; }
+API_URL="http://localhost:$SERVER_PORT" bun run "$SCRIPT_DIR/packages/cli/src/index.tsx"

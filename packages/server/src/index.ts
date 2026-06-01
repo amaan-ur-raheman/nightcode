@@ -21,4 +21,8 @@ const routes = app.route("/sessions", sessions).route("/chat", chat);
 
 export type AppType = typeof routes;
 
-export default { port: 3000, fetch: app.fetch, idleTimeout: 255 };
+const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`Invalid PORT: ${process.env.PORT}`);
+}
+export default { port, fetch: app.fetch, idleTimeout: 255 };
