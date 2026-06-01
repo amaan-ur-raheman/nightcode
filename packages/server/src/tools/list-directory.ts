@@ -3,6 +3,8 @@ import { tool } from "ai";
 import { readdir, stat } from "fs/promises";
 import { resolve, relative, join } from "path";
 
+const IGNORE = new Set(["node_modules", ".git", "dist", "build", ".next", ".turbo", "coverage"]);
+
 export function createListDirectoryTool(cwd: string) {
     return tool({
         description:
@@ -15,18 +17,16 @@ export function createListDirectoryTool(cwd: string) {
         }),
         execute: async ({ path }) => {
             const resolved = resolve(cwd, path);
-
-            if (!resolved.startsWith(cwd)) {
-                return { error: "Path is outside the project directory" };
-            }
+            if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
+                            return { error: "Path is outside the project directory" };
+                        }
 
             try {
                 const entries = await readdir(resolved);
                 const results: { name: string, type: "file" | "directory" }[] = [];
 
                 for (const entry of entries) {
-                    // Skip hidden files and common large directories
-                    if (entry.startsWith(".") || entry.includes("node_modules")) continue;
+                    if (entry.startsWith(".") || IGNORE.has(entry)) continue;
 
                     try {
                         const entryPath = join(resolved, entry);
@@ -37,7 +37,7 @@ export function createListDirectoryTool(cwd: string) {
                             type: info.isDirectory() ? "directory" : "file"
                         });
                     } catch {
-                        // Skip entries we can't stat
+                        // skip entries we can't stat
                     }
                 }
 

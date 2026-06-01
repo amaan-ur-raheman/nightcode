@@ -14,9 +14,9 @@ export function createWriteFileTool(cwd: string) {
         execute: async ({ path, content }) => {
             const resolved = resolve(cwd, path);
 
-            if (!resolved.startsWith(cwd)) {
-                return { error: "Path is outside the project directory" };
-            }
+            if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
+                            return { error: "Path is outside the project directory" };
+                        }
 
             try {
                 await mkdir(dirname(resolved), { recursive: true });
