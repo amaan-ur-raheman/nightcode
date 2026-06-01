@@ -3,11 +3,12 @@ import { tool } from "ai";
 import { resolve, relative } from "path";
 
 const MAX_RESULT = 200;
+const IGNORE_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".turbo", "coverage"]);
 
 export function createGlobTool(cwd: string) {
     return tool({
         description:
-            "Find files matching a glob pattern. Returns file paths relative to the project root. Skips node_modules and hidden directories.",
+            "Find files matching a glob pattern. Returns file paths relative to the project root. Skips common large directories.",
         inputSchema: z.object({
             pattern: z.string().describe("Glob pattern to match (e.g. '**/*.ts', src/**/*.tsx)"),
             path: z
@@ -18,9 +19,9 @@ export function createGlobTool(cwd: string) {
         execute: async ({ pattern, path }) => {
             const resolved = resolve(cwd, path);
 
-            if (!resolved.startsWith(cwd)) {
-                return { error: "Path is outside the project directory" };
-            }
+            if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
+                            return { error: "Path is outside the project directory" };
+                        }
 
             try {
                 const glob = new Bun.Glob(pattern);
@@ -32,15 +33,13 @@ export function createGlobTool(cwd: string) {
                     dot: false,
                     onlyFiles: true,
                 })) {
-                    // Skip the node_modules matches
-                    if (match.includes("node_modules")) continue;
+                    if ([...IGNORE_DIRS].some((dir) => match.startsWith(`${dir}/`))) continue;
 
                     if (files.length >= MAX_RESULT) {
                         truncated = true;
                         break;
                     }
 
-                    // Return paths relative to the project root
                     const absoluteMatch = resolve(resolved, match);
                     files.push(relative(cwd, absoluteMatch));
                 }
