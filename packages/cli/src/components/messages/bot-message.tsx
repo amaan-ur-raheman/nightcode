@@ -41,7 +41,7 @@ function groupConsecutiveParts(parts: ClientMessagePart[]): PartGroup[] {
         if (lastGroup && lastGroup.type === part.type) {
             lastGroup.parts.push(part);
         } else {
-            const key = part.type === "tool_call"
+            const key = part.type === "tool-call"
                 ? `group-tc-${part.id}`
                 : `group-${part.type}-${i}`;
 
@@ -91,7 +91,7 @@ export function BotMessage({
                             );
                         }
 
-                        if (part.type === "tool_call") {
+                        if (part.type === "tool-call") {
                             return (
                                 <box
                                     key={part.id}
@@ -105,8 +105,7 @@ export function BotMessage({
                                     paddingX={2}
                                 >
                                     <text attributes={TextAttributes.DIM}>
-                                        <em fg={colors.info}>{formatToolName(part.name)}</em>
-                                        {formatToolArgs(part)}
+                                        <em fg={colors.info}>{formatToolName(part.name)}:</em> {formatToolArgs(part)}
                                         {part.status === "calling" ? " …" : ""}
                                     </text>
                                 </box>

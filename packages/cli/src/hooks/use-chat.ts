@@ -13,7 +13,7 @@ import { apiClient } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/http-errors";
 
 export type ClientToolCallPart = {
-    type: "tool_call",
+    type: "tool-call",
     id: string,
     name: string,
     args: Record<string, unknown>,
@@ -232,7 +232,7 @@ export function useChat(
                 }
                 case "tool-call": {
                     parts.push({
-                        type: "tool_call",
+                        type: "tool-call",
                         id: event.toolCallId,
                         name: event.toolName,
                         args: event.args,
@@ -244,7 +244,7 @@ export function useChat(
                 }
                 case "tool-result": {
                     const tc = parts.find(
-                        (p): p is ClientToolCallPart => p.type === "tool_call" && p.id === event.toolCallId
+                        (p): p is ClientToolCallPart => p.type === "tool-call" && p.id === event.toolCallId
                     );
 
                     if (tc) {
