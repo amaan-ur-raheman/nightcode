@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { streamText as aiStreamText } from "ai";
 
-import * as Sentry from "@sentry/hono/bun";
 import { db } from "@nightcode/database/client";
 import { zValidator } from "@hono/zod-validator";
 import { type ChatStreamEvent } from "@nightcode/shared";
@@ -19,10 +18,6 @@ const submitSchema = z.object({
 
 const submitValidator = zValidator("json", submitSchema, (result, c) => {
     if (!result.success) {
-        Sentry.logger.warn("Chat submission validation failed", {
-            path: c.req.path,
-            issues: result.error.issues.length,
-        });
         return c.json({ error: "Invalid request body" }, 400);
     }
 });
@@ -185,11 +180,6 @@ const app = new Hono()
         });
 
         if (!session) {
-            Sentry.logger.warn("Session not found", {
-                sessionId: sessionId,
-                userId: "mock-user",
-            });
-
             return c.json({ error: "Session not found" }, 404);
         }
 
@@ -263,11 +253,6 @@ const app = new Hono()
         });
 
         if (!session) {
-            Sentry.logger.warn("Session not found", {
-                sessionId: sessionId,
-                userId: "mock-user",
-            });
-
             return c.json({ error: "Session not found" }, 404);
         }
 
