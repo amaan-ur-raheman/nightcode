@@ -5,6 +5,7 @@ import { useTheme } from "@/providers/theme";
 import type { ClientMessagePart, ClientToolCallPart } from "@/hooks/use-chat";
 
 import { EmptyBorder } from "@/components/border";
+import { MarkdownText } from "@/lib/markdown";
 
 type BotMessageProps = {
     parts: ClientMessagePart[];
@@ -61,10 +62,6 @@ export function BotMessage({
     interrupted = false,
 }: BotMessageProps) {
     const { colors } = useTheme();
-    const text = parts
-        .filter((p) => p.type === "text")
-        .map((p) => p.text)
-        .join("");
 
     return (
         <box alignItems="center" width="100%">
@@ -115,7 +112,7 @@ export function BotMessage({
                         if (part.type === "text") {
                             return (
                                 <box key={`text-${j}`} paddingX={3} width="100%">
-                                    <text>{part.text}</text>
+                                    <MarkdownText streaming={streaming}>{part.text}</MarkdownText>
                                 </box>
                             );
                         }
