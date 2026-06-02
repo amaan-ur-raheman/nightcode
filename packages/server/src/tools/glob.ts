@@ -20,8 +20,8 @@ export function createGlobTool(cwd: string) {
             const resolved = resolve(cwd, path);
 
             if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
-                            return { error: "Path is outside the project directory" };
-                        }
+                return { error: "Path is outside the project directory" };
+            }
 
             try {
                 const glob = new Bun.Glob(pattern);
@@ -33,7 +33,7 @@ export function createGlobTool(cwd: string) {
                     dot: false,
                     onlyFiles: true,
                 })) {
-                    if ([...IGNORE_DIRS].some((dir) => match.startsWith(`${dir}/`))) continue;
+                    if (match.split("/").some((seg) => IGNORE_DIRS.has(seg))) continue;
 
                     if (files.length >= MAX_RESULT) {
                         truncated = true;

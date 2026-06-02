@@ -9,7 +9,7 @@ export function createEditFileTool(cwd: string) {
         description:
             "Make a targeted edit to a file by replacing an exact string match. The oldString must appear exactly once in the file (for safety). Use this for surgical edits instead of rewriting entire files.",
         inputSchema: z.object({
-            path: z.string().describe("Relative path to the file to edit"),
+            path: z.string().describe("Relative path to the file edit"),
             oldString: z
                 .string()
                 .describe("The exact text to find and replace (must be unique in the file)"),
@@ -19,8 +19,8 @@ export function createEditFileTool(cwd: string) {
             const resolved = resolve(cwd, path);
 
             if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
-                            return { error: "Path is outside the project directory" };
-                        }
+                return { error: "Path is outside the project directory" };
+            }
 
             try {
                 const content = await readFile(resolved, "utf-8");

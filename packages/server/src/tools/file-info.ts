@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { tool } from "ai";
 import { stat } from "fs/promises";
-import { resolve, relative } from "path";
+import { resolve, relative, basename } from "path";
 
 export function createFileInfoTool(cwd: string) {
     return tool({
@@ -26,20 +26,24 @@ export function createFileInfoTool(cwd: string) {
 
                 const result: Record<string, unknown> = {
                     path: relative(cwd, resolved) || ".",
-                    name: relative(cwd, resolved) || ".",
+                    name: basename(resolved) || ".",
                     isDirectory: info.isDirectory(),
                     size: info.size,
                     modified: info.mtime.toISOString(),
                 };
 
                 if (info.isFile()) {
-                    let lineCount = 1;
+                    let newlineCount = 0;
+                    let seenAnyByte = false;
+                    let lastByteWasNewline = false;
                     for await (const chunk of Bun.file(resolved).stream()) {
                         for (let i = 0; i < chunk.length; i++) {
-                            if (chunk[i] === 0x0A) lineCount++;
+                            seenAnyByte = true;
+                            lastByteWasNewline = chunk[i] === 0x0A;
+                            if (lastByteWasNewline) newlineCount++;
                         }
                     }
-                    result.lineCount = lineCount;
+                    result.lineCount = newlineCount + (seenAnyByte && !lastByteWasNewline ? 1 : 0);
                 }
 
                 return result;

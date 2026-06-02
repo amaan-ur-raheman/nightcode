@@ -23,8 +23,8 @@ export function createGrepTool(cwd: string) {
             const resolved = resolve(cwd, path);
 
             if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
-                            return { error: "Path is outside the project directory" };
-                        }
+                return { error: "Path is outside the project directory" };
+            }
 
             try {
                 const args = [

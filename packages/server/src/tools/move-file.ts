@@ -15,7 +15,7 @@ export function createMoveFileTool(cwd: string) {
             const dest = resolve(cwd, to);
 
             const safeCwd = cwd.endsWith("/") ? cwd : cwd + "/";
-            if ((src !== cwd && !src.startsWith(safeCwd)) || (dest !== cwd && !dest.startsWith(safeCwd))) {
+            if (!src.startsWith(safeCwd) || !dest.startsWith(safeCwd)) {
                 return { error: "Path is outside the project directory" };
             }
 

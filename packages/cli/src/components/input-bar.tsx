@@ -16,11 +16,8 @@ import { StatusBar } from "@/components/status-bar";
 import { CommandMenu } from "@/components/command-menu";
 import type { Command } from "@/components/command-menu/types";
 import { useCommandMenu } from "@/components/command-menu/use-command-menu";
-
-type InputBarProps = {
-    onSubmit: (value: string) => void;
-    disabled?: boolean;
-}
+import { FileMentionMenu } from "@/components/file-mention";
+import { useFileMention } from "@/components/file-mention/use-file-mention";
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
     { name: "return", action: "submit" },
@@ -29,55 +26,58 @@ export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
     { name: "enter", shift: true, action: "newline" },
 ]
 
+type InputBarProps = {
+    onSubmit: (value: string) => void;
+    disabled?: boolean;
+}
+
 export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
     const textareaRef = useRef<TextareaRenderable>(null);
     const onSubmitRef = useRef<() => void>(() => { });
+
     const renderer = useRenderer();
     const toast = useToast();
     const { isTopLayer, setResponder } = useKeyboardLayer();
     const dialog = useDialog();
     const { colors } = useTheme();
     const navigate = useNavigate();
-    const { mode, toggleMode, model, setModel, setMode } = usePromptConfig();
+    const { mode, toggleMode, setModel, setMode } = usePromptConfig();
 
     const {
         showCommandMenu,
         commandQuery,
-        selectedIndex,
-        scrollRef,
+        selectedIndex: commandSelectedIndex,
+        scrollRef: commandScrollRef,
         handleContentChange,
         resolveCommand,
-        setSelectedIndex,
+        setSelectedIndex: setCommandSelectedIndex,
     } = useCommandMenu();
 
-    const handleTextareaContentChange = useCallback(() => {
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-
-        handleContentChange(textarea.plainText);
-    }, [handleContentChange]);
+    const {
+        showMentionMenu,
+        candidates,
+        selectedIndex: mentionSelectedIndex,
+        scrollRef: mentionScrollRef,
+        setSelectedIndex: setMentionSelectedIndex,
+        sync: syncMention,
+        execute: executeMention,
+        handleBackspace: handleMentionBackspace,
+    } = useFileMention(textareaRef);
 
     const handleSubmit = useCallback(() => {
         if (disabled) return;
-
         const textarea = textareaRef.current;
         if (!textarea) return;
-
         const text = textarea.plainText.trim();
         if (text.length === 0) return;
-
         onSubmit(text);
         textarea.setText("");
     }, [disabled, onSubmit]);
 
-    const handleCommand = useCallback((
-        command: Command | undefined,
-    ) => {
+    const handleCommand = useCallback((command: Command | undefined) => {
         const textarea = textareaRef.current;
         if (!command || !textarea) return;
-
         textarea.setText("");
-
         if (command.action) {
             command.action({
                 exit: () => renderer.destroy(),
@@ -93,30 +93,43 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
         }
     }, [renderer, toast, dialog, navigate, mode, setMode, setModel]);
 
-    const handleCommandExecute = useCallback(
-        (index: number) => {
-            const command = resolveCommand(index);
-            handleCommand(command);
-        },
-        [resolveCommand, handleCommand]
-    );
+    const handleCommandExecute = useCallback((index: number) => {
+        handleCommand(resolveCommand(index));
+    }, [resolveCommand, handleCommand]);
+
+    const handleTextareaContentChange = useCallback(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        handleContentChange(textarea.plainText);
+        syncMention(textarea.plainText, textarea.cursorOffset);
+    }, [handleContentChange, syncMention]);
+
+    const handleTextareaCursorChange = useCallback(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        syncMention(textarea.plainText, textarea.cursorOffset);
+    }, [syncMention]);
 
     // Wire up the textarea submit handler once so it always reads the latest state
     useEffect(() => {
         const textarea = textareaRef.current;
         if (!textarea) return;
-
-        textarea.onSubmit = () => {
-            onSubmitRef.current();
-        };
+        textarea.onSubmit = () => { onSubmitRef.current(); };
     }, []);
 
     onSubmitRef.current = () => {
         if (disabled) return;
 
         if (showCommandMenu) {
-            const command = resolveCommand(selectedIndex);
-            handleCommand(command);
+            handleCommand(resolveCommand(commandSelectedIndex));
+            return;
+        }
+
+        if (showMentionMenu) {
+            const candidate = candidates[mentionSelectedIndex];
+            if (candidate) {
+                executeMention(mentionSelectedIndex);
+            }
             return;
         }
 
@@ -131,22 +144,24 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
             key.preventDefault();
             toggleMode();
         }
+
+        if (key.name === "backspace" && !showMentionMenu) {
+            if (handleMentionBackspace()) {
+                key.preventDefault();
+            }
+        }
     });
 
-    // Register the base layer responder for ctrl+c dismissal
     useEffect(() => {
         setResponder("base", () => {
             if (disabled) return false;
-
             const textarea = textareaRef.current;
             if (textarea && textarea.plainText.length > 0) {
                 textarea.setText("");
                 return true;
             }
-
             return false;
         });
-
         return () => setResponder("base", null);
     }, [disabled, setResponder]);
 
@@ -182,24 +197,43 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                         >
                             <CommandMenu
                                 query={commandQuery}
-                                selectedIndex={selectedIndex}
-                                scrollRef={scrollRef}
-                                onSelect={setSelectedIndex}
+                                selectedIndex={commandSelectedIndex}
+                                scrollRef={commandScrollRef}
+                                onSelect={setCommandSelectedIndex}
                                 onExecute={handleCommandExecute}
+                            />
+                        </box>
+                    )}
+                    {!showCommandMenu && showMentionMenu && (
+                        <box
+                            position="absolute"
+                            bottom="100%"
+                            left={0}
+                            width="100%"
+                            backgroundColor={colors.surface}
+                            zIndex={10}
+                        >
+                            <FileMentionMenu
+                                candidates={candidates}
+                                selectedIndex={mentionSelectedIndex}
+                                scrollRef={mentionScrollRef}
+                                onSelect={setMentionSelectedIndex}
+                                onExecute={executeMention}
                             />
                         </box>
                     )}
                     <textarea
                         width="100%"
                         ref={textareaRef}
-                        focused={!disabled && (isTopLayer("base") || isTopLayer("command"))}
+                        focused={!disabled && (isTopLayer("base") || isTopLayer("command") || isTopLayer("mention"))}
                         keyBindings={TEXTAREA_KEY_BINDINGS}
                         onContentChange={handleTextareaContentChange}
+                        onCursorChange={handleTextareaCursorChange}
                         placeholder={`Ask anything... "Fix a bug in the database"`}
                     />
                     <StatusBar />
                 </box>
             </box>
         </box>
-    )
+    );
 }

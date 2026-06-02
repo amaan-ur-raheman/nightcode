@@ -1,15 +1,14 @@
 import { useMemo } from "react";
-import { SyntaxStyle } from "@opentui/core";
+import { SyntaxStyle, TextAttributes } from "@opentui/core";
 import { useTheme } from "@/providers/theme";
-
 type MarkdownTextProps = {
     children: string;
     streaming?: boolean;
+    attributes?: number;
+    fg?: string;
 };
-
-export function MarkdownText({ children, streaming = false }: MarkdownTextProps) {
+export function MarkdownText({ children, streaming = false, attributes, fg }: MarkdownTextProps) {
     const { colors } = useTheme();
-
     const syntaxStyle = useMemo(() => SyntaxStyle.fromStyles({
         keyword:             { fg: colors.planMode, bold: true },
         string:              { fg: colors.success },
@@ -31,13 +30,14 @@ export function MarkdownText({ children, streaming = false }: MarkdownTextProps)
         "markup.link":       { fg: colors.info, underline: true },
         "markup.quote":      { fg: colors.dimSeparator, italic: true },
     }), [colors]);
-
     return (
         <markdown
             content={children}
             syntaxStyle={syntaxStyle}
             streaming={streaming}
             conceal={true}
+            attributes={attributes}
+            fg={fg}
         />
     );
 }

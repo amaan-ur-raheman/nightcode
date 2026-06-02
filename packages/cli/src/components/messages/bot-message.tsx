@@ -82,8 +82,9 @@ export function BotMessage({
                                     paddingX={2}
                                 >
                                     <text attributes={TextAttributes.DIM}>
-                                        <em fg={colors.thinking}>Thinking:</em> {part.text}
+                                        <em fg={colors.thinking}>Thinking:</em>
                                     </text>
+                                    <MarkdownText streaming={streaming} attributes={TextAttributes.DIM} fg={colors.dimSeparator}>{part.text}</MarkdownText>
                                 </box>
                             );
                         }
@@ -102,8 +103,7 @@ export function BotMessage({
                                     paddingX={2}
                                 >
                                     <text attributes={TextAttributes.DIM}>
-                                        <em fg={colors.info}>{formatToolName(part.name)}:</em> {formatToolArgs(part)}
-                                        {part.status === "calling" ? " …" : ""}
+                                        <em fg={colors.info}>{formatToolName(part.name)}:</em>{" "}{formatToolArgs(part)}{part.status === "calling" ? " …" : ""}
                                     </text>
                                 </box>
                             );

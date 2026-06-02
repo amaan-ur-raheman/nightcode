@@ -13,9 +13,14 @@ export function createDeleteFileTool(cwd: string) {
         execute: async ({ path, recursive }) => {
             const resolved = resolve(cwd, path);
 
-            if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
-                            return { error: "Path is outside the project directory" };
-                        }
+            if (resolved === cwd) {
+                return { error: "Cannot delete the project root directory" };
+            }
+
+            const safeCwd = cwd.endsWith("/") ? cwd : cwd + "/";
+            if (!resolved.startsWith(safeCwd)) {
+                return { error: "Path is outside the project directory" };
+            }
 
             try {
                 await rm(resolved, { recursive });
