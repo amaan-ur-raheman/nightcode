@@ -15,6 +15,7 @@
         "@ai-sdk/openai": "^3.0.67",
         "@ai-sdk/openai-compatible": "^2.0.48",
         "@ai-sdk/provider-utils": "^4.0.27",
+        "@clerk/backend": "^3.4.14",
         "@hono/zod-validator": "^0.8.0",
         "@nightcode/database": "workspace:*",
         "@nightcode/shared": "workspace:*",
