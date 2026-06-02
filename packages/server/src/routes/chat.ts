@@ -18,6 +18,7 @@ import { Mode, MessageStatus } from "@nightcode/database/enums";
 import { createTools } from "../tools";
 import { buildSystemPrompt } from "../system-prompt";
 import { isSupportedChatModel, resolveChatModel } from "../lib/models";
+import type { AuthenticatedEnv } from "../middleware/require-auth";
 
 const submitSchema = z.object({
     content: z.string(),
@@ -259,13 +260,15 @@ async function streamAIResponse(
     }
 };
 
-const app = new Hono()
+const app = new Hono<AuthenticatedEnv>()
     .post("/:sessionId/resume", async (c) => {
+        const userId = c.get("userId");
         const sessionId = c.req.param("sessionId");
 
         const session = await db.session.findUnique({
             where: {
-                id: sessionId
+                id: sessionId,
+                userId,
             },
             include: {
                 messages: {
@@ -335,11 +338,13 @@ const app = new Hono()
         }
     })
     .post("/:sessionId", submitValidator, async (c) => {
+        const userId = c.get("userId");
         const sessionId = c.req.param("sessionId");
 
         const session = await db.session.findUnique({
             where: {
-                id: sessionId
+                id: sessionId,
+                userId,
             },
             include: {
                 messages: {

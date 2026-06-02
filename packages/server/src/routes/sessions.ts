@@ -2,10 +2,13 @@ import { z } from "zod";
 import { Hono } from "hono";
 // import { HTTPException } from "hono/http-exception";
 
-import { db } from "@nightcode/database/client";
 import { zValidator } from "@hono/zod-validator";
+
+import { db } from "@nightcode/database/client";
 import { findSupportedChatModel } from "@nightcode/shared";
 import { Mode, Role, MessageStatus } from "@nightcode/database/enums";
+
+import type { AuthenticatedEnv } from "../middleware/require-auth";
 
 const createSessionSchema = z.object({
     title: z.string(),
@@ -28,9 +31,12 @@ const createSessionValidator = zValidator(
     }
 );
 
-const app = new Hono()
+const app = new Hono<AuthenticatedEnv>()
     .get("/", async (c) => {
+        const userId = c.get("userId");
+
         const sessions = await db.session.findMany({
+            where: { userId },
             orderBy: {
                 createdAt: "desc",
             },
@@ -44,16 +50,11 @@ const app = new Hono()
         return c.json(sessions);
     })
     .get("/:id", async (c) => {
-        // MOCK: Uncomment to stimulate slow session loading
-        // await new Promise((resolve) => setTimeout(resolve, 5000));
-
-        // MOCK: Uncomment to stimulate session loading error
-        // throw new HTTPException(500, { message: "Mock error: session loading failed" });
-
         const id = c.req.param("id");
+        const userId = c.get("userId");
 
         const session = await db.session.findUnique({
-            where: { id },
+            where: { id, userId },
             include: {
                 messages: {
                     orderBy: {
@@ -69,18 +70,13 @@ const app = new Hono()
         return c.json(session);
     })
     .post("/", createSessionValidator, async (c) => {
-        // MOCK: Uncomment to stimulate slow session loading
-        // await new Promise((resolve) => setTimeout(resolve, 5000));
-
-        // MOCK: Uncomment to stimulate session loading error
-        // throw new HTTPException(500, { message: "Mock error: session loading failed" });
-
+        const userId = c.get("userId");
         const { initialMessage, ...data } = c.req.valid("json");
 
         const session = await db.session.create({
             data: {
                 ...data,
-                userId: "mock-user",
+                userId,
                 ...(initialMessage && {
                     messages: {
                         create: {
