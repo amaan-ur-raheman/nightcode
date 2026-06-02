@@ -7,9 +7,13 @@ REF_FILE="/tmp/nightcode-server.refs"
 
 find_free_port() {
     local port=3000
-    while lsof -ti:"$port" &>/dev/null; do
+    while lsof -ti:"$port" &>/dev/null && [ "$port" -le 65535 ]; do
         ((port++))
     done
+    if [ "$port" -gt 65535 ]; then
+        echo "Error: No free port found in range 3000-65535" >&2
+        return 1
+    fi
     echo $port
 }
 
@@ -38,7 +42,6 @@ start_server() {
         done
     fi
 
-    # Increment ref count
     # Increment ref count
     (
         flock -x 200
