@@ -141,7 +141,7 @@ export async function getMentionCandidates(query: string): Promise<MentionCandid
 
                 if (entry.name.toLowerCase().startsWith(lowercasePrefix)) {
                     fallbackMatches.push({ path: kind === "directory" ? `${path}/` : path, kind });
-                    if (fallbackMatches.length > MAX_FALLBACK_MENTIONS_CANDIDATES) return;
+                    if (fallbackMatches.length >= MAX_FALLBACK_MENTIONS_CANDIDATES) return;
                 }
 
                 if (entry.isDirectory()) {
@@ -150,7 +150,7 @@ export async function getMentionCandidates(query: string): Promise<MentionCandid
                     } catch {
                         // skip unreadable subtree, continue with siblings
                     }
-                    if (fallbackMatches.length > MAX_FALLBACK_MENTIONS_CANDIDATES) return;
+                    if (fallbackMatches.length >= MAX_FALLBACK_MENTIONS_CANDIDATES) return;
                 }
             }
         };
