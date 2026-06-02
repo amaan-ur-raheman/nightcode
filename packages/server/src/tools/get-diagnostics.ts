@@ -11,31 +11,50 @@ export function createGetDiagnosticsTool(cwd: string) {
             type: z.enum(["tsc", "lint", "both"]).describe("Which diagnostics to run").default("both"),
         }),
         execute: async ({ type }) => {
-            const run = async (cmd: string) => {
-                const proc = Bun.spawn(["bash", "-c", cmd], {
+            const MAX_OUTPUT = 20_000;
+
+            const spawnAndCapture = async (argv: string[]) => {
+                let timedOut = false;
+                const proc = Bun.spawn(argv, {
                     cwd,
                     stdout: "pipe",
                     stderr: "pipe",
+                    detached: true,
                 });
-                const timer = setTimeout(() => proc.kill("SIGKILL"), 60_000);
+                const timer = setTimeout(() => {
+                    timedOut = true;
+                    try { process.kill(-proc.pid!, 9); } catch { proc.kill(9); }
+                }, 60_000);
                 const [stdout, stderr] = await Promise.all([
                     new Response(proc.stdout).text(),
                     new Response(proc.stderr).text(),
                 ]);
                 const exitCode = await proc.exited;
                 clearTimeout(timer);
-                return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode };
+                const truncate = (s: string) => s.length > MAX_OUTPUT ? s.slice(0, MAX_OUTPUT) + "\n...(truncated)" : s;
+                return { stdout: truncate(stdout.trim()), stderr: truncate(stderr.trim()), exitCode, timedOut };
             };
+
+            const runShell = (cmd: string) => spawnAndCapture(["bash", "-c", cmd]);
+            const runDirect = (argv: string[]) => spawnAndCapture(argv);
 
             const results: Record<string, unknown> = {};
 
             if (type === "tsc" || type === "both") {
-                const hasTsconfig = existsSync(join(cwd, "tsconfig.json")) ||
-                    readdirSync(cwd).some((f) => /^tsconfig\..+\.json$/.test(f));
-                if (!hasTsconfig) {
+                let discoveredTsconfig: string | null = null;
+                if (existsSync(join(cwd, "tsconfig.json"))) {
+                    discoveredTsconfig = "tsconfig.json";
+                } else {
+                    try {
+                        discoveredTsconfig = readdirSync(cwd).find((f) => /^tsconfig\..+\.json$/.test(f)) ?? null;
+                    } catch {
+                        discoveredTsconfig = null;
+                    }
+                }
+                if (!discoveredTsconfig) {
                     results.tsc = { stdout: "", stderr: "No tsconfig.json found in project root", exitCode: 1 };
                 } else {
-                    results.tsc = await run("bunx tsc --noEmit");
+                    results.tsc = await runDirect(["bunx", "tsc", "-p", discoveredTsconfig, "--noEmit"]);
                 }
             }
 
@@ -56,7 +75,7 @@ export function createGetDiagnosticsTool(cwd: string) {
                 if (!hasEslint) {
                     results.lint = { stdout: "", stderr: "No ESLint config found in project root", exitCode: 1 };
                 } else {
-                    results.lint = await run("bunx eslint . --max-warnings=0");
+                    results.lint = await runShell("bunx eslint . --max-warnings=0");
                 }
             }
 
