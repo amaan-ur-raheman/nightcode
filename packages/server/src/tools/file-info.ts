@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { tool } from "ai";
 import { stat } from "fs/promises";
-import { resolve, relative } from "path";
+import { resolve, relative, basename } from "path";
 
 export function createFileInfoTool(cwd: string) {
     return tool({
@@ -26,7 +26,7 @@ export function createFileInfoTool(cwd: string) {
 
                 const result: Record<string, unknown> = {
                     path: relative(cwd, resolved) || ".",
-                    name: relative(cwd, resolved) || ".",
+                    name: basename(resolved) || ".",
                     isDirectory: info.isDirectory(),
                     size: info.size,
                     modified: info.mtime.toISOString(),
