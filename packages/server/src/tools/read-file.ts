@@ -33,9 +33,9 @@ export function createReadFileTool(cwd: string) {
                 const totalLines = content.split("\n").length;
                 const totalBytes = Buffer.byteLength(content, "utf-8");
 
-                if (offset != null && limit != null) {
-                    const start = Math.max(1, offset);
-                    const effectiveLimit = Math.max(1, limit);
+                if (offset != null || limit != null) {
+                    const start = Math.max(1, offset ?? 1);
+                    const effectiveLimit = Math.max(1, limit ?? (totalLines - start + 1));
                     const end = Math.min(totalLines, start + effectiveLimit - 1);
                     const lines = content.split("\n").slice(start - 1, end);
 
@@ -43,7 +43,7 @@ export function createReadFileTool(cwd: string) {
                         content: lines.join("\n"),
                         path: relative(cwd, resolved),
                         offset: start,
-                        limit,
+                        limit: effectiveLimit,
                         totalLines,
                         totalBytes,
                         displayedLines: lines.length,
