@@ -126,7 +126,12 @@ export async function getMentionCandidates(query: string): Promise<MentionCandid
         const searchPrefix = directoryPart || "";
 
         const visit = async (absoluteDirectory: string, directoryPart: string): Promise<void> => {
-            const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+            let entries;
+            try {
+                entries = await readdir(absoluteDirectory, { withFileTypes: true });
+            } catch {
+                return;
+            }
             for (const entry of entries) {
                 if (!showHiddenEntries && entry.name.startsWith(".")) continue;
                 if (entry.isDirectory() && RECURSIVE_MENTION_IGNORED_DIRECTORIES.has(entry.name)) continue;
@@ -140,7 +145,11 @@ export async function getMentionCandidates(query: string): Promise<MentionCandid
                 }
 
                 if (entry.isDirectory()) {
-                    await visit(resolve(absoluteDirectory, entry.name), path);
+                    try {
+                        await visit(resolve(absoluteDirectory, entry.name), path);
+                    } catch {
+                        // skip unreadable subtree, continue with siblings
+                    }
                     if (fallbackMatches.length > MAX_FALLBACK_MENTIONS_CANDIDATES) return;
                 }
             }
