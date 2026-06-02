@@ -8,7 +8,6 @@ const MAX_LINES = 500;
 
 async function buildTree(dir: string, prefix: string, depth: number, maxDepth: number): Promise<string[]> {
     if (depth > maxDepth) return [];
-    // Note: symlinks are not resolved/culled; a symlink could point outside cwd.
     const entries = (await readdir(dir)).filter((e) => !e.startsWith(".") && !IGNORE.has(e)).sort();
     const lines: string[] = [];
 
@@ -46,8 +45,8 @@ export function createTreeTool(cwd: string) {
             const resolved = resolve(cwd, path);
 
             if (resolved !== cwd && !resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) {
-                            return { error: "Path is outside the project directory" };
-                        }
+                return { error: "Path is outside the project directory" };
+            }
 
             try {
                 const root = relative(cwd, resolved) || ".";
