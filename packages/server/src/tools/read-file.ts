@@ -35,7 +35,7 @@ export function createReadFileTool(cwd: string) {
 
                 if (offset != null || limit != null) {
                     const start = Math.max(1, offset ?? 1);
-                    const effectiveLimit = Math.max(1, limit ?? (totalLines - start + 1));
+                    const effectiveLimit = limit != null ? Math.max(0, limit) : Math.max(1, totalLines - start + 1);
                     const end = Math.min(totalLines, start + effectiveLimit - 1);
                     const lines = content.split("\n").slice(start - 1, end);
 
