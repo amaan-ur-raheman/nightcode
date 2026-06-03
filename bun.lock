@@ -55,6 +55,7 @@
         "@hono/zod-validator": "^0.8.0",
         "@nightcode/database": "workspace:*",
         "@nightcode/shared": "workspace:*",
+        "@polar-sh/sdk": "^0.47.1",
         "@sentry/bun": "^10.55.0",
         "@sentry/hono": "^10.55.0",
         "ai": "^6.0.193",
@@ -139,6 +140,8 @@
     "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.2.14", "", { "os": "win32", "cpu": "x64" }, "sha512-2ZUNh7yaAMUwAOK8oFEO28qXqPFrWPGGD0KHK1Gp97Th9XuVZniMLtbkbrFtDRh15+PVj7MyrG0N967W7rLr1A=="],
 
     "@opentui/react": ["@opentui/react@0.2.14", "", { "dependencies": { "@opentui/core": "0.2.14", "react-reconciler": "^0.33.0" }, "peerDependencies": { "react": ">=19.2.0", "react-devtools-core": "^7.0.1", "ws": "^8.18.0" } }, "sha512-YXwhRBLKqHCp36UQOmQ2jXlxXLEPmiioez+LFmGu40SuuF1Fci1aHCeN+jf4qm2AmAvD3lLPQbYwEd/XNDI7cA=="],
+
+    "@polar-sh/sdk": ["@polar-sh/sdk@0.47.1", "", { "dependencies": { "standardwebhooks": "^1.0.0", "zod": "^3.25.65 || ^4.0.0" } }, "sha512-fkz7wPLbqfuDmY9LxuXpE2uP2TAV6J0q/YN5hJ4UBxpjbkB0hKM6c4R35N89t83dfzMlG6EOlqOn+Rd1T6XrJQ=="],
 
     "@prisma/adapter-pg": ["@prisma/adapter-pg@7.8.0", "", { "dependencies": { "@prisma/driver-adapter-utils": "7.8.0", "@types/pg": "^8.16.0", "pg": "^8.16.3", "postgres-array": "3.0.4" } }, "sha512-ygb3UkerK3v8MDpXVgCISdRNDozpxh6+JVJgiIGbSr5KBgz10LLf5ejUskPGoXlsIjxsOu6nuy1JVQr2EKGSlg=="],
 
