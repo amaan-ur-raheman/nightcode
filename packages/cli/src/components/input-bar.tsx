@@ -74,12 +74,17 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
 
         const skillMatch = text.match(/^\/skill:(\S+)\s*([\s\S]*)$/);
         if (skillMatch) {
-            const content = loadSkillContent(skillMatch[1]);
+            const content = loadSkillContent(skillMatch[1]!);
             if (content) {
-                const userText = skillMatch[2].trim();
+                const userText = skillMatch[2]!.trim();
                 const combined = userText ? `${content}\n\n${userText}` : content;
                 textarea.setText("");
                 onSubmit(combined);
+            } else {
+                toast.show({ 
+                    message: `Skill "${skillMatch[1]}" not found`, 
+                    variant: "error" 
+                });
             }
             return;
         }
@@ -103,7 +108,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                 setModel,
                 setInputValue: (value: string) => {
                     textarea.setText(value);
-                    textarea.setCursorOffset(value.length);
+                    textarea.cursorOffset = value.length;
                 },
             });
         } else {
