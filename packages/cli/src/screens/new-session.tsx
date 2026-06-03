@@ -2,7 +2,7 @@ import { z } from "zod";
 import { useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router";
 
-import { Mode } from "@nightcode/database/enums";
+import { Mode, modeSchema } from "@nightcode/shared";
 
 import { useToast } from "@/providers/toast";
 import { apiClient } from "@/lib/api-client";
@@ -13,7 +13,7 @@ import { SessionShell } from "@/components/session-shell";
 
 const newSessionStateSchema = z.object({
     message: z.string(),
-    mode: z.enum(Mode),
+    mode: modeSchema,
     model: z.string(),
 });
 
@@ -47,13 +47,6 @@ export function NewSession() {
                 const res = await apiClient.sessions.$post({
                     json: {
                         title: state.message.slice(0, 100),
-                        cwd: process.cwd(),
-                        initialMessage: {
-                            role: "USER",
-                            content: state.message,
-                            mode: state.mode,
-                            model: state.model,
-                        },
                     },
                 });
 
@@ -66,7 +59,7 @@ export function NewSession() {
                 const session = await res.json();
                 navigate(
                     `/sessions/${session.id}`,
-                    { replace: true, state: { session } },
+                    { replace: true, state: { session, initialPrompt: state } },
                 );
             } catch (error) {
                 if (ignore) return;

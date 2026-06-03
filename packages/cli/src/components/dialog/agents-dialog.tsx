@@ -1,18 +1,18 @@
 import { useCallback } from "react";
 
 import { useDialog } from "@/providers/dialog";
-import { Mode } from "@nightcode/database/enums";
+import { Mode, type ModeType } from "@nightcode/shared";
 
 import { DialogSearchList } from "@/components/dialog-search-list";
 
-const AVAILABLE_MODES: Mode[] = [Mode.BUILD, Mode.PLAN];
+const AVAILABLE_MODES: ModeType[] = [Mode.BUILD, Mode.PLAN];
 
 type AgentsDialogContentProps = {
-    currentMode: Mode,
-    onSelectMode: (mode: Mode) => void;
+    currentMode: ModeType,
+    onSelectMode: (mode: ModeType) => void;
 };
 
-function getModeLabel(mode: Mode): string {
+function getModeLabel(mode: ModeType): string {
     return mode === Mode.BUILD ? "Build" : "Plan";
 }
 
@@ -20,7 +20,7 @@ export function AgentsDialogContent({ currentMode, onSelectMode }: AgentsDialogC
     const dialog = useDialog();
 
     const handleSelect = useCallback(
-        (nextMode: Mode) => {
+        (nextMode: ModeType) => {
             onSelectMode(nextMode);
             dialog.close();
         },

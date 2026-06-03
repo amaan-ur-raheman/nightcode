@@ -1,5 +1,5 @@
+import { Mode } from "@nightcode/shared";
 import { TextAttributes } from "@opentui/core";
-import { Mode } from "@nightcode/database/enums";
 
 import { useTheme } from "@/providers/theme";
 import { usePromptConfig } from "@/providers/prompt-config";
