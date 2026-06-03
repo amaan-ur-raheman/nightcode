@@ -1,10 +1,11 @@
 import { useNavigate } from "react-router";
 import { useRef, useCallback, useEffect } from "react";
 
-import { Mode } from "@nightcode/database/enums";
+import { Mode } from "@nightcode/shared";
 import { useRenderer, useKeyboard } from "@opentui/react";
 import type { KeyBinding, TextareaRenderable } from "@opentui/core";
 
+import { loadSkillContent } from "@/lib/skills";
 import { useTheme } from "@/providers/theme";
 import { useToast } from "@/providers/toast";
 import { useDialog } from "@/providers/dialog";
@@ -18,7 +19,6 @@ import type { Command } from "@/components/command-menu/types";
 import { useCommandMenu } from "@/components/command-menu/use-command-menu";
 import { FileMentionMenu } from "@/components/file-mention";
 import { useFileMention } from "@/components/file-mention/use-file-mention";
-import { loadSkillContent } from "@/lib/skills";
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
     { name: "return", action: "submit" },
