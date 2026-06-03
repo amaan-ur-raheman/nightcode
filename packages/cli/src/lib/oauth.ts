@@ -1,6 +1,5 @@
 import open from "open";
 import { saveAuth } from "./auth";
-import { serve } from "bun";
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
