@@ -36,7 +36,6 @@ export function MarkdownText({ children, streaming = false, attributes, fg }: Ma
             syntaxStyle={syntaxStyle}
             streaming={streaming}
             conceal={true}
-            attributes={attributes}
             fg={fg}
         />
     );

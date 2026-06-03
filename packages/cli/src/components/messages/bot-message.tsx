@@ -23,7 +23,7 @@ function formatToolName(name: string): string {
 }
 
 function formatToolArgs(tc: ClientToolCallPart): string {
-    return Object.values(tc.args).map(String).join("");
+    return Object.values(tc.args).map(String).join(" ");
 }
 
 type PartGroup = {

@@ -8,6 +8,7 @@ import {
     AgentsDialogContent,
     ModelsDialogContent,
     SessionDialogContent,
+    SkillsDialogContent,
     ThemeDialogContent
 } from "@/components/dialog";
 
@@ -66,6 +67,17 @@ export const COMMANDS: Command[] = [
             ctx.dialog.open({
                 title: "Select Theme",
                 children: <ThemeDialogContent />,
+            })
+        }
+    },
+    {
+        name: "skills",
+        description: "Use a prompt skill",
+        value: "/skills",
+        action: (ctx) => {
+            ctx.dialog.open({
+                title: "Select Skill",
+                children: <SkillsDialogContent onSelectSkill={ctx.setInputValue} />,
             })
         }
     },

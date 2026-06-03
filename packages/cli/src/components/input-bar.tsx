@@ -18,6 +18,7 @@ import type { Command } from "@/components/command-menu/types";
 import { useCommandMenu } from "@/components/command-menu/use-command-menu";
 import { FileMentionMenu } from "@/components/file-mention";
 import { useFileMention } from "@/components/file-mention/use-file-mention";
+import { loadSkillContent } from "@/lib/skills";
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
     { name: "return", action: "submit" },
@@ -70,6 +71,24 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
         if (!textarea) return;
         const text = textarea.plainText.trim();
         if (text.length === 0) return;
+
+        const skillMatch = text.match(/^\/skill:(\S+)\s*([\s\S]*)$/);
+        if (skillMatch) {
+            const content = loadSkillContent(skillMatch[1]!);
+            if (content) {
+                const userText = skillMatch[2]!.trim();
+                const combined = userText ? `${content}\n\n${userText}` : content;
+                textarea.setText("");
+                onSubmit(combined);
+            } else {
+                toast.show({ 
+                    message: `Skill "${skillMatch[1]}" not found`, 
+                    variant: "error" 
+                });
+            }
+            return;
+        }
+
         onSubmit(text);
         textarea.setText("");
     }, [disabled, onSubmit]);
@@ -86,7 +105,11 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                 navigate,
                 mode,
                 setMode,
-                setModel
+                setModel,
+                setInputValue: (value: string) => {
+                    textarea.setText(value);
+                    textarea.cursorOffset = value.length;
+                },
             });
         } else {
             textarea.insertText(command.value + " ");
