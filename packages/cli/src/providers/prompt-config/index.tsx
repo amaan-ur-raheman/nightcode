@@ -13,7 +13,9 @@ function getInitialModel(): SupportedChatModelId {
     try {
         const prefs = JSON.parse(readFileSync(PREFERENCES_PATH, "utf-8")) as Record<string, unknown>;
         if (typeof prefs.modelId === "string") return prefs.modelId as SupportedChatModelId;
-    } catch { /* ignore */ }
+    } catch {
+        /* ignore */
+    }
     return DEFAULT_CHAT_MODEL_ID;
 }
 
@@ -22,9 +24,15 @@ function persistModel(modelId: SupportedChatModelId) {
         const dir = join(homedir(), ".nightcode");
         mkdirSync(dir, { recursive: true });
         let prefs: Record<string, unknown> = {};
-        try { prefs = JSON.parse(readFileSync(PREFERENCES_PATH, "utf-8")) as Record<string, unknown>; } catch { /* ignore */ }
+        try {
+            prefs = JSON.parse(readFileSync(PREFERENCES_PATH, "utf-8")) as Record<string, unknown>;
+        } catch {
+            /* ignore */
+        }
         writeFileSync(PREFERENCES_PATH, JSON.stringify({ ...prefs, modelId }, null, 2), "utf-8");
-    } catch { /* ignore */ }
+    } catch {
+        /* ignore */
+    }
 }
 
 type PromptConfigContextValue = {
