@@ -1,10 +1,11 @@
 import { readFileSync, readdirSync } from "fs";
-import { join } from "path";
+import { join, resolve, sep } from "path";
 import { homedir } from "os";
 
 export type Skill = {
     name: string;
     description: string;
+    dirName: string;
 };
 
 const SKILLS_DIR = join(homedir(), ".agents", "skills");
@@ -15,7 +16,7 @@ function parseFrontmatter(content: string): Record<string, string> {
 
     const result: Record<string, string> = {};
     // Handle both single-line and multi-line (block scalar) values
-    const lines = match[1].split("\n");
+    const lines = match[1]!.split("\n");
     let currentKey = "";
     let inBlock = false;
     const blockLines: string[] = [];
@@ -28,8 +29,8 @@ function parseFrontmatter(content: string): Record<string, string> {
                 blockLines.length = 0;
                 inBlock = false;
             }
-            currentKey = keyMatch[1];
-            const val = keyMatch[2].trim();
+            currentKey = keyMatch[1]!;
+            const val = keyMatch[2]!.trim();
             if (val === "" || val === "|" || val === ">") {
                 inBlock = true;
             } else {
@@ -49,7 +50,9 @@ function parseFrontmatter(content: string): Record<string, string> {
 
 export function loadSkillContent(name: string): string | null {
     try {
-        const raw = readFileSync(join(SKILLS_DIR, name, "SKILL.md"), "utf8");
+        const resolved = resolve(join(SKILLS_DIR, name, "SKILL.md"));
+        if (!resolved.startsWith(resolve(SKILLS_DIR) + sep)) return null;
+        const raw = readFileSync(resolved, "utf8");
         return raw.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
     } catch {
         return null;
@@ -73,6 +76,7 @@ export function loadSkills(): Skill[] {
                     skills.push({
                         name: fm.name,
                         description: fm.description ?? "",
+                        dirName: dir,
                     });
                 }
             } catch {

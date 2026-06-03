@@ -15,7 +15,7 @@ export function SkillsDialogContent({ onSelectSkill }: SkillsDialogContentProps)
     const handleSelect = useCallback(
         (skill: Skill) => {
             dialog.close();
-            onSelectSkill(`/skill:${skill.name} `);
+            onSelectSkill(`/skill:${skill.dirName} `);
         },
         [dialog, onSelectSkill]
     );
