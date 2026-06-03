@@ -1,26 +1,14 @@
 import { z } from "zod";
 import { Hono } from "hono";
-// import { HTTPException } from "hono/http-exception";
-
-import { zValidator } from "@hono/zod-validator";
 
 import { db } from "@nightcode/database/client";
-import { findSupportedChatModel } from "@nightcode/shared";
-import { Mode, Role, MessageStatus } from "@nightcode/database/enums";
+import { zValidator } from "@hono/zod-validator";
 
-import { isSupportedChatModel } from "../lib/models";
 import type { AuthenticatedEnv } from "../middleware/require-auth";
 import { requireCreditsBalance } from "../middleware/require-credits-balance";
 
 const createSessionSchema = z.object({
     title: z.string(),
-    cwd: z.string().optional(),
-    initialMessage: z.object({
-        role: z.enum(Role),
-        content: z.string(),
-        mode: z.enum(Mode),
-        model: z.string().refine(isSupportedChatModel, "Unsupported model")
-    }).optional(),
 });
 
 const createSessionValidator = zValidator(
@@ -57,13 +45,6 @@ const app = new Hono<AuthenticatedEnv>()
 
         const session = await db.session.findUnique({
             where: { id, userId },
-            include: {
-                messages: {
-                    orderBy: {
-                        createdAt: "asc",
-                    },
-                }
-            },
         });
         if (!session) {
             return c.json({ error: "Session not found" }, 404);
@@ -73,23 +54,12 @@ const app = new Hono<AuthenticatedEnv>()
     })
     .post("/", requireCreditsBalance, createSessionValidator, async (c) => {
         const userId = c.get("userId");
-        const { initialMessage, ...data } = c.req.valid("json");
+        const { ...data } = c.req.valid("json");
 
         const session = await db.session.create({
             data: {
                 ...data,
                 userId,
-                ...(initialMessage && {
-                    messages: {
-                        create: {
-                            ...initialMessage,
-                            status: MessageStatus.COMPLETE
-                        },
-                    },
-                }),
-            },
-            include: {
-                messages: true,
             },
         });
 
