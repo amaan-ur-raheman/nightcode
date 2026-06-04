@@ -49,6 +49,13 @@ export function MarkdownText({ children, streaming = false, attributes, fg }: Ma
             conceal={true}
             concealCode={true}
             fg={fg}
+            tableOptions={{
+                style: "grid",
+                widthMode: "full",
+                wrapMode: "word",
+                cellPaddingX: 1,
+                borderColor: colors.dimSeparator,
+            }}
         />
     );
 }

@@ -61,6 +61,14 @@ export const SUPPORTED_CHAT_MODELS = [
         },
     },
     {
+        id: "nvidia/nemotron-3-ultra-550b-a55b",
+        provider: "nvidia",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
         id: "stepfun-ai/step-3.7-flash",
         provider: "nvidia",
         pricing: {

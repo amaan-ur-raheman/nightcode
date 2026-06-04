@@ -20,6 +20,7 @@
     },
     "dependencies": {
         "@ai-sdk/react": "^3.0.197",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "@nightcode/shared": "workspace:*",
         "@opentui/core": "^0.2.10",
         "@opentui/react": "^0.2.10",

@@ -8,6 +8,7 @@ import { openBillingPortal, openUpgradeCheckout } from "@/lib/upgrade";
 import type { Command } from "@/components/command-menu/types";
 import {
     AgentsDialogContent,
+    McpDialogContent,
     ModelsDialogContent,
     SessionDialogContent,
     SkillsDialogContent,
@@ -80,6 +81,17 @@ export const COMMANDS: Command[] = [
             ctx.dialog.open({
                 title: "Select Skill",
                 children: <SkillsDialogContent onSelectSkill={ctx.setInputValue} />,
+            })
+        }
+    },
+    {
+        name: "mcp",
+        description: "View connected MCP servers",
+        value: "/mcp",
+        action: (ctx) => {
+            ctx.dialog.open({
+                title: "MCP Servers",
+                children: <McpDialogContent />,
             })
         }
     },

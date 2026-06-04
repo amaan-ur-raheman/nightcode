@@ -53,6 +53,9 @@ const OPENAI_PROVIDER_OPTIONS: Partial<Record<OpenAIModelId, ProviderOptions>> =
 };
 
 const NIM_PROVIDER_OPTIONS: Partial<Record<NimModelId, ProviderOptions>> = {
+    "nvidia/nemotron-3-ultra-550b-a55b": {
+        nim: { chat_template_kwargs: { enable_thinking: true } },
+    },
     "deepseek-ai/deepseek-v4-pro": {
         nim: { chat_template_kwargs: { thinking: true } },
     },
