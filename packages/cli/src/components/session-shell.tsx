@@ -34,7 +34,7 @@ export function SessionShell({
             gap={1}
         >
             <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="bottom">
-                <box>{children}</box>
+                <box width="100%">{children}</box>
             </scrollbox>
             <box flexShrink={0}>
                 <InputBar onSubmit={onSubmit} disabled={inputDisabled} />

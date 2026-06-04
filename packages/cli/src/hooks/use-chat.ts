@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
     DefaultChatTransport,
     type InferUITools,
@@ -17,6 +17,7 @@ import {
 import { getAuth } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
 import { executeLocalTool } from "@/lib/local-tools";
+import { loadMcpTools, callMcpTool, type McpToolSchema } from "@/lib/mcp-client";
 
 export type ChatMessageMetadata = {
     mode?: ModeType,
@@ -35,6 +36,14 @@ type ChatTools = {
 export type Message = UIMessage<ChatMessageMetadata, never, ChatTools>;
 
 export function useChat(sessionId: string, initialMessages: Message[]) {
+    const mcpToolsRef = useRef<McpToolSchema[]>([]);
+
+    useEffect(() => {
+        loadMcpTools().then((tools) => {
+            mcpToolsRef.current = tools;
+        });
+    }, []);
+
     const transport = useMemo(() => {
         return new DefaultChatTransport<Message>({
             api: apiClient.chat.$url().toString(),
@@ -63,6 +72,7 @@ export function useChat(sessionId: string, initialMessages: Message[]) {
                         messages: requestMessages,
                         mode: message?.metadata?.mode ?? metadata?.mode,
                         model: message?.metadata?.model ?? metadata?.model,
+                        mcpTools: mcpToolsRef.current.length > 0 ? mcpToolsRef.current : undefined,
                     },
                 }
             }
@@ -75,8 +85,13 @@ export function useChat(sessionId: string, initialMessages: Message[]) {
         transport,
         onToolCall({ toolCall }) {
             const mode = chat.messages.at(-1)?.metadata?.mode ?? "BUILD";
+            const isMcpTool = toolCall.toolName.startsWith("mcp__");
 
-            void executeLocalTool(toolCall.toolName, toolCall.input, mode)
+            const execute = isMcpTool
+                ? callMcpTool(toolCall.toolName, toolCall.input)
+                : executeLocalTool(toolCall.toolName, toolCall.input, mode);
+
+            void execute
                 .then((output) => {
                     chat.addToolOutput({
                         tool: toolCall.toolName as keyof ChatTools,
