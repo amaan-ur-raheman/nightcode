@@ -23,7 +23,7 @@ export async function httpRequestTool(input: unknown) {
     const timer = setTimeout(() => controller.abort(), 15_000);
 
     try {
-        const response = await fetch(url, { method, headers: headers as HeadersInit | undefined, body, signal: controller.signal });
+        const response = await fetch(url, { method, headers, body, signal: controller.signal });
         clearTimeout(timer);
         const text = await response.text();
         const tooLong = text.length > MAX_OUTPUT;
