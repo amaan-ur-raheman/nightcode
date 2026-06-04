@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
     convertToModelMessages,
     streamText,
+    tool,
     validateUIMessages,
     type InferUITools,
     type LanguageModelUsage,
@@ -10,6 +11,7 @@ import {
 } from "ai";
 
 import { zValidator } from "@hono/zod-validator";
+import { jsonSchema } from "ai";
 
 import { db } from "@nightcode/database/client";
 import type { Prisma } from "@nightcode/database";
@@ -26,6 +28,13 @@ import { calculateCreditsForUsage } from "../lib/credits";
 import type { AuthenticatedEnv } from "../middleware/require-auth";
 import { isSupportedChatModel, resolveChatModel } from "../lib/models";
 import { requireCreditsBalance } from "../middleware/require-credits-balance";
+
+const mcpToolSchema = z.object({
+    name: z.string(),
+    description: z.string(),
+    inputSchema: z.record(z.string(), z.unknown()),
+    serverName: z.string(),
+});
 
 type ChatMessageMetadata = {
     mode?: ModeType,
@@ -48,6 +57,7 @@ const submitSchema = z.object({
     ,
     mode: modeSchema,
     model: z.string().refine(isSupportedChatModel, "Unsupported model"),
+    mcpTools: z.array(mcpToolSchema).optional(),
 });
 
 const submitValidator = zValidator("json", submitSchema, (result, c) => {
@@ -74,7 +84,7 @@ const app = new Hono<AuthenticatedEnv>()
         submitValidator,
         async (c) => {
             const userId = c.get("userId");
-            const { id, messages, mode, model } = c.req.valid("json");
+            const { id, messages, mode, model, mcpTools } = c.req.valid("json");
 
             const session = await db.session.findUnique({
                 where: {
@@ -88,7 +98,20 @@ const app = new Hono<AuthenticatedEnv>()
             }
 
             const startTime = Date.now();
-            const tools = getToolContracts(mode);
+            const builtinTools = getToolContracts(mode);
+
+            // Merge MCP tools (dynamic, from the CLI) with built-in tools
+            const dynamicTools = mcpTools?.reduce((acc, t) => {
+                acc[t.name] = tool({
+                    description: t.description,
+                    inputSchema: jsonSchema(t.inputSchema as Parameters<typeof jsonSchema>[0]),
+                });
+                return acc;
+            }, {} as Record<string, ReturnType<typeof tool>>);
+
+            const tools = dynamicTools && Object.keys(dynamicTools).length > 0
+                ? { ...builtinTools, ...dynamicTools }
+                : builtinTools;
             const resolvedModel = resolveChatModel(model);
             const previousMessage = Array.isArray(session.messages)
                 ? (session.messages as unknown as NightCodeUIMessage[])
