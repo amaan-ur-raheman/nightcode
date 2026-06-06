@@ -1,7 +1,4 @@
 import type { LanguageModel } from "ai";
-
-import { openai } from "@ai-sdk/openai";
-import { anthropic } from "@ai-sdk/anthropic";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import {
     findSupportedChatModel,
@@ -10,10 +7,8 @@ import {
     type SupportedProvider,
 } from "@nightcode/shared";
 
-import { nim } from "./nim";
+import { nim, nimSubagent } from "./nim";
 
-type AnthropicModelId = Extract<SupportedChatModel, { provider: "anthropic" }>["id"];
-type OpenAIModelId = Extract<SupportedChatModel, { provider: "openai" }>["id"];
 type NimModelId = Extract<SupportedChatModel, { provider: "nvidia" }>["id"];
 
 export type ResolvedModel = {
@@ -21,35 +16,6 @@ export type ResolvedModel = {
     provider: SupportedProvider,
     modelId: SupportedChatModelId,
     providerOptions?: ProviderOptions,
-};
-
-const ANTHROPIC_PROVIDER_OPTIONS: Partial<Record<AnthropicModelId, ProviderOptions>> = {
-    "claude-opus-4-6": {
-        anthropic: {
-            thinking: {
-                type: "enabled",
-                budgetTokens: 10000,
-            }
-        },
-    },
-    "claude-sonnet-4-6": {
-        anthropic: {
-            thinking: {
-                type: "enabled",
-                budgetTokens: 10000,
-            },
-        },
-    },
-};
-
-const OPENAI_PROVIDER_OPTIONS: Partial<Record<OpenAIModelId, ProviderOptions>> = {
-    "gpt-5.4": {
-        openai: {
-            thinking: {
-                reasoningSummary: "detailed",
-            }
-        },
-    },
 };
 
 const NIM_PROVIDER_OPTIONS: Partial<Record<NimModelId, ProviderOptions>> = {
@@ -98,57 +64,38 @@ function assertUnsupportedProvider(provider: never): never {
     throw new Error(`Unsupported provider: ${provider}`);
 }
 
-function resolveAnthropicModel(modelId: AnthropicModelId): ResolvedModel {
+function resolveNimModel(modelId: NimModelId, subagent = false): ResolvedModel {
     return {
-        model: anthropic(modelId),
-        provider: "anthropic",
-        modelId,
-        providerOptions: ANTHROPIC_PROVIDER_OPTIONS[modelId],
-    };
-}
-
-function resolveOpenAIModel(modelId: OpenAIModelId): ResolvedModel {
-    return {
-        model: openai(modelId),
-        provider: "openai",
-        modelId,
-        providerOptions: OPENAI_PROVIDER_OPTIONS[modelId],
-    };
-}
-
-function resolveNimModel(modelId: NimModelId): ResolvedModel {
-    return {
-        model: nim(modelId),
+        model: subagent ? nimSubagent(modelId) : nim(modelId),
         provider: "nvidia",
         modelId,
         providerOptions: NIM_PROVIDER_OPTIONS[modelId],
     };
 }
 
-function resolveSupportedChatModel(model: SupportedChatModel): ResolvedModel {
+function resolveSupportedChatModel(model: SupportedChatModel, subagent = false): ResolvedModel {
     const provider = model.provider;
 
     switch (provider) {
-        case "anthropic":
-            return resolveAnthropicModel(model.id);
-        case "openai":
-            return resolveOpenAIModel(model.id);
         case "nvidia":
-            return resolveNimModel(model.id);
+            return resolveNimModel(model.id, subagent);
         default:
             return assertUnsupportedProvider(provider);
     }
 }
 
 export function isSupportedChatModel(modelId: string): modelId is SupportedChatModelId {
-    return findSupportedChatModel(modelId) !== null;
+    return findSupportedChatModel(modelId) !== undefined;
 }
 
 export function resolveChatModel(modelId: string): ResolvedModel {
     const model = findSupportedChatModel(modelId);
-    if (!model) {
-        throw new Error(`Unsupported model: ${modelId}`);
-    }
-
+    if (!model) throw new Error(`Unsupported model: ${modelId}`);
     return resolveSupportedChatModel(model);
+}
+
+export function resolveSubagentChatModel(modelId: string): ResolvedModel {
+    const model = findSupportedChatModel(modelId);
+    if (!model) throw new Error(`Unsupported model: ${modelId}`);
+    return resolveSupportedChatModel(model, true);
 }
