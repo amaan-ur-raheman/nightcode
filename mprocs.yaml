@@ -1,0 +1,5 @@
+procs:
+  server:
+    shell: "bun run dev:server"
+  cli:
+    shell: "bun run dev:cli"
