@@ -3,7 +3,7 @@ import type { InferResponseType } from "hono/client";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router";
 
-import { useKeyboard } from "@opentui/react";
+import { useKeyboard, useSelectionHandler } from "@opentui/react";
 import { type ModeType, type SupportedChatModelId } from "@nightcode/shared";
 
 import { useChat } from "@/hooks/use-chat";
@@ -38,7 +38,7 @@ const sessionLocationSchema = z.object({
 });
 
 function ChatMessage(
-    { msg }: { msg: Message }
+    { msg, streaming = false }: { msg: Message; streaming?: boolean }
 ) {
     if (msg.role === "user") {
         const text = msg.parts
@@ -55,7 +55,7 @@ function ChatMessage(
             mode={msg.metadata?.mode ?? "BUILD"}
             model={msg.metadata?.model ?? "Unknown"}
             durationMs={msg.metadata?.durationMs}
-            streaming={false}
+            streaming={streaming}
         />
     )
 }
@@ -76,7 +76,7 @@ function SessionChat({
     const [initialMessages] = useState(session.messages as unknown as Message[]);
     const { mode, model} = usePromptConfig();
     const { isTopLayer } = useKeyboardLayer();
-    const { messages, submit, abort, status, interrupt, error } = useChat(
+    const { messages, submit, abort, status, interrupt, error, isLoading } = useChat(
         session.id,
         initialMessages
     );
@@ -94,10 +94,68 @@ function SessionChat({
 
     // Let the user cancel a reply even before the first streamed chunks arrived
     useKeyboard((key) => {
-        if (key.name === "escape" && isTopLayer("base") && status === "streaming") {
+        if (key.name === "escape" && isTopLayer("base") && isLoading) {
             key.preventDefault();
             interrupt();
        }
+    });
+
+    const toast = useToast();
+
+    useSelectionHandler((selection) => {
+        const text = selection.getSelectedText();
+        if (!text) return;
+
+        (async () => {
+            try {
+            if (typeof navigator !== "undefined" && (navigator as any).clipboard?.writeText) {
+                try {
+                    await (navigator as any).clipboard.writeText(text);
+                    return;
+                } catch {
+                    // Fallback to command line if navigator.clipboard fails
+                }
+            }
+
+            const platform = process.platform;
+            let commands: string[][];
+            if (platform === "darwin") {
+                commands = [["pbcopy"]];
+            } else if (platform === "win32") {
+                commands = [["clip"]];
+            } else if (platform === "linux") {
+                commands = [["xclip", "-selection", "clipboard"], ["wl-copy"]];
+            } else {
+                commands = [["xclip", "-selection", "clipboard"], ["wl-copy"], ["pbcopy"], ["clip"]];
+            }
+
+            let lastError: unknown = null;
+            for (const cmd of commands) {
+                try {
+                    const proc = Bun.spawn(cmd, { stdin: "pipe" });
+                    proc.stdin.write(text);
+                    await proc.stdin.end();
+                    const exitCode = await proc.exited;
+                    if (exitCode === 0) {
+                        return;
+                    }
+                    lastError = new Error(`${cmd[0]} exited with code ${exitCode}`);
+                } catch (err) {
+                    lastError = err;
+                }
+            }
+
+            toast.show({
+                variant: "error",
+                message: lastError instanceof Error ? lastError.message : "Failed to copy selection to clipboard",
+            });
+            } catch (err) {
+                toast.show({
+                    variant: "error",
+                    message: err instanceof Error ? err.message : "Failed to copy selection to clipboard",
+                });
+            }
+        })();
     });
 
     useEffect(() => {
@@ -116,11 +174,15 @@ function SessionChat({
             onSubmit={(text) =>
                 submit({ userText: text, mode, model })
             }
-            loading={status === "submitted" || status === "streaming"}
-            interruptible={status === "submitted" || status === "streaming"}
+            loading={isLoading}
+            interruptible={isLoading}
         >
-            {messages.map((msg) => (
-                <ChatMessage key={msg.id} msg={msg} />
+            {messages.map((msg, i) => (
+                <ChatMessage
+                    key={msg.id}
+                    msg={msg}
+                    streaming={status === "streaming" && i === messages.length - 1}
+                />
             ))}
             {error && <ErrorMessage message={error.message} />}
         </SessionShell>

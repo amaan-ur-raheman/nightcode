@@ -11,8 +11,7 @@
         "postinstall": "bun run --cwd ../database db:generate"
     },
     "dependencies": {
-        "@ai-sdk/anthropic": "^3.0.81",
-        "@ai-sdk/openai": "^3.0.67",
+        "@ai-sdk/groq": "^3.0.39",
         "@ai-sdk/openai-compatible": "^2.0.48",
         "@ai-sdk/provider-utils": "^4.0.27",
         "@clerk/backend": "^3.4.14",

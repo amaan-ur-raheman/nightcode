@@ -22,12 +22,12 @@ import {
     type ToolContracts
 } from "@nightcode/shared"
 
-import { ingestAIUsage } from "../lib/polar";
+import { ingestAIUsage, getAvailableCreditsBalance } from "../lib/polar";
 import { buildSystemPrompt } from "../system-prompt";
 import { calculateCreditsForUsage } from "../lib/credits";
 import type { AuthenticatedEnv } from "../middleware/require-auth";
 import { isSupportedChatModel, resolveChatModel } from "../lib/models";
-import { requireCreditsBalance } from "../middleware/require-credits-balance";
+import { generateSessionTitle } from "../lib/generate-session-title";
 
 const mcpToolSchema = z.object({
     name: z.string(),
@@ -58,6 +58,7 @@ const submitSchema = z.object({
     mode: modeSchema,
     model: z.string().refine(isSupportedChatModel, "Unsupported model"),
     mcpTools: z.array(mcpToolSchema).optional(),
+    projectContext: z.string().optional(),
 });
 
 const submitValidator = zValidator("json", submitSchema, (result, c) => {
@@ -80,21 +81,22 @@ function hasPendingToolCalls(message: NightCodeUIMessage) {
 const app = new Hono<AuthenticatedEnv>()
     .post(
         "/",
-        requireCreditsBalance,
         submitValidator,
         async (c) => {
             const userId = c.get("userId");
-            const { id, messages, mode, model, mcpTools } = c.req.valid("json");
+            const { id, messages, mode, model, mcpTools, projectContext } = c.req.valid("json");
 
             const session = await db.session.findUnique({
-                where: {
-                    id,
-                    userId
-                }
+                where: { id, userId }
             });
 
             if (!session) {
                 return c.json({ error: "Session not found" }, 404);
+            }
+
+            const creditsBalance = await getAvailableCreditsBalance(userId);
+            if (creditsBalance <= 0) {
+                return c.json({ error: "No credits remaining. Run /upgrade to buy more credits" }, 402);
             }
 
             const startTime = Date.now();
@@ -146,7 +148,7 @@ const app = new Hono<AuthenticatedEnv>()
 
             const result = streamText({
                 model: resolvedModel.model,
-                system: buildSystemPrompt({ mode }),
+                system: buildSystemPrompt({ mode, projectContext, currentModel: model }),
                 messages: modelMessages,
                 tools,
                 providerOptions: resolvedModel.providerOptions,
@@ -179,14 +181,30 @@ const app = new Hono<AuthenticatedEnv>()
                     if (hasPendingToolCalls(event.responseMessage)) return;
 
                     await db.session.update({
-                        where: {
-                            id,
-                            userId
-                        },
+                        where: { id, userId },
                         data: {
                             messages: event.messages as unknown as Prisma.InputJsonValue
                         }
                     });
+
+                    // Auto-generate title on first exchange (session had no prior messages)
+                    if (previousMessage.length === 0) {
+                        const firstUserText = messages
+                            .find((m) => m.role === "user")
+                            ?.parts
+                            .filter((p) => p.type === "text")
+                            .map((p) => (p as { text: string }).text)
+                            .join("") ?? "";
+
+                        if (firstUserText) {
+                            generateSessionTitle(firstUserText)
+                                .then((title) => db.session.update({
+                                    where: { id, userId },
+                                    data: { title },
+                                }))
+                                .catch(() => { /* non-critical */ });
+                        }
+                    }
 
                     if (!completedUsage) return;
 

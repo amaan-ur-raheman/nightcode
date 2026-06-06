@@ -35,10 +35,17 @@ export function getPolarServer(): PolarServer {
     return server;
 }
 
-const polar = new Polar({
-    accessToken: getPolarAccessToken(),
-    server: getPolarServer(),
-});
+let _polar: Polar | null = null;
+
+function getPolar(): Polar {
+    if (!_polar) {
+        _polar = new Polar({
+            accessToken: getPolarAccessToken(),
+            server: getPolarServer(),
+        });
+    }
+    return _polar;
+}
 
 function hasStatusCode(error: unknown): error is { statusCode: number } {
     return (
@@ -58,7 +65,7 @@ export async function createCheckoutUrl({
     customerExternalId,
     requestUrl,
 }: CreateCheckoutUrlParams) {
-    const result = await polar.checkouts.create({
+    const result = await getPolar().checkouts.create({
         products: [getPolarProductId()],
         successUrl: new URL("/billing/success", requestUrl).toString(),
         externalCustomerId: customerExternalId,
@@ -72,7 +79,7 @@ export async function createCustomerPortalUrl({
     customerExternalId,
     requestUrl,
 }: CreateCheckoutUrlParams) {
-    const result = await polar.customerSessions.create({
+    const result = await getPolar().customerSessions.create({
         externalCustomerId: customerExternalId,
         returnUrl: new URL("/billing/success", requestUrl).toString(),
     });
@@ -82,7 +89,7 @@ export async function createCustomerPortalUrl({
 
 export async function getAvailableCreditsBalance(customerExternalId: string) {
     try {
-        const customerState = await polar.customers.getStateExternal({
+        const customerState = await getPolar().customers.getStateExternal({
             externalId: customerExternalId
         });
 
@@ -120,7 +127,7 @@ export async function ingestAIUsage({
         return;
     }
 
-    await polar.events.ingest({
+    await getPolar().events.ingest({
         events: [
             {
                 name: "nightcode_usage",

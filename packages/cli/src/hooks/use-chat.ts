@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import {
     DefaultChatTransport,
     type InferUITools,
@@ -12,6 +12,8 @@ import {
     type ModeType,
     type SupportedChatModelId,
     type ToolContracts,
+    DEFAULT_CHAT_MODEL_ID,
+    Mode,
 } from "@nightcode/shared"
 
 import { getAuth } from "@/lib/auth";
@@ -37,6 +39,7 @@ export type Message = UIMessage<ChatMessageMetadata, never, ChatTools>;
 
 export function useChat(sessionId: string, initialMessages: Message[]) {
     const mcpToolsRef = useRef<McpToolSchema[]>([]);
+    const activeToolControllers = useRef<Map<string, AbortController>>(new Map());
 
     useEffect(() => {
         loadMcpTools().then((tools) => {
@@ -70,8 +73,8 @@ export function useChat(sessionId: string, initialMessages: Message[]) {
                     body: {
                         id: sessionId,
                         messages: requestMessages,
-                        mode: message?.metadata?.mode ?? metadata?.mode,
-                        model: message?.metadata?.model ?? metadata?.model,
+                        mode: message?.metadata?.mode ?? metadata?.mode ?? Mode.BUILD,
+                        model: message?.metadata?.model ?? metadata?.model ?? DEFAULT_CHAT_MODEL_ID,
                         mcpTools: mcpToolsRef.current.length > 0 ? mcpToolsRef.current : undefined,
                     },
                 }
@@ -84,15 +87,20 @@ export function useChat(sessionId: string, initialMessages: Message[]) {
         messages: initialMessages,
         transport,
         onToolCall({ toolCall }) {
-            const mode = chat.messages.at(-1)?.metadata?.mode ?? "BUILD";
+            const lastWithMeta = [...chat.messages].reverse().find(m => m.metadata?.mode && m.metadata?.model);
+            const mode = lastWithMeta?.metadata?.mode ?? "BUILD";
+            const model = lastWithMeta?.metadata?.model;
             const isMcpTool = toolCall.toolName.startsWith("mcp__");
+            const abortController = new AbortController();
+            activeToolControllers.current.set(toolCall.toolCallId, abortController);
 
             const execute = isMcpTool
                 ? callMcpTool(toolCall.toolName, toolCall.input)
-                : executeLocalTool(toolCall.toolName, toolCall.input, mode);
+                : executeLocalTool(toolCall.toolName, toolCall.input, mode, model, abortController.signal);
 
             void execute
                 .then((output) => {
+                    activeToolControllers.current.delete(toolCall.toolCallId);
                     chat.addToolOutput({
                         tool: toolCall.toolName as keyof ChatTools,
                         toolCallId: toolCall.toolCallId,
@@ -100,6 +108,7 @@ export function useChat(sessionId: string, initialMessages: Message[]) {
                     });
                 })
                 .catch((error) => {
+                    activeToolControllers.current.delete(toolCall.toolCallId);
                     chat.addToolOutput({
                         tool: toolCall.toolName as keyof ChatTools,
                         toolCallId: toolCall.toolCallId,
@@ -111,10 +120,30 @@ export function useChat(sessionId: string, initialMessages: Message[]) {
         sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls
     });
 
+    const abort = useCallback(() => {
+        activeToolControllers.current.forEach((c) => c.abort());
+        activeToolControllers.current.clear();
+        chat.stop();
+    }, [chat.stop]);
+
+    const interrupt = useCallback(() => {
+        activeToolControllers.current.forEach((c) => c.abort());
+        activeToolControllers.current.clear();
+        chat.stop();
+    }, [chat.stop]);
+
     return {
         messages: chat.messages,
         status: chat.status,
         error: chat.error,
+        isLoading: chat.status === "submitted" || chat.status === "streaming" || (
+            chat.status === "ready" && chat.messages.at(-1)?.parts.some((p: any) => {
+                if (p.type === "dynamic-tool" || (typeof p.type === "string" && p.type.startsWith("tool-"))) {
+                    return p.state !== "output-available" && p.state !== "output-error";
+                }
+                return false;
+            })
+        ),
         submit: (params: { userText: string, mode: ModeType, model: SupportedChatModelId }) => {
             return chat.sendMessage({
                 text: params.userText,
@@ -124,7 +153,7 @@ export function useChat(sessionId: string, initialMessages: Message[]) {
                 },
             })
         },
-        abort: chat.stop,
-        interrupt: chat.stop,
+        abort,
+        interrupt,
     };
 }

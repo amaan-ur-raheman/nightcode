@@ -4,6 +4,25 @@ set -e
 NIGHTCODE_DIR="${NIGHTCODE_DIR:-/Users/amaan/Desktop/Programming/night-code}"
 LOG="/tmp/nightcode-server.log"
 
+kill_port_processes() {
+    local port=$1
+    local PIDS
+    PIDS=$(lsof -ti:"$port" 2>/dev/null) || true
+    if [ -n "$PIDS" ]; then
+        echo "$PIDS" | xargs kill -15 2>/dev/null || true
+        sleep 1
+        echo "$PIDS" | xargs kill -9 2>/dev/null || true
+    fi
+}
+
+wait_for_server() {
+    local port=$1
+    for i in $(seq 1 10); do
+        (echo > /dev/tcp/localhost/$port) 2>/dev/null && break
+        sleep 0.5
+    done
+}
+
 # Parse -s <session-id> flag
 SESSION_ID=""
 if [ "$1" = "-s" ] && [ -n "$2" ]; then
@@ -11,29 +30,21 @@ if [ "$1" = "-s" ] && [ -n "$2" ]; then
 fi
 
 # Kill any existing process on port 3000 (graceful then force)
-PIDS=$(lsof -ti:3000 2>/dev/null) || true
-if [ -n "$PIDS" ]; then
-    echo "$PIDS" | xargs kill -15 2>/dev/null || true
-    sleep 1
-    echo "$PIDS" | xargs kill -9 2>/dev/null || true
-fi
+kill_port_processes 3000
 
 # Start server in background, suppress output
 # Use --hot only in dev mode (NIGHTCODE_DEV=true)
-bun run ${NIGHTCODE_DEV:+--hot} "$NIGHTCODE_DIR/packages/server/src/index.ts" >> "$LOG" 2>&1 &
+bun run ${NIGHTCODE_DEV:+--hot} --env-file="$NIGHTCODE_DIR/.env" "$NIGHTCODE_DIR/packages/server/src/index.ts" >> "$LOG" 2>&1 &
 SERVER_PID=$!
 
 # Ensure server is killed on exit (Ctrl+C, errors, normal exit)
 trap 'kill $SERVER_PID 2>/dev/null' EXIT
 
 # Wait for server to be ready (up to 5s)
-for i in $(seq 1 10); do
-    (echo > /dev/tcp/localhost/3000) 2>/dev/null && break
-    sleep 0.5
-done
+wait_for_server 3000
 
 # Run CLI in foreground
-NIGHTCODE_SESSION_ID="$SESSION_ID" bun run "$NIGHTCODE_DIR/packages/cli/src/index.tsx"
+NIGHTCODE_SESSION_ID="$SESSION_ID" bun run --env-file="$NIGHTCODE_DIR/.env" "$NIGHTCODE_DIR/packages/cli/src/index.tsx"
 
 # Print goodbye screen
-bun run "$NIGHTCODE_DIR/packages/cli/src/goodbye.ts"
+bun run --env-file="$NIGHTCODE_DIR/.env" "$NIGHTCODE_DIR/packages/cli/src/goodbye.ts"

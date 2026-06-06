@@ -5,16 +5,22 @@ import {
     getOutlineTool, gitDiffTool, gitStatusTool, globTool, grepTool,
     httpRequestTool, listDirectoryTool, moveFileTool, patchTool,
     readFileTool, renameSymbolTool, runTestsTool, searchReplaceTool,
-    treeTool, webFetchTool, writeFileTool,
+    treeTool, webFetchTool, writeFileTool, spawnAgentTool,
+    spawnCodeReviewerTool, spawnTestWriterTool, spawnDebuggerTool, spawnRefactorTool, spawnResearcherTool,
 } from "./tools";
 
 const PLAN_TOOLS = new Set([
     "readFile", "listDirectory", "glob", "grep",
     "tree", "fileInfo", "gitStatus", "gitDiff", "webFetch",
-    "codeSearch", "getOutline", "diffFiles",
+    "codeSearch", "getOutline", "diffFiles", "spawnAgent",
+    "spawnResearcher",
 ]);
 
-const TOOL_MAP: Record<string, (input: unknown) => Promise<unknown>> = {
+type ToolFn =
+    | ((input: unknown) => Promise<unknown>)
+    | ((input: unknown, parentMode?: ModeType, parentModel?: string, signal?: AbortSignal) => Promise<unknown>);
+
+const TOOL_MAP: Record<string, ToolFn> = {
     readFile: readFileTool,
     listDirectory: listDirectoryTool,
     glob: globTool,
@@ -39,14 +45,26 @@ const TOOL_MAP: Record<string, (input: unknown) => Promise<unknown>> = {
     httpRequest: httpRequestTool,
     createFile: createFileTool,
     renameSymbol: renameSymbolTool,
+    spawnAgent: spawnAgentTool,
+    spawnCodeReviewer: spawnCodeReviewerTool,
+    spawnTestWriter: spawnTestWriterTool,
+    spawnDebugger: spawnDebuggerTool,
+    spawnRefactor: spawnRefactorTool,
+    spawnResearcher: spawnResearcherTool,
 };
 
-export async function executeLocalTool(toolName: string, input: unknown, mode: ModeType) {
+export async function executeLocalTool(
+    toolName: string,
+    input: unknown,
+    mode: ModeType,
+    parentModel?: string,
+    signal?: AbortSignal,
+) {
     if (mode === Mode.PLAN && !PLAN_TOOLS.has(toolName)) {
         throw new Error(`Tool ${toolName} is not available in PLAN mode`);
     }
 
-    const tool = TOOL_MAP[toolName];
+    const tool = TOOL_MAP[toolName] as (input: unknown, parentMode?: ModeType, parentModel?: string, signal?: AbortSignal) => Promise<unknown>;
     if (!tool) throw new Error(`Unknown tool: ${toolName}`);
-    return tool(input);
+    return tool(input, mode, parentModel, signal);
 }
