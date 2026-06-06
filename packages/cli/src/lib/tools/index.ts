@@ -21,3 +21,11 @@ export { runTestsTool } from "./run-tests";
 export { httpRequestTool } from "./http-request";
 export { createFileTool } from "./create-file";
 export { renameSymbolTool } from "./rename-symbol";
+export { spawnAgentTool } from "./spawn-agent";
+export {
+    spawnCodeReviewerTool,
+    spawnTestWriterTool,
+    spawnDebuggerTool,
+    spawnRefactorTool,
+    spawnResearcherTool,
+} from "./preset-agents";
