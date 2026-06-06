@@ -108,6 +108,35 @@ export const toolInputSchemas = {
         newName: z.string().describe("New symbol name"),
         glob: z.string().describe("Glob pattern to match files (e.g. 'src/**/*.ts')"),
     }),
+    spawnAgent: z.object({
+        task: z.string().describe("The full task description for the subagent to complete"),
+        model: z.string().optional().describe("Model ID for the subagent to use. Defaults to the same model as the main agent if omitted."),
+        mode: z.enum(["BUILD", "PLAN"]).describe("Mode for the subagent: BUILD (can write files) or PLAN (read-only)"),
+    }),
+    spawnCodeReviewer: z.object({
+        files: z.array(z.string()).describe("Relative file paths to review"),
+        focus: z.string().optional().describe("Optional focus area, e.g. 'security', 'performance', 'correctness'"),
+        model: z.string().optional().describe("Model to use. Defaults to same model as main agent."),
+    }),
+    spawnTestWriter: z.object({
+        files: z.array(z.string()).describe("Relative file paths to write tests for"),
+        testFramework: z.string().optional().describe("Test framework to use, e.g. 'vitest', 'jest', 'bun:test'"),
+        model: z.string().optional().describe("Model to use. Defaults to same model as main agent."),
+    }),
+    spawnDebugger: z.object({
+        description: z.string().describe("Description of the bug or unexpected behaviour"),
+        files: z.array(z.string()).optional().describe("Relevant file paths to investigate"),
+        model: z.string().optional().describe("Model to use. Defaults to same model as main agent."),
+    }),
+    spawnRefactor: z.object({
+        files: z.array(z.string()).describe("Relative file paths to refactor"),
+        instructions: z.string().describe("What to improve, e.g. 'extract duplicated logic', 'simplify error handling'"),
+        model: z.string().optional().describe("Model to use. Defaults to same model as main agent."),
+    }),
+    spawnResearcher: z.object({
+        question: z.string().describe("The research question or topic to investigate in the codebase"),
+        model: z.string().optional().describe("Model to use. Defaults to same model as main agent."),
+    }),
 } as const;
 
 export const readOnlyToolContracts = {
@@ -158,6 +187,14 @@ export const readOnlyToolContracts = {
     diffFiles: tool({
         description: "Show a unified diff between two files in the project.",
         inputSchema: toolInputSchemas.diffFiles,
+    }),
+    spawnAgent: tool({
+        description: "Spawn a subagent to complete a self-contained task in parallel. The subagent runs to completion with its own tool access and returns the result. Use for tasks that can be delegated independently: writing a module, researching a codebase area, running tests and summarising failures.",
+        inputSchema: toolInputSchemas.spawnAgent,
+    }),
+    spawnResearcher: tool({
+        description: "Spawn a researcher subagent to explore and summarise a codebase area, architecture question, or dependency. Runs in PLAN (read-only) mode.",
+        inputSchema: toolInputSchemas.spawnResearcher,
     }),
 } as const;
 
@@ -210,6 +247,22 @@ export const buildToolContracts = {
     renameSymbol: tool({
         description: "Rename a symbol across all matching files using word-boundary matching.",
         inputSchema: toolInputSchemas.renameSymbol,
+    }),
+    spawnCodeReviewer: tool({
+        description: "Spawn a code reviewer subagent to review files for bugs, security issues, and best practices. Returns a structured review report.",
+        inputSchema: toolInputSchemas.spawnCodeReviewer,
+    }),
+    spawnTestWriter: tool({
+        description: "Spawn a test writer subagent to write comprehensive unit/integration tests for given files.",
+        inputSchema: toolInputSchemas.spawnTestWriter,
+    }),
+    spawnDebugger: tool({
+        description: "Spawn a debugger subagent to investigate a bug, trace the root cause, and apply a fix.",
+        inputSchema: toolInputSchemas.spawnDebugger,
+    }),
+    spawnRefactor: tool({
+        description: "Spawn a refactor subagent to improve code structure, readability, or performance without changing behaviour.",
+        inputSchema: toolInputSchemas.spawnRefactor,
     }),
 } as const;
 
