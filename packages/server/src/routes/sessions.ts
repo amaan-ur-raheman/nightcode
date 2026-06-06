@@ -21,6 +21,20 @@ const createSessionValidator = zValidator(
     }
 );
 
+const updateSessionSchema = z.object({
+    title: z.string(),
+});
+
+const updateSessionValidator = zValidator(
+    "json",
+    updateSessionSchema,
+    (result, c) => {
+        if (!result.success) {
+            return c.json({ error: "Invalid request body" }, 400);
+        }
+    }
+);
+
 const app = new Hono<AuthenticatedEnv>()
     .get("/", async (c) => {
         const userId = c.get("userId");
@@ -54,7 +68,7 @@ const app = new Hono<AuthenticatedEnv>()
     })
     .post("/", requireCreditsBalance, createSessionValidator, async (c) => {
         const userId = c.get("userId");
-        const { ...data } = c.req.valid("json");
+        const data = c.req.valid("json");
 
         const session = await db.session.create({
             data: {
@@ -64,6 +78,27 @@ const app = new Hono<AuthenticatedEnv>()
         });
 
         return c.json(session, 201);
+    })
+    .patch("/:id", updateSessionValidator, async (c) => {
+        const id = c.req.param("id");
+        const userId = c.get("userId");
+        const { title } = c.req.valid("json");
+
+        try {
+            const session = await db.session.update({
+                where: { id, userId },
+                data: { title },
+                select: { id: true, title: true },
+            });
+
+            return c.json(session);
+        } catch (err: unknown) {
+            const code = (err as { code?: string })?.code;
+            if (code === "P2025") {
+                return c.json({ error: "Session not found" }, 404);
+            }
+            throw err;
+        }
     });
 
 export default app;
