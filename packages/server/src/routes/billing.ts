@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 
 import type { AuthenticatedEnv } from "../middleware/require-auth";
-import { createCheckoutUrl, createCustomerPortalUrl } from "../lib/polar";
+import { createCheckoutUrl, createCustomerPortalUrl, getAvailableCreditsBalance } from "../lib/polar";
 
 const app = new Hono<AuthenticatedEnv>()
     .post("/checkout", async (c) => {
@@ -17,6 +17,16 @@ const app = new Hono<AuthenticatedEnv>()
         return c.json({
             url: await createCustomerPortalUrl({ customerExternalId: userId, requestUrl: c.req.url })
         });
+    })
+    .get("/credits", async (c) => {
+        const userId = c.get("userId");
+
+        try {
+            const balance = await getAvailableCreditsBalance(userId);
+            return c.json({ balance });
+        } catch {
+            return c.json({ balance: null });
+        }
     })
     .get("/success",  (c) => {
         return c.text("Done. You can close this tab and return to NightCode CLI")

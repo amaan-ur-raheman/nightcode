@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
+import React from "react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router";
 
@@ -60,6 +61,8 @@ function ChatMessage(
     )
 }
 
+const MemoizedChatMessage = React.memo(ChatMessage);
+
 import { lastSession } from "@/index";
 
 function SessionChat({
@@ -76,7 +79,7 @@ function SessionChat({
     const [initialMessages] = useState(session.messages as unknown as Message[]);
     const { mode, model} = usePromptConfig();
     const { isTopLayer } = useKeyboardLayer();
-    const { messages, submit, abort, status, interrupt, error, isLoading } = useChat(
+    const { messages, submit, abort, status, interrupt, error, isLoading, clearMessages, retryLast, runningToolName } = useChat(
         session.id,
         initialMessages
     );
@@ -98,6 +101,10 @@ function SessionChat({
             key.preventDefault();
             interrupt();
        }
+       if (key.name === "r" && key.ctrl && isTopLayer("base") && !isLoading) {
+           key.preventDefault();
+           retryLast();
+       }
     });
 
     const toast = useToast();
@@ -107,10 +114,10 @@ function SessionChat({
         if (!text) return;
 
         (async () => {
-            try {
-            if (typeof navigator !== "undefined" && (navigator as any).clipboard?.writeText) {
+            try {                    if (typeof navigator !== "undefined" && (navigator as any).clipboard?.writeText) {
                 try {
                     await (navigator as any).clipboard.writeText(text);
+                    toast.show({ variant: "success", message: `Copied ${text.length} chars` });
                     return;
                 } catch {
                     // Fallback to command line if navigator.clipboard fails
@@ -137,6 +144,7 @@ function SessionChat({
                     await proc.stdin.end();
                     const exitCode = await proc.exited;
                     if (exitCode === 0) {
+                        toast.show({ variant: "success", message: `Copied ${text.length} chars` });
                         return;
                     }
                     lastError = new Error(`${cmd[0]} exited with code ${exitCode}`);
@@ -174,8 +182,13 @@ function SessionChat({
             onSubmit={(text) =>
                 submit({ userText: text, mode, model })
             }
+            onClear={clearMessages}
             loading={isLoading}
             interruptible={isLoading}
+            canRetry={!isLoading && messages.some((m) => m.role === "user")}
+            runningToolName={runningToolName}
+            messageCount={messages.filter((m) => m.role === "user").length}
+            sessionTitle={session.title}
         >
             {messages.map((msg, i) => (
                 <ChatMessage
@@ -184,7 +197,7 @@ function SessionChat({
                     streaming={status === "streaming" && i === messages.length - 1}
                 />
             ))}
-            {error && <ErrorMessage message={error.message} />}
+            {error && <ErrorMessage message={error.message} canRetry={!isLoading} />}
         </SessionShell>
     )
 }

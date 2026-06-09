@@ -6,6 +6,7 @@ import { useRenderer, useKeyboard } from "@opentui/react";
 import type { KeyBinding, TextareaRenderable } from "@opentui/core";
 
 import { loadSkillContent } from "@/lib/skills";
+import { getModeColor } from "@/lib/mode-utils";
 import { useTheme } from "@/providers/theme";
 import { useToast } from "@/providers/toast";
 import { useDialog } from "@/providers/dialog";
@@ -19,6 +20,7 @@ import type { Command } from "@/components/command-menu/types";
 import { useCommandMenu } from "@/components/command-menu/use-command-menu";
 import { FileMentionMenu } from "@/components/file-mention";
 import { useFileMention } from "@/components/file-mention/use-file-mention";
+import { ShortcutsDialogContent } from "@/components/dialog/shortcuts-dialog";
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
     { name: "return", action: "submit" },
@@ -30,9 +32,12 @@ export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
 type InputBarProps = {
     onSubmit: (value: string) => void;
     disabled?: boolean;
+    onClear?: () => void;
+    messageCount?: number;
+    sessionTitle?: string;
 }
 
-export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
+export function InputBar({ onSubmit, disabled = false, onClear, messageCount, sessionTitle }: InputBarProps) {
     const textareaRef = useRef<TextareaRenderable>(null);
     const onSubmitRef = useRef<() => void>(() => { });
 
@@ -110,11 +115,12 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                     textarea.setText(value);
                     textarea.cursorOffset = value.length;
                 },
+                clearMessages: () => { onClear?.(); },
             });
         } else {
             textarea.insertText(command.value + " ");
         }
-    }, [renderer, toast, dialog, navigate, mode, setMode, setModel]);
+    }, [renderer, toast, dialog, navigate, mode, setMode, setModel, onClear]);
 
     const handleCommandExecute = useCallback((index: number) => {
         handleCommand(resolveCommand(index));
@@ -168,6 +174,19 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
             toggleMode();
         }
 
+        if (key.name === "slash" && !key.ctrl) {
+            // Don't intercept if typing in textarea
+        }
+
+        if (key.name === "?" && key.ctrl) {
+            key.preventDefault();
+            dialog.open({
+                title: "Keyboard Shortcuts",
+                children: <ShortcutsDialogContent />,
+            });
+            return;
+        }
+
         if (key.name === "backspace" && !showMentionMenu) {
             if (handleMentionBackspace()) {
                 key.preventDefault();
@@ -193,7 +212,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
             <box
                 width="100%"
                 border={["left"]}
-                borderColor={mode === Mode.PLAN ? colors.planMode : colors.primary}
+                borderColor={getModeColor(mode, colors)}
                 customBorderChars={{
                     ...EmptyBorder,
                     vertical: "┃",
@@ -252,9 +271,12 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
                         keyBindings={TEXTAREA_KEY_BINDINGS}
                         onContentChange={handleTextareaContentChange}
                         onCursorChange={handleTextareaCursorChange}
-                        placeholder={`Ask anything... "Fix a bug in the database"`}
+                        placeholder={mode === Mode.PLAN
+                            ? "Describe what to plan... (@ for files)"
+                            : "Describe what to build... (@ for files)"
+                        }
                     />
-                    <StatusBar />
+                    <StatusBar messageCount={messageCount} sessionTitle={sessionTitle} />
                 </box>
             </box>
         </box>

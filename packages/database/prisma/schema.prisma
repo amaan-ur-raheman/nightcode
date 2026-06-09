@@ -17,5 +17,6 @@ model Session {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    @@index([userId])
+    @@index([userId, id])
+    @@index([userId, createdAt])
 }

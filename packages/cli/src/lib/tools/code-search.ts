@@ -1,6 +1,6 @@
 import { relative } from "path";
 import { toolInputSchemas } from "@nightcode/shared";
-import { MAX_MATCHES, resolveInsideCwd } from "./utils";
+import { IGNORE, MAX_MATCHES, resolveInsideCwd } from "./utils";
 
 export async function codeSearchTool(input: unknown) {
     const { symbol, path, include } = toolInputSchemas.codeSearch.parse(input);
@@ -17,7 +17,11 @@ export async function codeSearchTool(input: unknown) {
         `func\\s+${s}\\s*\\(`,
         `fn\\s+${s}\\s*\\(`,
     ];
-    const args = ["-rn", "--color=never", "--exclude-dir=node_modules", "--exclude-dir=.git", "--binary-files=without-match", "-E", patterns.join("|")];
+    const args = ["-rn", "--color=never", "--binary-files=without-match", "-E"];
+    for (const dir of IGNORE) {
+        args.push(`--exclude-dir=${dir}`);
+    }
+    args.push(patterns.join("|"));
     if (include) args.push(`--include=${include}`);
     args.push(resolved);
 

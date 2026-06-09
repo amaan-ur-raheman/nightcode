@@ -1,3 +1,7 @@
+import { writeFileSync, mkdirSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
+
 import { SUPPORTED_CHAT_MODELS } from "@nightcode/shared";
 
 import { clearAuth } from "@/lib/auth";
@@ -8,6 +12,8 @@ import { openBillingPortal, openUpgradeCheckout } from "@/lib/upgrade";
 import type { Command } from "@/components/command-menu/types";
 import {
     AgentsDialogContent,
+    ConfirmDialog,
+    HelpDialogContent,
     McpDialogContent,
     ModelsDialogContent,
     SessionDialogContent,
@@ -17,11 +23,57 @@ import {
 
 export const COMMANDS: Command[] = [
     {
+        name: "help",
+        description: "Show available commands and shortcuts",
+        value: "/help",
+        action: (ctx) => {
+            ctx.dialog.open({
+                title: "Help",
+                children: <HelpDialogContent />,
+            });
+        }
+    },
+    {
         name: "new",
         description: "Start a new conversation",
         value: "/new",
         action: (ctx) => {
             ctx.navigate("/");
+        }
+    },
+    {
+        name: "clear",
+        description: "Clear chat history",
+        value: "/clear",
+        action: (ctx) => {
+            ctx.dialog.open({
+                title: "Confirm Clear",
+                children: (
+                    <ConfirmDialog
+                        message="Clear all messages in this session?"
+                        onConfirm={() => {
+                            ctx.clearMessages();
+                            ctx.dialog.close();
+                            ctx.toast.show({ message: "Chat cleared", variant: "success" });
+                        }}
+                        onCancel={() => ctx.dialog.close()}
+                    />
+                ),
+            });
+        }
+    },
+    {
+        name: "forget",
+        description: "Forget last session",
+        value: "/forget",
+        action: (ctx) => {
+            try {
+                mkdirSync(join(homedir(), ".nightcode"), { recursive: true });
+                writeFileSync(join(homedir(), ".nightcode", "last-session"), "{}");
+                ctx.toast.show({ message: "Last session forgotten", variant: "success" });
+            } catch {
+                ctx.toast.show({ message: "Failed to forget session", variant: "error" });
+            }
         }
     },
     {
@@ -119,8 +171,19 @@ export const COMMANDS: Command[] = [
         description: "Sign out of your account",
         value: "/logout",
         action: (ctx) => {
-            clearAuth();
-            ctx.toast.show({ message: "Signed out", variant: "success" });
+            ctx.dialog.open({
+                title: "Confirm Logout",
+                children: (
+                    <ConfirmDialog
+                        message="Are you sure you want to sign out?"
+                        onConfirm={() => {
+                            clearAuth();
+                            ctx.toast.show({ message: "Signed out", variant: "success" });
+                        }}
+                        onCancel={() => ctx.dialog.close()}
+                    />
+                ),
+            });
         }
     },
     {
@@ -172,7 +235,16 @@ export const COMMANDS: Command[] = [
         description: "Quit the application",
         value: "/exit",
         action: (ctx) => {
-            ctx.exit();
+            ctx.dialog.open({
+                title: "Confirm Exit",
+                children: (
+                    <ConfirmDialog
+                        message="Are you sure you want to quit?"
+                        onConfirm={() => ctx.exit()}
+                        onCancel={() => ctx.dialog.close()}
+                    />
+                ),
+            });
         }
     }
 ];

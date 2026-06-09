@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { ReactNode } from "react";
-import { createContext, useContext, useCallback, useState } from "react";
+import { createContext, useContext, useCallback, useState, useMemo } from "react";
 
 import {
     Mode,
@@ -75,16 +75,16 @@ export function PromptConfigProvider({ children }: PromptConfigProviderProps) {
         persistModel(m);
     }, []);
 
+    const value = useMemo(() => ({
+        mode,
+        toggleMode,
+        setMode,
+        model,
+        setModel: handleSetModel,
+    }), [mode, toggleMode, setMode, model, handleSetModel]);
+
     return (
-        <PromptConfigContext.Provider
-            value={{
-                mode,
-                toggleMode,
-                setMode,
-                model,
-                setModel: handleSetModel,
-            }}
-        >
+        <PromptConfigContext.Provider value={value}>
             {children}
         </PromptConfigContext.Provider>
     );

@@ -3,7 +3,8 @@ import React, {
     useContext,
     useState,
     useCallback,
-    useRef
+    useRef,
+    useMemo
 } from 'react';
 
 import { useKeyboard, useRenderer } from '@opentui/react';
@@ -48,8 +49,9 @@ export function KeyboardLayerProvider({ children }: { children: React.ReactNode 
     }, []);
 
     const isTopLayer = useCallback((id: string) => {
-        return stack.length === 0 || stack[stack.length - 1] === id;
-    }, [stack]);
+        const s = stackRef.current;
+        return s.length === 0 || s[s.length - 1] === id;
+    }, []);
 
     const setResponder = useCallback((id: string, responder: Responder | null) => {
         if (responder) {
@@ -76,8 +78,10 @@ export function KeyboardLayerProvider({ children }: { children: React.ReactNode 
         renderer.destroy();
     });
 
+    const value = useMemo(() => ({ push, pop, isTopLayer, setResponder }), [push, pop, isTopLayer, setResponder]);
+
     return (
-        <KeyboardLayerContext.Provider value={{ push, pop, isTopLayer, setResponder }}>
+        <KeyboardLayerContext.Provider value={value}>
             {children}
         </KeyboardLayerContext.Provider>
     );

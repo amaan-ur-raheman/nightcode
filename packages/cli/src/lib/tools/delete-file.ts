@@ -1,14 +1,13 @@
 import { rm } from "fs/promises";
-import { relative, resolve } from "path";
+import { relative } from "path";
 import { toolInputSchemas } from "@nightcode/shared";
+import { resolveInsideCwd } from "./utils";
 
 export async function deleteFileTool(input: unknown) {
     const { path, recursive } = toolInputSchemas.deleteFile.parse(input);
-    const cwd = process.cwd();
-    const resolved = resolve(cwd, path);
+    const { cwd, resolved } = resolveInsideCwd(path);
 
     if (resolved === cwd) return { error: "Cannot delete the project root directory" };
-    if (!resolved.startsWith(cwd.endsWith("/") ? cwd : cwd + "/")) return { error: "Path is outside the project directory" };
 
     try {
         await rm(resolved, { recursive });

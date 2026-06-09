@@ -38,12 +38,13 @@ const updateSessionValidator = zValidator(
 const app = new Hono<AuthenticatedEnv>()
     .get("/", async (c) => {
         const userId = c.get("userId");
+        const limit = Math.min(Number(c.req.query("limit")) || 100, 200);
+        const cursor = c.req.query("cursor");
 
         const sessions = await db.session.findMany({
-            where: { userId },
-            orderBy: {
-                createdAt: "desc",
-            },
+            where: { userId, ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}) },
+            orderBy: { createdAt: "desc" },
+            take: limit,
             select: {
                 id: true,
                 title: true,

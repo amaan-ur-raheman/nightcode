@@ -11,6 +11,7 @@ export type ThemeColors = {
     dialogSurface: string;
     thinkingBorder: string;
     dimSeparator: string;
+    text: string;
 };
 
 export type Theme = {
@@ -34,6 +35,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0A0A10",
             thinkingBorder: "#34344A",
             dimSeparator: "#4E4E66",
+            text: "#C0C8D8",
         },
     },
     {
@@ -51,6 +53,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#13131D",
             thinkingBorder: "#45475A",
             dimSeparator: "#585B70",
+            text: "#CDD6F4",
         },
     },
     {
@@ -68,6 +71,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#21222C",
             thinkingBorder: "#6272A4",
             dimSeparator: "#44475A",
+            text: "#F8F8F2",
         },
     },
     {
@@ -85,6 +89,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#221F22",
             thinkingBorder: "#5B595C",
             dimSeparator: "#727072",
+            text: "#FCFCFA",
         },
     },
     {
@@ -102,6 +107,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#16161E",
             thinkingBorder: "#3B4261",
             dimSeparator: "#565F89",
+            text: "#A9B1D6",
         },
     },
     {
@@ -119,6 +125,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#272C36",
             thinkingBorder: "#4C566A",
             dimSeparator: "#616E88",
+            text: "#ECEFF4",
         },
     },
     {
@@ -136,6 +143,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0D0D0D",
             thinkingBorder: "#404040",
             dimSeparator: "#525252",
+            text: "#F0F0F0",
         },
     },
     {
@@ -153,6 +161,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0E1319",
             thinkingBorder: "#4A5A6E",
             dimSeparator: "#607080",
+            text: "#B8C8D8",
         },
     },
     {
@@ -170,6 +179,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#110C1E",
             thinkingBorder: "#5C4878",
             dimSeparator: "#745E90",
+            text: "#E0D0F0",
         },
     },
     {
@@ -187,6 +197,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0A0A0A",
             thinkingBorder: "#2E2E2E",
             dimSeparator: "#454545",
+            text: "#E0E0E0",
         },
     },
     {
@@ -204,6 +215,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#191C21",
             thinkingBorder: "#3E4451",
             dimSeparator: "#5C6370",
+            text: "#ABB2BF",
         },
     },
     {
@@ -221,6 +233,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#18181D",
             thinkingBorder: "#3E3E45",
             dimSeparator: "#57575F",
+            text: "#D4D4D8",
         },
     },
     {
@@ -238,6 +251,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#1E2030",
             thinkingBorder: "#51576D",
             dimSeparator: "#626880",
+            text: "#C6D0F5",
         },
     },
     {
@@ -255,6 +269,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#060C18",
             thinkingBorder: "#1F2937",
             dimSeparator: "#374151",
+            text: "#E5E7EB",
         },
     },
     {
@@ -272,6 +287,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#090B16",
             thinkingBorder: "#3B3F5C",
             dimSeparator: "#4B5178",
+            text: "#EEFFFF",
         },
     },
     {
@@ -289,6 +305,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#15101C",
             thinkingBorder: "#6B5880",
             dimSeparator: "#7E6E94",
+            text: "#D8C8E8",
         },
     },
     {
@@ -306,6 +323,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0F181F",
             thinkingBorder: "#4A6A7A",
             dimSeparator: "#5E7888",
+            text: "#C8D8E8",
         },
     },
     {
@@ -323,6 +341,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0C1322",
             thinkingBorder: "#334155",
             dimSeparator: "#475569",
+            text: "#CBD5E1",
         },
     },
     {
@@ -340,6 +359,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0C0C0F",
             thinkingBorder: "#3F3F46",
             dimSeparator: "#52525B",
+            text: "#D4D4D8",
         },
     },
     {
@@ -357,6 +377,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#00212B",
             thinkingBorder: "#586E75",
             dimSeparator: "#657B83",
+            text: "#EEE8D5",
         },
     },
     {
@@ -374,6 +395,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#1D2021",
             thinkingBorder: "#504945",
             dimSeparator: "#665C54",
+            text: "#EBDBB2",
         },
     },
     {
@@ -391,6 +413,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#16141F",
             thinkingBorder: "#26233A",
             dimSeparator: "#524F67",
+            text: "#E0DEF4",
         },
     },
     {
@@ -408,6 +431,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#1E1C31",
             thinkingBorder: "#393552",
             dimSeparator: "#56526E",
+            text: "#E0DEF4",
         },
     },
     {
@@ -425,6 +449,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#16161D",
             thinkingBorder: "#54546D",
             dimSeparator: "#727169",
+            text: "#C8C8C8",
         },
     },
     {
@@ -442,6 +467,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#272E33",
             thinkingBorder: "#4F585E",
             dimSeparator: "#859289",
+            text: "#D3C6AA",
         },
     },
     {
@@ -459,6 +485,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#080A0F",
             thinkingBorder: "#2D3640",
             dimSeparator: "#475266",
+            text: "#CCC8B4",
         },
     },
     {
@@ -476,6 +503,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#090D13",
             thinkingBorder: "#30363D",
             dimSeparator: "#484F58",
+            text: "#C9D1D9",
         },
     },
     {
@@ -493,6 +521,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#232738",
             thinkingBorder: "#4E5272",
             dimSeparator: "#676E95",
+            text: "#EEFFFF",
         },
     },
     {
@@ -510,6 +539,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0C0C0C",
             thinkingBorder: "#333333",
             dimSeparator: "#505050",
+            text: "#E0E0E0",
         },
     },
     {
@@ -527,6 +557,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#161922",
             thinkingBorder: "#3B4058",
             dimSeparator: "#506477",
+            text: "#A6ACCD",
         },
     },
     {
@@ -544,6 +575,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#191B28",
             thinkingBorder: "#3E4265",
             dimSeparator: "#5B5E7A",
+            text: "#C0C8E0",
         },
     },
     {
@@ -561,6 +593,7 @@ export const THEMES: Theme[] = [
             dialogSurface: "#0E0E0E",
             thinkingBorder: "#333333",
             dimSeparator: "#555555",
+            text: "#DBDBDB",
         },
     },
 ];

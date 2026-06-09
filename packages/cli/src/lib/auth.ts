@@ -6,6 +6,7 @@ import {
     mkdirSync,
     writeFileSync,
     unlinkSync,
+    statSync,
 } from "node:fs";
 
 type AuthData = {
@@ -15,15 +16,29 @@ type AuthData = {
 const AUTH_DIR = join(homedir(), ".nightcode");
 const AUTH_FILE = join(AUTH_DIR, "auth.json");
 
+let _cachedAuth: AuthData | null = null;
+let _cachedMtime: number = 0;
+
 export function getAuth(): AuthData | null {
     try {
+        const stat = statSync(AUTH_FILE);
+        const mtimeMs = stat.mtimeMs;
+
+        if (_cachedAuth && mtimeMs === _cachedMtime) {
+            return _cachedAuth;
+        }
+
         const data = readFileSync(AUTH_FILE, "utf-8");
         const parsed = JSON.parse(data) as Partial<AuthData>;
 
-        return typeof parsed.token === "string"
+        _cachedAuth = typeof parsed.token === "string"
             ? { token: parsed.token }
             : null;
+        _cachedMtime = mtimeMs;
+        return _cachedAuth;
     } catch {
+        _cachedAuth = null;
+        _cachedMtime = 0;
         return null;
     }
 }
@@ -35,6 +50,8 @@ export function saveAuth(data: AuthData): void {
     }
 
     writeFileSync(AUTH_FILE, JSON.stringify(data), { mode: 0o600 });
+    _cachedAuth = data;
+    try { _cachedMtime = statSync(AUTH_FILE).mtimeMs; } catch { /* ignore */ }
 }
 
 export function clearAuth() {
@@ -43,4 +60,6 @@ export function clearAuth() {
     } catch {
         // File may not exist, ignore error
     }
+    _cachedAuth = null;
+    _cachedMtime = 0;
 }

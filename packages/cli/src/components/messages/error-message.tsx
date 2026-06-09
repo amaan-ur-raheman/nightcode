@@ -1,36 +1,28 @@
+import React from "react";
+
 import { TextAttributes } from "@opentui/core";
 import { useTheme } from "@/providers/theme";
-import { EmptyBorder } from "@/components/border";
+import { MessageBox } from "@/components/message-box";
 
 type ErrorMessageProps = {
     message: string;
+    canRetry?: boolean;
 };
 
-export function ErrorMessage({ message }: ErrorMessageProps) {
+export const ErrorMessage = React.memo(function ErrorMessage({ message, canRetry }: ErrorMessageProps) {
     const { colors } = useTheme();
 
     return (
-        <box width="100%" alignItems="center">
-            <box
-                border={["left"]}
-                borderColor={colors.error}
-                customBorderChars={{
-                    ...EmptyBorder,
-                    vertical: "┃",
-                    bottomLeft: "╹",
-                }}
-                width="100%"
-            >
-                <box
-                    justifyContent="center"
-                    paddingX={2}
-                    paddingY={1}
-                    backgroundColor={colors.surface}
-                    width="100%"
+        <MessageBox borderColor={colors.error}>
+            <text attributes={TextAttributes.DIM}>{message}</text>
+            {canRetry && (
+                <text
+                    fg={colors.info}
+                    attributes={TextAttributes.BOLD}
                 >
-                    <text attributes={TextAttributes.DIM}>{message}</text>
-                </box>
-            </box>
-        </box>
+                    {" "}⟳ retry (Ctrl+R)
+                </text>
+            )}
+        </MessageBox>
     );
-}
+});

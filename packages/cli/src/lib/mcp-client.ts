@@ -12,6 +12,8 @@ export type McpToolSchema = {
 
 // Active MCP clients keyed by server name
 const clients = new Map<string, Client>();
+// Tool count per server, populated during loadMcpTools
+const serverToolCounts = new Map<string, number>();
 
 async function connectServer(name: string, config: McpServerConfig): Promise<Client> {
     const existing = clients.get(name);
@@ -39,6 +41,7 @@ export async function loadMcpTools(): Promise<McpToolSchema[]> {
             try {
                 const client = await connectServer(name, config);
                 const result = await client.listTools();
+                serverToolCounts.set(name, result.tools.length);
                 for (const tool of result.tools) {
                     tools.push({
                         name: `mcp__${name}__${tool.name}`,
@@ -48,6 +51,7 @@ export async function loadMcpTools(): Promise<McpToolSchema[]> {
                     });
                 }
             } catch {
+                serverToolCounts.set(name, 0);
                 // skip unreachable servers
             }
         })
@@ -58,6 +62,10 @@ export async function loadMcpTools(): Promise<McpToolSchema[]> {
 
 export function isConnected(serverName: string): boolean {
     return clients.has(serverName);
+}
+
+export function getServerToolCount(serverName: string): number {
+    return serverToolCounts.get(serverName) ?? 0;
 }
 
 export async function callMcpTool(

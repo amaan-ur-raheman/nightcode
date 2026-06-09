@@ -5,21 +5,32 @@ import { usePromptConfig } from "@/providers/prompt-config";
 
 import { Spinner } from "@/components/spinner";
 import { InputBar } from "@/components/input-bar";
+import { KeyHint } from "@/components/key-hint";
 
 type SessionShellProps = {
     children?: ReactNode;
     onSubmit: (text: string) => void;
+    onClear?: () => void;
     inputDisabled?: boolean;
     loading?: boolean;
     interruptible?: boolean;
+    canRetry?: boolean;
+    runningToolName?: string | null;
+    messageCount?: number;
+    sessionTitle?: string;
 };
 
 export function SessionShell({
     children,
     onSubmit,
+    onClear,
     inputDisabled = false,
     loading = false,
     interruptible = false,
+    canRetry = false,
+    runningToolName,
+    messageCount,
+    sessionTitle,
 }: SessionShellProps) {
     const { mode } = usePromptConfig();
 
@@ -34,10 +45,10 @@ export function SessionShell({
             gap={1}
         >
             <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="bottom">
-                <box width="100%">{children}</box>
+                <box width="100%" flexDirection="column">{children}</box>
             </scrollbox>
             <box flexShrink={0}>
-                <InputBar onSubmit={onSubmit} disabled={inputDisabled} />
+                <InputBar onSubmit={onSubmit} disabled={inputDisabled} onClear={onClear} messageCount={messageCount} sessionTitle={sessionTitle} />
             </box>
             <box
                 flexShrink={0}
@@ -52,14 +63,19 @@ export function SessionShell({
                     {loading ? (
                         <>
                             <Spinner mode={mode} />
-                            {interruptible ? <text>esc to interrupt</text> : null}
+                            {runningToolName
+                                ? <text attributes={TextAttributes.DIM}>{`running ${runningToolName}...`}</text>
+                                : interruptible
+                                    ? <text attributes={TextAttributes.DIM}>esc to interrupt</text>
+                                    : null
+                            }
                         </>
                     ) : null}
                 </box>
 
                 <box flexDirection="row" gap={1} flexShrink={0} marginLeft="auto">
-                    <text>tab</text>
-                    <text attributes={TextAttributes.DIM}>agents</text>
+                    {canRetry ? <KeyHint keyName="ctrl+r" label="retry" /> : null}
+                    <KeyHint keyName="tab" label="agents" />
                 </box>
             </box>
         </box>

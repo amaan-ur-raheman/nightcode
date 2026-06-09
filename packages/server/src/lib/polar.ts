@@ -87,7 +87,19 @@ export async function createCustomerPortalUrl({
     return result.customerPortalUrl;
 }
 
-export async function getAvailableCreditsBalance(customerExternalId: string) {
+const creditsCache = new Map<string, { balance: number; expiry: number }>();
+const CREDITS_CACHE_TTL_MS = 30_000;
+
+export function getCachedCreditsBalance(customerExternalId: string): number | null {
+    const cached = creditsCache.get(customerExternalId);
+    if (cached && Date.now() < cached.expiry) return cached.balance;
+    return null;
+}
+
+export async function getAvailableCreditsBalance(customerExternalId: string): Promise<number> {
+    const cached = creditsCache.get(customerExternalId);
+    if (cached && Date.now() < cached.expiry) return cached.balance;
+
     try {
         const customerState = await getPolar().customers.getStateExternal({
             externalId: customerExternalId
@@ -102,7 +114,9 @@ export async function getAvailableCreditsBalance(customerExternalId: string) {
         }
 
         const creditsMeter = matchingMeters[0];
-        return creditsMeter?.balance ?? 0
+        const balance = creditsMeter?.balance ?? 0;
+        creditsCache.set(customerExternalId, { balance, expiry: Date.now() + CREDITS_CACHE_TTL_MS });
+        return balance;
     } catch (error) {
         if (hasStatusCode(error) && error.statusCode === 404) {
             return 0;

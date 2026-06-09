@@ -22,12 +22,30 @@ import {
     type ToolContracts
 } from "@nightcode/shared"
 
-import { ingestAIUsage, getAvailableCreditsBalance } from "../lib/polar";
+import { ingestAIUsage, getAvailableCreditsBalance, getCachedCreditsBalance } from "../lib/polar";
 import { buildSystemPrompt } from "../system-prompt";
 import { calculateCreditsForUsage } from "../lib/credits";
 import type { AuthenticatedEnv } from "../middleware/require-auth";
 import { isSupportedChatModel, resolveChatModel } from "../lib/models";
 import { generateSessionTitle } from "../lib/generate-session-title";
+
+const MAX_SESSION_MESSAGES = 50;
+const MAX_STREAM_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+
+function isRetryableError(error: unknown): boolean {
+    if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes("429") || msg.includes("rate limit")) return true;
+        if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("504")) return true;
+        if (msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("socket hang up")) return true;
+    }
+    if (typeof error === "object" && error !== null && "statusCode" in error) {
+        const status = (error as { statusCode: number }).statusCode;
+        return status === 429 || status >= 500;
+    }
+    return false;
+}
 
 const mcpToolSchema = z.object({
     name: z.string(),
@@ -94,9 +112,14 @@ const app = new Hono<AuthenticatedEnv>()
                 return c.json({ error: "Session not found" }, 404);
             }
 
-            const creditsBalance = await getAvailableCreditsBalance(userId);
-            if (creditsBalance <= 0) {
+            // Non-blocking credits check: use cache if available, fail-open on first request
+            const cachedBalance = getCachedCreditsBalance(userId);
+            if (cachedBalance !== null && cachedBalance <= 0) {
                 return c.json({ error: "No credits remaining. Run /upgrade to buy more credits" }, 402);
+            }
+            if (cachedBalance === null) {
+                // Fire-and-forget refresh for next request
+                getAvailableCreditsBalance(userId).catch(() => {});
             }
 
             const startTime = Date.now();
@@ -118,44 +141,85 @@ const app = new Hono<AuthenticatedEnv>()
             const previousMessage = Array.isArray(session.messages)
                 ? (session.messages as unknown as NightCodeUIMessage[])
                 : [];
-            const mergedMessages = [...previousMessage];
-
-            for (const message of messages) {
-                const incomingMessage = {
+            const mergedMessages: NightCodeUIMessage[] = messages.map((message) => {
+                return {
                     ...message,
                     metadata: {
                         ...message.metadata,
                         mode,
                         model,
                     }
-                } satisfies NightCodeUIMessage;
+                };
+            });
 
-                const existingMessageIndex = mergedMessages.findIndex((m) => m.id === incomingMessage.id);
+            // Sliding window: truncate session history to prevent context overflow
+            // Always preserve the first user message as a context anchor
+            const firstUserIdx = mergedMessages.findIndex(m => m.role === "user");
+            let truncatedMessages: NightCodeUIMessage[] = mergedMessages;
+            if (mergedMessages.length > MAX_SESSION_MESSAGES) {
+                const firstUserMessage = firstUserIdx >= 0 ? mergedMessages[firstUserIdx] : null;
+                const tail = mergedMessages.slice(mergedMessages.length - MAX_SESSION_MESSAGES + 1);
+                truncatedMessages = firstUserMessage
+                    ? [firstUserMessage, ...tail]
+                    : tail;
 
-                if (existingMessageIndex === -1) {
-                    mergedMessages.push(incomingMessage);
-                } else {
-                    mergedMessages[existingMessageIndex] = incomingMessage;
+                // Inject context anchor so the LLM knows what the original goal was
+                if (firstUserMessage) {
+                    const firstUserText = firstUserMessage.parts
+                        .filter((p: any) => p.type === "text")
+                        .map((p: any) => (p as { text: string }).text)
+                        .join("")
+                        .slice(0, 500);
+
+                    if (firstUserText) {
+                        const contextMessage = {
+                            id: crypto.randomUUID(),
+                            role: "system" as const,
+                            parts: [{ type: "text" as const, text: `[Context: Earlier conversation history (${mergedMessages.length - truncatedMessages.length} messages) was truncated to stay within context limits. The original user goal was: "${firstUserText}"]` }],
+                        } as NightCodeUIMessage;
+                        truncatedMessages = [contextMessage, ...truncatedMessages];
+                    }
                 }
             }
 
             const nextMessages = await validateUIMessages<NightCodeUIMessage>({
-                messages: mergedMessages,
+                messages: truncatedMessages,
                 tools,
             });
             const modelMessages = await convertToModelMessages(nextMessages, { tools });
             let completedUsage: LanguageModelUsage | null = null;
 
-            const result = streamText({
-                model: resolvedModel.model,
-                system: buildSystemPrompt({ mode, projectContext, currentModel: model }),
-                messages: modelMessages,
-                tools,
-                providerOptions: resolvedModel.providerOptions,
-                onFinish: (event) => {
-                    completedUsage = event.totalUsage;
-                },
-            });
+            const result = await (async function attemptStream() {
+                for (let attempt = 1; attempt <= MAX_STREAM_RETRIES; attempt++) {
+                    try {
+                        return streamText({
+                            model: resolvedModel.model,
+                            system: buildSystemPrompt({ mode, projectContext, currentModel: model }),
+                            messages: modelMessages,
+                            tools,
+                            providerOptions: resolvedModel.providerOptions,
+                            abortSignal: AbortSignal.timeout(180_000),
+                            onFinish: (event) => {
+                                completedUsage = event.totalUsage;
+                            },
+                        });
+                    } catch (error) {
+                        const errorType = error instanceof Error ? error.constructor.name : "UnknownError";
+                        const errorDetail = error instanceof Error ? error.message : String(error);
+
+                        if (attempt < MAX_STREAM_RETRIES && isRetryableError(error)) {
+                            const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+                            console.warn(`[chat] streamText attempt ${attempt}/${MAX_STREAM_RETRIES} failed (${errorType}): ${errorDetail} — retrying in ${delay}ms`);
+                            await new Promise((r) => setTimeout(r, delay));
+                            continue;
+                        }
+
+                        console.error(`[chat] streamText failed after ${attempt} attempt(s) (${errorType}): ${errorDetail}`);
+                        throw error;
+                    }
+                }
+                throw new Error("streamText failed after retries");
+            })();
 
             return result.toUIMessageStreamResponse<NightCodeUIMessage>({
                 originalMessages: nextMessages,
@@ -230,7 +294,10 @@ const app = new Hono<AuthenticatedEnv>()
                     }
                 },
                 onError(error) {
-                    return error instanceof Error ? error.message : String(error);
+                    const name = error instanceof Error ? error.constructor.name : "UnknownError";
+                    const msg = error instanceof Error ? error.message : String(error);
+                    console.error(`[chat] stream error (${name}):`, msg);
+                    return `${name}: ${msg}`;
                 }
             })
         }
