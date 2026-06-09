@@ -13,8 +13,15 @@ import { requireAuth } from './middleware/require-auth';
 
 const app = new Hono();
 
-app.get("/debug-sentry", () => {
-    throw new Error("My first Sentry error!");
+app.use(async (c, next) => {
+    const start = Date.now();
+    await next();
+    const duration = Date.now() - start;
+    const path = c.req.path;
+    const status = c.res.status;
+    if (duration > 1000 || status >= 500) {
+        console.log(`${c.req.method} ${path} ${status} ${duration}ms`);
+    }
 });
 
 app.onError((error, c) => {
@@ -29,6 +36,7 @@ app.use("/chat/*", requireAuth);
 app.use("/sessions/*", requireAuth);
 app.use("/billing/checkout", requireAuth);
 app.use("/billing/portal", requireAuth);
+app.use("/billing/credits", requireAuth);
 app.use("/subagent/*", requireAuth);
 
 const routes = app
