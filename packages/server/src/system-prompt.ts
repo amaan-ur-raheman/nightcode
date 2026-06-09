@@ -7,7 +7,18 @@ type SystemPromptParams = {
     currentModel?: string;
 };
 
+const MAX_PROMPT_CACHE_SIZE = 32;
+const promptCache = new Map<string, string>();
+
+function getCacheKey(params: SystemPromptParams): string {
+    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ""}:${params.projectContext ?? ""}`;
+}
+
 export function buildSystemPrompt({ mode, projectContext, isSubagent, currentModel }: SystemPromptParams): string {
+    const key = getCacheKey({ mode, projectContext, isSubagent, currentModel });
+    const cached = promptCache.get(key);
+    if (cached) return cached;
+
     const parts: string[] = [];
 
     const buildModelRecommendations = `
@@ -60,70 +71,29 @@ export function buildSystemPrompt({ mode, projectContext, isSubagent, currentMod
     if (mode === "PLAN") {
         parts.push(`
         ## Tool Usage
-        You have these read-only tools available:
-        - **readFile** — Read a file's contents (supports offset/limit for large files)
-        - **listDirectory** — List entries in a directory
-        - **tree** — Display the directory tree for a structural overview
-        - **glob** — Find files matching a pattern (e.g. \"**/*.ts\")
-        - **grep** — Search file contents with regex
-        - **fileInfo** — Get metadata about a file or directory
-        - **codeSearch** — Search for symbol definitions (functions, classes, variables) by name
-        - **getOutline** — List all top-level symbols defined in a file
-        - **diffFiles** — Show a unified diff between two files in the project
-        - **gitStatus** — Show the git working tree status
-        - **gitDiff** — Show the git diff for the working tree
-        - **webFetch** — Fetch a remote URL (internal addresses blocked)
         ${spawnAgentDesc}
-        - **spawnResearcher** — Spawn a researcher subagent to explore and summarise a codebase area or architecture question (PLAN mode).
         ### Rules
         1. **Be decisive.** Use glob/grep/codeSearch to find what's relevant, then read only those files. Don't read every file in the project.
         2. **Never re-read files you already read** in this conversation.
         3. **Batch your tool calls.** Call multiple tools in parallel when possible (e.g. read 5 files at once, not one at a time).
-        4. **Check git status first** when you need context about what changed.`);
+        4. **Check git status first** when you need context about what changed.
+        5. **Thorough Planning**: When presenting a plan, outline concrete steps, file names, modified lines or blocks, and verify how those changes impact dependencies.`);
     }
 
     if (mode === "BUILD") {
         parts.push(`
         ## Tool Usage
-        You have these tools available:
-        - **readFile** — Read a file's contents (supports offset/limit for large files)
-        - **writeFile** — Create or overwrite a file
-        - **createFile** — Create a new file, erroring if it already exists
-        - **editFile** — Make a targeted string replacement in a file (oldString must be unique)
-        - **deleteFile** — Delete a file or directory
-        - **moveFile** — Move or rename a file or directory
-        - **createDirectory** — Create a directory and any missing parents
-        - **listDirectory** — List entries in a directory
-        - **tree** — Display the directory tree for a structural overview
-        - **glob** — Find files matching a pattern (e.g. \"**/*.ts\")
-        - **grep** — Search file contents with regex
-        - **fileInfo** — Get metadata about a file or directory
-        - **codeSearch** — Search for symbol definitions (functions, classes, variables) by name
-        - **getOutline** — List all top-level symbols defined in a file
-        - **diffFiles** — Show a unified diff between two files in the project
-        - **searchReplace** — Find and replace across multiple files using a regex
-        - **renameSymbol** — Rename a symbol across all matching files using word-boundary matching
-        - **patch** — Apply a unified diff patch for multi-file changes
-        - **runTests** — Run the project's test suite
-        - **bash** — Run a shell command
-        - **gitStatus** — Show the git working tree status
-        - **gitDiff** — Show the git diff for the working tree
-        - **webFetch** — Fetch a remote URL (internal addresses blocked)
-        - **httpRequest** — Make an HTTP request (GET/POST/PUT/PATCH/DELETE) to test APIs
         ${spawnAgentDesc}
-        - **spawnCodeReviewer** — Spawn a code reviewer subagent for a set of files
-        - **spawnTestWriter** — Spawn a test writer subagent to write tests for given files
-        - **spawnDebugger** — Spawn a debugger subagent to investigate and fix a bug
-        - **spawnRefactor** — Spawn a refactor subagent to improve code structure
-        - **spawnResearcher** — Spawn a researcher subagent to explore a codebase area (PLAN mode)
         ### Rules
         1. **Be decisive.** Use glob/grep/codeSearch to find what's relevant, then read only those files. Don't read every file in the project.
         2. **Never re-read files you already read** in this conversation.
         3. **Batch your tool calls.** Call multiple tools in parallel when possible (e.g. read 5 files at once, not one at a time).
-        4. **Use editFile for small changes** to existing files. Only use writeFile when creating new files or rewriting most of a file.
-        5. **Use patch** when making multiple related changes across files. Use moveFile for renames, renameSymbol for symbol renames.
-        6. **Run runTests** after making changes to verify correctness.
-        7. **Check git status and git diff** before and after changes to verify what you modified.`);
+        4. **Baseline Testing**: Run tests using runTests or bash first to establish a baseline before making changes.
+        5. **Self-Correction & Diagnostic Loops**: If a test or command fails, do NOT repeat the same tool call. Analyze the compiler/test error output, debug the code, apply corrections, and then test again.
+        6. **Exact Matching on editFile**: When using editFile, make sure the oldString matches target code EXACTLY, including all leading tabs/spaces/indents and newlines. If unsure, read the file block first.
+        7. **Use editFile for small changes** to existing files. Only use writeFile when creating new files or rewriting most of a file.
+        8. **Use patch** when making multiple related changes across files. Use moveFile for renames, renameSymbol for symbol renames.
+        9. **Verify changes**: Run runTests and check gitStatus/gitDiff after making changes to verify correctness and see exactly what was modified.`);
     }
 
     if (mode === "BUILD" && !isSubagent) {
@@ -136,7 +106,7 @@ export function buildSystemPrompt({ mode, projectContext, isSubagent, currentMod
         - When a task is self-contained and has clear inputs and outputs.
         
         ### Guidelines:
-        - **Task description**: Provide a highly descriptive, self-contained task prompt. The subagent does not have access to your chat history, so you must explicitly pass any file paths, context, requirements, or code snippets it needs.
+        - **Task description**: Provide a highly descriptive, self-contained task prompt. Crucial: The subagent starts with a completely clean context and has no access to your chat history, files read, or state. You MUST explicitly write down all instructions, file paths to read/write, relevant code snippets, target structures/contracts, and expected output formats in the prompt.
         ${buildModelRecommendations}
         - **Mode selection**: Set the subagent's mode to \"BUILD\" if it needs to make changes, or \"PLAN\" for read-only tasks.
         - **Integrate the result**: Once the subagent returns, inspect its output and integrate it into your work as needed.`);
@@ -148,10 +118,18 @@ export function buildSystemPrompt({ mode, projectContext, isSubagent, currentMod
         You can use the **spawnAgent** tool to delegate self-contained research/analysis tasks to a subagent in parallel.
         
         ### Guidelines:
-        - **Task description**: Provide a highly descriptive, self-contained task prompt. The subagent does not have access to your chat history, so you must explicitly pass any file paths, context, requirements, or code snippets it needs.
+        - **Task description**: Provide a highly descriptive, self-contained task prompt. Crucial: The subagent starts with a completely clean context and has no access to your chat history, files read, or state. You MUST explicitly write down all instructions, file paths to read/write, relevant code snippets, target structures/contracts, and expected output formats in the prompt.
         ${planModelRecommendations}
         - **Mode selection**: You are in PLAN (read-only) mode. You MUST set the subagent's mode to \"PLAN\" as well. Spawning a BUILD mode subagent from a PLAN parent is not allowed.`);
     }
 
-    return parts.join("\n");
+    const result = parts.join("\n");
+
+    if (promptCache.size >= MAX_PROMPT_CACHE_SIZE) {
+        const firstKey = promptCache.keys().next().value;
+        if (firstKey) promptCache.delete(firstKey);
+    }
+    promptCache.set(key, result);
+
+    return result;
 }
