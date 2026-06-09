@@ -50,7 +50,7 @@ export const toolInputSchemas = {
     }),
     editFile: z.object({
         path: z.string().describe("Relative path to edit"),
-        oldString: z.string().describe("Exact text to replace; must be unique"),
+        oldString: z.string().describe("Exact text to replace. It MUST match the target text in the file EXACTLY, including all indentation, leading whitespace, and newlines. If you are unsure of the exact whitespace, use readFile first to inspect it. Must be unique."),
         newString: z.string().describe("Replacement text"),
     }),
     bash: z.object({
@@ -109,7 +109,7 @@ export const toolInputSchemas = {
         glob: z.string().describe("Glob pattern to match files (e.g. 'src/**/*.ts')"),
     }),
     spawnAgent: z.object({
-        task: z.string().describe("The full task description for the subagent to complete"),
+        task: z.string().describe("The full task description for the subagent. Crucial: The subagent does NOT share your chat history or files context automatically, so you must explicitly specify all instructions, relevant file paths, code snippets, dependencies, and expected outputs inside this description."),
         model: z.string().optional().describe("Model ID for the subagent to use. Defaults to the same model as the main agent if omitted."),
         mode: z.enum(["BUILD", "PLAN"]).describe("Mode for the subagent: BUILD (can write files) or PLAN (read-only)"),
     }),
@@ -189,7 +189,7 @@ export const readOnlyToolContracts = {
         inputSchema: toolInputSchemas.diffFiles,
     }),
     spawnAgent: tool({
-        description: "Spawn a subagent to complete a self-contained task in parallel. The subagent runs to completion with its own tool access and returns the result. Use for tasks that can be delegated independently: writing a module, researching a codebase area, running tests and summarising failures.",
+        description: "Spawn a subagent to complete a self-contained task in parallel. The subagent runs to completion with its own tool access and returns the result. You must include all necessary file snippets, requirements, and instructions in the task description because subagents do not share your chat history.",
         inputSchema: toolInputSchemas.spawnAgent,
     }),
     spawnResearcher: tool({
@@ -205,7 +205,7 @@ export const buildToolContracts = {
         inputSchema: toolInputSchemas.writeFile,
     }),
     editFile: tool({
-        description: "Replace exact text in a file under the current project directory.",
+        description: "Replace exact text in a file under the current project directory. Ensure the oldString matches indentation, spacing, and lines exactly.",
         inputSchema: toolInputSchemas.editFile,
     }),
     bash: tool({
