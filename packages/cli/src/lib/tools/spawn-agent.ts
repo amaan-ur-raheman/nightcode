@@ -3,9 +3,13 @@ import { toolInputSchemas, type ModeType } from "@nightcode/shared";
 import { getAuth } from "@/lib/auth";
 import { executeLocalTool } from "@/lib/local-tools";
 
+import { registerSubagent, updateSubagentStep, removeSubagent } from "@/lib/subagent-progress";
+
 const API_URL = process.env.API_URL ?? "http://localhost:3000";
 const MAX_STEPS = 50;
-const SUBAGENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const SUBAGENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_CONCURRENT_SUBAGENTS = 5;
+let activeSubagents = 0;
 
 export async function spawnAgentTool(
     input: unknown,
@@ -20,6 +24,11 @@ export async function spawnAgentTool(
         throw new Error("Cannot spawn a BUILD mode subagent from a PLAN mode parent. Please spawn a PLAN mode subagent instead.");
     }
 
+    if (activeSubagents >= MAX_CONCURRENT_SUBAGENTS) {
+        throw new Error(`Too many concurrent subagents (${MAX_CONCURRENT_SUBAGENTS}). Wait for existing ones to complete.`);
+    }
+    activeSubagents++;
+
     const auth = getAuth();
     if (!auth) throw new Error("Not authenticated. Run /login to continue.");
 
@@ -32,8 +41,11 @@ export async function spawnAgentTool(
     timeoutController.signal.addEventListener("abort", onTimeout, { once: true });
     signal?.addEventListener("abort", onCaller, { once: true });
 
+    const subagentId = crypto.randomUUID();
+    registerSubagent(subagentId, task, MAX_STEPS);
+
     try {
-        return await _runSubagent({ task, mode, resolvedModel, auth, signal: combinedController.signal });
+        return await _runSubagent({ task, mode, resolvedModel, auth, signal: combinedController.signal, subagentId });
     } catch (err: any) {
         if (timeoutController.signal.aborted && !signal?.aborted) {
             throw new Error(`Subagent timed out after ${SUBAGENT_TIMEOUT_MS / 60000} minutes`);
@@ -43,15 +55,18 @@ export async function spawnAgentTool(
         clearTimeout(timeoutId);
         timeoutController.signal.removeEventListener("abort", onTimeout);
         signal?.removeEventListener("abort", onCaller);
+        activeSubagents--;
+        removeSubagent(subagentId);
     }
 }
 
-async function _runSubagent({ task, mode, resolvedModel, auth, signal }: {
+async function _runSubagent({ task, mode, resolvedModel, auth, signal, subagentId }: {
     task: string;
     mode: string;
     resolvedModel: string;
     auth: { token: string };
     signal: AbortSignal;
+    subagentId: string;
 }) {
     const messages: any[] = [
         {
@@ -150,6 +165,12 @@ async function _runSubagent({ task, mode, resolvedModel, auth, signal }: {
 
             throw new Error("Subagent completed but returned no output. The main agent should handle this task directly.");
         }
+
+        const toolNames = toolCallsToExecute.map((part: any) =>
+            part.type === "dynamic-tool" ? part.toolName : part.type.slice(5)
+        );
+        console.error(`[subagent] step ${step + 1}: executing ${toolNames.join(", ")}`);
+        updateSubagentStep(subagentId, step + 1, toolNames[0] ?? null);
 
         await Promise.all(
             toolCallsToExecute.map(async (part: any) => {

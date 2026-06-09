@@ -1,7 +1,6 @@
-import { readFile } from "fs/promises";
 import { relative } from "path";
 import { toolInputSchemas } from "@nightcode/shared";
-import { resolveInsideCwd } from "./utils";
+import { readCachedFile, resolveInsideCwd } from "./utils";
 
 const PATTERNS: [string, RegExp][] = [
     ["class",     /^(?:export\s+)?(?:abstract\s+)?class\s+(?<name>\w+)/],
@@ -19,7 +18,7 @@ const PATTERNS: [string, RegExp][] = [
 export async function getOutlineTool(input: unknown) {
     const { path } = toolInputSchemas.getOutline.parse(input);
     const { cwd, resolved } = resolveInsideCwd(path);
-    const lines = (await readFile(resolved, "utf-8")).split("\n");
+    const lines = (await readCachedFile(resolved)).split("\n");
     const symbols: { name: string; kind: string; line: number }[] = [];
 
     for (let i = 0; i < lines.length; i++) {

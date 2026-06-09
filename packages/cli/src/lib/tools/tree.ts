@@ -5,19 +5,46 @@ import { IGNORE, MAX_TREE_LINES, resolveInsideCwd } from "./utils";
 
 async function buildTree(dir: string, prefix: string, depth: number, maxDepth: number): Promise<string[]> {
     if (depth > maxDepth) return [];
-    const entries = (await readdir(dir)).filter((e) => !e.startsWith(".") && !IGNORE.has(e)).sort();
+    const entries = (await readdir(dir, { withFileTypes: true }))
+        .filter((e) => !e.name.startsWith(".") && !IGNORE.has(e.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
     const lines: string[] = [];
-    for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i]!;
-        const isLast = i === entries.length - 1;
-        const fullPath = join(dir, entry);
+
+    const infos: { name: string; isDir: boolean }[] = [];
+    const lstatPromises = entries.map(async (entry) => {
         try {
-            const info = await lstat(fullPath);
-            const isDir = info.isDirectory() && !info.isSymbolicLink();
-            lines.push(prefix + (isLast ? "└── " : "├── ") + entry + (isDir ? "/" : ""));
-            if (isDir) lines.push(...await buildTree(fullPath, prefix + (isLast ? "    " : "│   "), depth + 1, maxDepth));
-        } catch { /* skip */ }
+            const info = await lstat(join(dir, entry.name));
+            return { name: entry.name, isDir: entry.isDirectory() && !info.isSymbolicLink() };
+        } catch {
+            return null;
+        }
+    });
+    const resolvedInfos = await Promise.all(lstatPromises);
+
+    // Collect subdirectory tree promises (parallel sibling traversal)
+    const childTreePromises: Promise<string[]>[] = [];
+    const validIndices: number[] = [];
+    for (let i = 0; i < resolvedInfos.length; i++) {
+        const item = resolvedInfos[i];
+        if (!item) continue;
+        validIndices.push(i);
+        const isLast = i === resolvedInfos.length - 1;
+        lines.push(prefix + (isLast ? "└── " : "├── ") + item.name + (item.isDir ? "/" : ""));
+        if (item.isDir) {
+            childTreePromises.push(
+                buildTree(join(dir, item.name), prefix + (isLast ? "    " : "│   "), depth + 1, maxDepth)
+            );
+        } else {
+            childTreePromises.push(Promise.resolve([]));
+        }
     }
+
+    const childResults = await Promise.all(childTreePromises);
+    for (let j = 0; j < validIndices.length; j++) {
+        const result = childResults[j];
+        if (result) lines.push(...result);
+    }
+
     return lines;
 }
 

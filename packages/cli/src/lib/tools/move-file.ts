@@ -1,17 +1,12 @@
 import { mkdir, rename } from "fs/promises";
-import { dirname, relative, resolve } from "path";
+import { dirname, relative } from "path";
 import { toolInputSchemas } from "@nightcode/shared";
+import { resolveInsideCwd } from "./utils";
 
 export async function moveFileTool(input: unknown) {
     const { from, to } = toolInputSchemas.moveFile.parse(input);
-    const cwd = process.cwd();
-    const src = resolve(cwd, from);
-    const dest = resolve(cwd, to);
-    const safeCwd = cwd.endsWith("/") ? cwd : cwd + "/";
-
-    if (!src.startsWith(safeCwd) || !dest.startsWith(safeCwd)) {
-        return { error: "Path is outside the project directory" };
-    }
+    const { cwd, resolved: src } = resolveInsideCwd(from);
+    const { resolved: dest } = resolveInsideCwd(to);
 
     await mkdir(dirname(dest), { recursive: true });
     await rename(src, dest);

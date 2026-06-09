@@ -1,18 +1,12 @@
 import { toolInputSchemas } from "@nightcode/shared";
-import { MAX_OUTPUT } from "./utils";
-
-const PRIVATE = [
-    "localhost", "127.", "0.0.0.0", "10.", "192.168.", "169.254.", "::1", ".local",
-    "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.",
-    "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
-];
+import { MAX_OUTPUT, isPrivateHost } from "./utils";
 
 export async function httpRequestTool(input: unknown) {
     const { url, method, headers, body } = toolInputSchemas.httpRequest.parse(input);
 
     try {
         const host = new URL(url).hostname.toLowerCase();
-        if (PRIVATE.some((p) => host === p || host.startsWith(p) || host.endsWith(p))) {
+        if (isPrivateHost(host)) {
             return { error: "Requests to internal/private addresses are blocked." };
         }
     } catch {
