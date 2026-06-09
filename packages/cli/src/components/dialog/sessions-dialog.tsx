@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import { useNavigate } from "react-router";
 import type { InferResponseType } from "hono/client";
 import { useCallback, useState, useEffect } from "react";
@@ -87,7 +86,7 @@ export function SessionDialogContent() {
                         fg={isSelected ? "black" : undefined}
                         attributes={TextAttributes.DIM}
                     >
-                        {format(new Date(session.createdAt), "hh:mm a")}
+                        {new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(session.createdAt))}
                     </text>
                 </>
             )}

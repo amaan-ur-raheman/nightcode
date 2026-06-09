@@ -55,6 +55,7 @@ export function DialogSearchList<T>({
 
     useKeyboard((key) => {
         if (!isTopLayer("dialog")) return;
+        if (filtered.length === 0) return;
 
         if (key.name === "return" || key.name === "enter") {
             const item = filtered[selectedIndex];

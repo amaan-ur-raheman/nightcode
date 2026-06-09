@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -22,13 +22,27 @@ export type Settings = {
 
 const SETTINGS_PATH = join(homedir(), ".nightcode", "settings.json");
 
-export function loadSettings(): Settings {
-    if (!existsSync(SETTINGS_PATH)) return {};
+let _cachedSettings: Settings | null = null;
+let _cachedMtime: number = 0;
 
+export function loadSettings(): Settings {
     try {
+        if (!existsSync(SETTINGS_PATH)) return {};
+
+        const stat = statSync(SETTINGS_PATH);
+        const mtimeMs = stat.mtimeMs;
+
+        if (_cachedSettings && mtimeMs === _cachedMtime) {
+            return _cachedSettings;
+        }
+
         const raw = readFileSync(SETTINGS_PATH, "utf8");
-        return JSON.parse(raw) as Settings;
+        _cachedSettings = JSON.parse(raw) as Settings;
+        _cachedMtime = mtimeMs;
+        return _cachedSettings;
     } catch {
+        _cachedSettings = null;
+        _cachedMtime = 0;
         return {};
     }
 }

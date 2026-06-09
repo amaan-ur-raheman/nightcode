@@ -1,3 +1,5 @@
+import React from "react";
+
 import prettyMs from "pretty-ms";
 
 import { Mode, type ModeType } from "@nightcode/shared";
@@ -5,9 +7,12 @@ import { TextAttributes } from "@opentui/core";
 
 import { useTheme } from "@/providers/theme";
 import type { Message } from "@/hooks/use-chat";
+import { getModeColor } from "@/lib/mode-utils";
+import { getModelName } from "@/lib/model-names";
 
 import { EmptyBorder } from "@/components/border";
 import { MarkdownText } from "@/lib/markdown";
+import { ToolTimer } from "@/components/messages/tool-timer";
 
 type ClientMessagePart = Message["parts"][number];
 type ToolPart = Extract<ClientMessagePart, { type: `tool-${string}` | "dynamic-tool" }>;
@@ -64,7 +69,7 @@ function groupConsecutiveParts(parts: ClientMessagePart[]): PartGroup[] {
     return groups;
 }
 
-export function BotMessage({
+export const BotMessage = React.memo(function BotMessage({
     parts,
     model,
     mode,
@@ -119,7 +124,7 @@ export function BotMessage({
                                     <text attributes={TextAttributes.DIM}>
                                         <em fg={colors.info}>{formatToolName(toolName)}:</em>{" "}{formatToolArgs(part)}
                                         {part.state !== "output-available" && part.state !== "output-error"
-                                            ? " …"
+                                            ? <ToolTimer />
                                             : ""
                                         }
                                         {part.state === "output-error" ? `${part.errorText}` : ""}
@@ -144,7 +149,7 @@ export function BotMessage({
             <box paddingX={3} paddingY={1} gap={1} width="100%">
                 <box flexDirection="row" gap={2}>
                     <text
-                        fg={mode === Mode.PLAN ? colors.planMode : colors.primary}
+                        fg={getModeColor(mode, colors)}
                     >
                         ◉
                     </text>
@@ -155,20 +160,16 @@ export function BotMessage({
                         <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
                              ›
                         </text>
-                        <text attributes={TextAttributes.DIM}>{model}</text>
+                        <text attributes={TextAttributes.DIM}>{getModelName(model)}</text>
                         {durationMs != null && (
-                            <>
-                                <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
-                                     ›
-                                </text>
-                                <text attributes={TextAttributes.DIM}>
-                                    {prettyMs(durationMs)}
-                                </text>
-                            </>
+                            <text attributes={TextAttributes.DIM}>
+                                <em fg={colors.dimSeparator}> › </em>
+                                {prettyMs(durationMs)}
+                            </text>
                         )}
                     </box>
                 </box>
             </box>
         </box>
     );
-}
+});

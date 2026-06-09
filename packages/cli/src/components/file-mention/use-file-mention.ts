@@ -10,7 +10,15 @@ import { useKeyboardLayer } from "@/providers/keyboard-layer";
 const CURRENT_DIRECTORY = process.cwd();
 const MAX_FALLBACK_MENTIONS_CANDIDATES = 32;
 const MENTION_QUERY_CHARACTER = /[A-Za-z0-9._/-]/;
-const RECURSIVE_MENTION_IGNORED_DIRECTORIES = new Set(["node_modules"]);
+const RECURSIVE_MENTION_IGNORED_DIRECTORIES = new Set([
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    ".next",
+    ".turbo",
+    "coverage",
+]);
 
 export type MentionMatch = {
     start: number;
@@ -108,6 +116,7 @@ export async function getMentionCandidates(query: string): Promise<MentionCandid
 
         const directMatches = entries
             .filter((entry) => showHiddenEntries || !entry.name.startsWith("."))
+            .filter((entry) => !(entry.isDirectory() && RECURSIVE_MENTION_IGNORED_DIRECTORIES.has(entry.name)))
             .filter((entry) => lowercasePrefix === "" || entry.name.toLowerCase().startsWith(lowercasePrefix))
             .sort((left, right) => {
                 if (left.isDirectory() !== right.isDirectory()) return left.isDirectory() ? -1 : 1;
@@ -266,15 +275,14 @@ export function useFileMention(textareaRef: RefObject<TextareaRenderable | null>
         }
 
         let ignore = false;
-        const load = async () => {
+        const timeoutId = setTimeout(async () => {
             const next = await getMentionCandidates(activeMentionQuery);
             if (ignore) return;
             setCandidates(next);
             setSelectedIndex((i) => next.length === 0 ? 0 : Math.min(i, next.length - 1));
-        };
+        }, 150);
 
-        void load();
-        return () => { ignore = true; };
+        return () => { ignore = true; clearTimeout(timeoutId); };
     }, [activeMentionQuery]);
 
     // Arrow key navigation + tab to drill into directory

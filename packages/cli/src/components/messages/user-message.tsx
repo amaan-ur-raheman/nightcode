@@ -1,38 +1,22 @@
-import { useTheme } from "@/providers/theme";
-import { Mode, type ModeType } from "@nightcode/shared";
+import React from "react";
 
-import { EmptyBorder } from "@/components/border";
+import { useTheme } from "@/providers/theme";
+import { type ModeType } from "@nightcode/shared";
+
+import { MessageBox } from "@/components/message-box";
+import { getModeColor } from "@/lib/mode-utils";
 
 type UserMessageProps = {
     message: string;
     mode: ModeType;
 };
 
-export function UserMessage({ message, mode }: UserMessageProps) {
+export const UserMessage = React.memo(function UserMessage({ message, mode }: UserMessageProps) {
     const { colors } = useTheme();
 
     return (
-        <box width="100%" alignItems="center">
-            <box
-                border={["left"]}
-                borderColor={mode === Mode.BUILD ? colors.primary : colors.planMode}
-                customBorderChars={{
-                    ...EmptyBorder,
-                    vertical: "┃",
-                    bottomLeft: "╹",
-                }}
-                width="100%"
-            >
-                <box
-                    justifyContent="center"
-                    paddingX={2}
-                    paddingY={1}
-                    backgroundColor={colors.surface}
-                    width="100%"
-                >
-                    <text>{message}</text>
-                </box>
-            </box>
-        </box>
+        <MessageBox borderColor={getModeColor(mode, colors)}>
+            <text>{message}</text>
+        </MessageBox>
     );
-}
+});
