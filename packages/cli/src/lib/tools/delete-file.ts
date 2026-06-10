@@ -2,6 +2,7 @@ import { rm } from "fs/promises";
 import { relative } from "path";
 import { toolInputSchemas } from "@nightcode/shared";
 import { resolveInsideCwd } from "./utils";
+import { globCache } from "../glob-cache";
 
 export async function deleteFileTool(input: unknown) {
     const { path, recursive } = toolInputSchemas.deleteFile.parse(input);
@@ -11,6 +12,7 @@ export async function deleteFileTool(input: unknown) {
 
     try {
         await rm(resolved, { recursive });
+        globCache.invalidate();
         return { success: true as const, path: relative(cwd, resolved) };
     } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
