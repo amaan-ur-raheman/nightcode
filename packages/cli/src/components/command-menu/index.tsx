@@ -5,9 +5,9 @@ import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "@/providers/theme";
 
 import { COMMANDS } from "@/components/command-menu/commands";
-import { getFilteredCommands } from "@/components/command-menu/filter-commands";
+import type { MenuItem } from "@/components/command-menu/use-command-menu";
 
-const MAX_VISIBLE_ITEMS = 8;
+const MAX_VISIBLE_ITEMS = 10;
 const COMMAND_COLUMN_WIDTH = Math.max(...COMMANDS.map((cmd) => cmd.name.length)) + 4;
 
 type CommandMenuProps = {
@@ -16,6 +16,7 @@ type CommandMenuProps = {
     scrollRef: RefObject<ScrollBoxRenderable | null>;
     onSelect: (index: number) => void;
     onExecute: (index: number) => void;
+    items: MenuItem[];
 }
 
 export function CommandMenu({
@@ -24,23 +25,45 @@ export function CommandMenu({
     scrollRef,
     onSelect,
     onExecute,
+    items,
 }: CommandMenuProps) {
-    const { colors } = useTheme()
-    const filtered = getFilteredCommands(query);
-    const visibleHeight = Math.min(filtered.length, MAX_VISIBLE_ITEMS);
+    const { colors } = useTheme();
 
-    if (filtered.length === 0) {
+    const selectableCount = items.filter(i => i.type === "command").length;
+    const visibleHeight = Math.min(
+        selectableCount,
+        MAX_VISIBLE_ITEMS
+    );
+
+    if (selectableCount === 0) {
         return (
             <box paddingX={1}>
                 <text attributes={TextAttributes.DIM}>No matching commands found.</text>
             </box>
-        )
+        );
     }
 
     return (
         <scrollbox ref={scrollRef} height={visibleHeight}>
-            {filtered.map((cmd, i) => {
-                const isSelected = i === selectedIndex;
+            {items.map((item, idx) => {
+                if (item.type === "spacer") {
+                    return (
+                        <box key={`spacer-${idx}`} height={1} />
+                    );
+                }
+
+                if (item.type === "header") {
+                    return (
+                        <box key={`header-${item.label}-${idx}`} paddingX={1} height={1}>
+                            <text attributes={TextAttributes.DIM} fg={colors.primary}>
+                                {item.label}
+                            </text>
+                        </box>
+                    );
+                }
+
+                const { command: cmd, flatIndex } = item;
+                const isSelected = flatIndex === selectedIndex;
                 return (
                     <box
                         key={cmd.value}
@@ -49,8 +72,8 @@ export function CommandMenu({
                         height={1}
                         overflow="hidden"
                         backgroundColor={isSelected ? colors.selection : undefined}
-                        onMouseMove={() => onSelect(i)}
-                        onMouseDown={() => onExecute(i)}
+                        onMouseMove={() => onSelect(flatIndex)}
+                        onMouseDown={() => onExecute(flatIndex)}
                     >
                         <box width={COMMAND_COLUMN_WIDTH} flexShrink={0}>
                             <text selectable={false} fg={isSelected ? "black" : "white"}>
@@ -62,9 +85,17 @@ export function CommandMenu({
                                 {cmd.description}
                             </text>
                         </box>
+                        {cmd.shortcut && (
+                            <box flexShrink={0}>
+                                <text selectable={false} fg={isSelected ? "black" : "gray"}>
+                                    {cmd.shortcut}
+                                </text>
+                            </box>
+                        )}
                     </box>
-                )
+                );
             })}
         </scrollbox>
-    )
+    );
 }
+
