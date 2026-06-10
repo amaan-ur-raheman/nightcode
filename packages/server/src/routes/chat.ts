@@ -24,28 +24,16 @@ import {
 
 import { ingestAIUsage, getAvailableCreditsBalance, getCachedCreditsBalance } from "../lib/polar";
 import { buildSystemPrompt } from "../system-prompt";
+import { estimateTokens } from "../lib/prompt-optimizer";
 import { calculateCreditsForUsage } from "../lib/credits";
 import type { AuthenticatedEnv } from "../middleware/require-auth";
-import { isSupportedChatModel, resolveChatModel } from "../lib/models";
+import { isSupportedChatModel, resolveChatModel, type ResolvedModel } from "../lib/models";
 import { generateSessionTitle } from "../lib/generate-session-title";
+import { withFallback } from "../lib/fallback";
+import { serverDebug } from "../lib/debug";
 
 const MAX_SESSION_MESSAGES = 50;
 const MAX_STREAM_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 1000;
-
-function isRetryableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const msg = error.message.toLowerCase();
-        if (msg.includes("429") || msg.includes("rate limit")) return true;
-        if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("504")) return true;
-        if (msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("socket hang up")) return true;
-    }
-    if (typeof error === "object" && error !== null && "statusCode" in error) {
-        const status = (error as { statusCode: number }).statusCode;
-        return status === 429 || status >= 500;
-    }
-    return false;
-}
 
 const mcpToolSchema = z.object({
     name: z.string(),
@@ -59,6 +47,7 @@ type ChatMessageMetadata = {
     model?: string,
     durationMs?: number,
     usage?: LanguageModelUsage,
+    note?: string,
 };
 
 type NightCodeUIMessage = UIMessage<ChatMessageMetadata, never, InferUITools<ToolContracts>>;
@@ -104,6 +93,14 @@ const app = new Hono<AuthenticatedEnv>()
             const userId = c.get("userId");
             const { id, messages, mode, model, mcpTools, projectContext } = c.req.valid("json");
 
+            serverDebug.log("chat", "Request received", {
+                sessionId: id,
+                mode,
+                model,
+                messageCount: messages.length,
+                hasMcpTools: !!mcpTools?.length,
+            });
+
             const session = await db.session.findUnique({
                 where: { id, userId }
             });
@@ -123,6 +120,9 @@ const app = new Hono<AuthenticatedEnv>()
             }
 
             const startTime = Date.now();
+            const systemPrompt = buildSystemPrompt({ mode, projectContext, currentModel: model });
+            const tokenCount = estimateTokens(systemPrompt);
+            serverDebug.log("chat", `system prompt: ${tokenCount} tokens (~${(tokenCount * 4 / 1024).toFixed(1)}KB)`);
             const builtinTools = getToolContracts(mode);
 
             // Merge MCP tools (dynamic, from the CLI) with built-in tools
@@ -137,7 +137,6 @@ const app = new Hono<AuthenticatedEnv>()
             const tools = dynamicTools && Object.keys(dynamicTools).length > 0
                 ? { ...builtinTools, ...dynamicTools }
                 : builtinTools;
-            const resolvedModel = resolveChatModel(model);
             const previousMessage = Array.isArray(session.messages)
                 ? (session.messages as unknown as NightCodeUIMessage[])
                 : [];
@@ -188,44 +187,39 @@ const app = new Hono<AuthenticatedEnv>()
             });
             const modelMessages = await convertToModelMessages(nextMessages, { tools });
             let completedUsage: LanguageModelUsage | null = null;
+            let actualModel: ResolvedModel = await resolveChatModel(model);
 
-            const result = await (async function attemptStream() {
-                for (let attempt = 1; attempt <= MAX_STREAM_RETRIES; attempt++) {
-                    try {
-                        return streamText({
-                            model: resolvedModel.model,
-                            system: buildSystemPrompt({ mode, projectContext, currentModel: model }),
-                            messages: modelMessages,
-                            tools,
-                            providerOptions: resolvedModel.providerOptions,
-                            abortSignal: AbortSignal.timeout(180_000),
-                            onFinish: (event) => {
-                                completedUsage = event.totalUsage;
-                            },
-                        });
-                    } catch (error) {
-                        const errorType = error instanceof Error ? error.constructor.name : "UnknownError";
-                        const errorDetail = error instanceof Error ? error.message : String(error);
+            serverDebug.log("chat", "Starting stream", { model, fallbackModel: model });
 
-                        if (attempt < MAX_STREAM_RETRIES && isRetryableError(error)) {
-                            const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
-                            console.warn(`[chat] streamText attempt ${attempt}/${MAX_STREAM_RETRIES} failed (${errorType}): ${errorDetail} — retrying in ${delay}ms`);
-                            await new Promise((r) => setTimeout(r, delay));
-                            continue;
-                        }
-
-                        console.error(`[chat] streamText failed after ${attempt} attempt(s) (${errorType}): ${errorDetail}`);
-                        throw error;
-                    }
-                }
-                throw new Error("streamText failed after retries");
-            })();
+            const { result, modelUsed, fallbackTriggered, note } = await withFallback(
+                async (modelId) => {
+                    const resolved = await resolveChatModel(modelId);
+                    actualModel = resolved;
+                    return streamText({
+                        model: resolved.model,
+                        system: systemPrompt,
+                        messages: modelMessages,
+                        tools,
+                        providerOptions: resolved.providerOptions,
+                        abortSignal: AbortSignal.timeout(180_000),
+                        onFinish: (event) => {
+                            completedUsage = event.totalUsage;
+                        },
+                    });
+                },
+                model,
+                MAX_STREAM_RETRIES,
+            );
 
             return result.toUIMessageStreamResponse<NightCodeUIMessage>({
                 originalMessages: nextMessages,
                 messageMetadata({ part }) {
                     if (part.type === "start") {
-                        return { mode, model };
+                        return {
+                            mode,
+                            model: fallbackTriggered ? modelUsed : model,
+                            ...(note ? { note } : {}),
+                        };
                     }
 
                     if (part.type !== "finish") {
@@ -234,22 +228,27 @@ const app = new Hono<AuthenticatedEnv>()
 
                     return {
                         mode,
-                        model,
+                        model: fallbackTriggered ? modelUsed : model,
                         durationMs: Date.now() - startTime,
                         ...(completedUsage ? { usage: completedUsage } : {}),
+                        ...(note ? { note } : {}),
                     };
                 },
                 async onFinish(event) {
+                    // Always persist messages (including partial results from interrupted streams)
+                    if (!hasPendingToolCalls(event.responseMessage)) {
+                        await db.session.update({
+                            where: { id, userId },
+                            data: {
+                                messages: event.messages as unknown as Prisma.InputJsonValue
+                            }
+                        });
+                    }
+
+                    // Skip title generation and billing for aborted streams
                     if (event.isAborted) return;
 
                     if (hasPendingToolCalls(event.responseMessage)) return;
-
-                    await db.session.update({
-                        where: { id, userId },
-                        data: {
-                            messages: event.messages as unknown as Prisma.InputJsonValue
-                        }
-                    });
 
                     // Auto-generate title on first exchange (session had no prior messages)
                     if (previousMessage.length === 0) {
@@ -274,8 +273,8 @@ const app = new Hono<AuthenticatedEnv>()
 
                     try {
                         const billableUsage = calculateCreditsForUsage({
-                            provider: resolvedModel.provider,
-                            model: resolvedModel.modelId,
+                            provider: actualModel.provider,
+                            model: actualModel.modelId,
                             usage: completedUsage,
                         });
 

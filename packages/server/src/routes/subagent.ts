@@ -48,7 +48,7 @@ const app = new Hono<AuthenticatedEnv>()
             }
 
             const startTime = Date.now();
-            const resolvedModel = resolveSubagentChatModel(model);
+            const resolvedModel = await resolveSubagentChatModel(model);
             const tools = getToolContracts(mode);
 
             const nextMessages = await validateUIMessages<NightCodeUIMessage>({
