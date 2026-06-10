@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 
 import { TextAttributes } from "@opentui/core";
-import { loadMcpServers, type McpServer } from "@/lib/settings";
+import { loadMcpServers, type McpServer, getTransportType } from "@/lib/settings";
 import { isConnected, getServerToolCount } from "@/lib/mcp-client";
+import { mcpHealth } from "@/lib/mcp-health";
 import { useTheme } from "@/providers/theme";
 
 export function McpDialogContent() {
@@ -31,12 +32,14 @@ export function McpDialogContent() {
         <box flexDirection="column" gap={1}>
             {servers.map((server: McpServer) => {
                 const connected = isConnected(server.name);
+                const healthy = mcpHealth.isHealthy(server.name);
                 const toolCount = getServerToolCount(server.name);
+                const health = mcpHealth.getHealth(server.name);
                 return (
                     <box key={server.name} flexDirection="column" gap={0}>
                         <box flexDirection="row" gap={2} height={1}>
-                            <text fg={connected ? colors.success : colors.dimSeparator}>
-                                {connected ? "●" : "○"}
+                            <text fg={connected && healthy ? colors.success : colors.error}>
+                                {connected && healthy ? "●" : "○"}
                             </text>
                             <text>{server.name}</text>
                             {connected && toolCount > 0 ? (
@@ -44,9 +47,16 @@ export function McpDialogContent() {
                                     {`${toolCount} tool${toolCount !== 1 ? "s" : ""}`}
                                 </text>
                             ) : null}
+                            {health && !healthy && health.lastError ? (
+                                <text attributes={TextAttributes.DIM} fg={colors.error}>
+                                    {`(reconnect ${health.reconnectAttempts}/${3})`}
+                                </text>
+                            ) : null}
                         </box>
                         <text attributes={TextAttributes.DIM} fg={colors.dimSeparator} paddingLeft={3}>
-                            {server.config.command} {(server.config.args ?? []).join(" ")}
+                            {getTransportType(server.config) === "http"
+                                ? server.config.url
+                                : `${server.config.command} ${(server.config.args ?? []).join(" ")}`}
                         </text>
                     </box>
                 );
