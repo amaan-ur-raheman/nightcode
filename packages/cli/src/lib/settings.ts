@@ -1,11 +1,15 @@
-import { readFileSync, existsSync, statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
 export type McpServerConfig = {
-    command: string;
+    // Stdio transport
+    command?: string;
     args?: string[];
     env?: Record<string, string>;
+    // HTTP/SSE transport
+    url?: string;
+    headers?: Record<string, string>;
 };
 
 export type McpServer = {
@@ -14,9 +18,69 @@ export type McpServer = {
     toolCount?: number;
 };
 
+export function getTransportType(config: McpServerConfig): "http" | "stdio" {
+    return config.url ? "http" : "stdio";
+}
+
 export type Settings = {
     mcp?: {
         servers: Record<string, McpServerConfig>;
+    };
+    session?: {
+        activeMcpServers?: string[];
+    };
+    audit?: {
+        enabled: boolean;
+        retentionDays: number;
+    };
+    confirmations?: {
+        enabled: boolean;
+        alwaysConfirm?: string[];
+        neverConfirm?: string[];
+    };
+    keychain?: {
+        enabled: boolean;
+        fallbackToEnv: boolean;
+    };
+    debug?: {
+        enabled: boolean;
+        verbose: boolean;
+        retentionDays: number;
+    };
+    syntaxHighlight?: {
+        enabled: boolean;
+    };
+    env?: {
+        defaultFile?: string;
+        protectedVars?: string[];
+    };
+    reasoning?: {
+        enabled: boolean;
+        mode: "auto" | "always" | "never";
+    };
+    theme?: {
+        name: string;
+        isCustom?: boolean;
+    };
+    batch?: {
+        enabled: boolean;
+        maxBatchSize?: number;
+        maxWaitTime?: number;
+        enabledTools?: string[];
+    };
+    snapshots?: {
+        enabled: boolean;
+        autoUpdate?: boolean;
+    };
+    analytics?: {
+        enabled: boolean;
+        retainDays?: number;
+    };
+    queue?: {
+        enabled: boolean;
+        maxConcurrent?: number;
+        maxRetries?: number;
+        retryDelay?: number;
     };
 };
 
@@ -47,6 +111,30 @@ export function loadSettings(): Settings {
     }
 }
 
+export function saveSettings(settings: Settings): void {
+    try {
+        mkdirSync(join(homedir(), ".nightcode"), { recursive: true });
+        writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf8");
+        _cachedSettings = settings;
+        _cachedMtime = statSync(SETTINGS_PATH).mtimeMs;
+    } catch {
+        // ignore
+    }
+}
+
+export function isConfirmationEnabled(): boolean {
+    const settings = loadSettings();
+    return settings.confirmations?.enabled ?? true;
+}
+
+export function toggleConfirmations(): boolean {
+    const settings = loadSettings();
+    const enabled = !(settings.confirmations?.enabled ?? true);
+    settings.confirmations = { ...settings.confirmations, enabled };
+    saveSettings(settings);
+    return enabled;
+}
+
 export function loadMcpServers(): McpServer[] {
     const settings = loadSettings();
     if (!settings.mcp?.servers) return [];
@@ -58,4 +146,22 @@ export function loadMcpServers(): McpServer[] {
         }
         return [{ name, config }];
     });
+}
+
+export function isReasoningEnabled(): boolean {
+    const settings = loadSettings();
+    return settings.reasoning?.enabled ?? false;
+}
+
+export function toggleReasoning(): boolean {
+    const settings = loadSettings();
+    const enabled = !(settings.reasoning?.enabled ?? false);
+    settings.reasoning = { ...settings.reasoning, enabled, mode: settings.reasoning?.mode ?? "auto" };
+    saveSettings(settings);
+    return enabled;
+}
+
+export function getReasoningMode(): "auto" | "always" | "never" {
+    const settings = loadSettings();
+    return settings.reasoning?.mode ?? "auto";
 }
