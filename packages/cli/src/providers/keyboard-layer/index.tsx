@@ -49,9 +49,8 @@ export function KeyboardLayerProvider({ children }: { children: React.ReactNode 
     }, []);
 
     const isTopLayer = useCallback((id: string) => {
-        const s = stackRef.current;
-        return s.length === 0 || s[s.length - 1] === id;
-    }, []);
+        return stack.length === 0 || stack[stack.length - 1] === id;
+    }, [stack]);
 
     const setResponder = useCallback((id: string, responder: Responder | null) => {
         if (responder) {
