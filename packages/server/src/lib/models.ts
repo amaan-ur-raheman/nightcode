@@ -1,4 +1,5 @@
 import type { LanguageModel } from "ai";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import {
     findSupportedChatModel,
@@ -8,6 +9,8 @@ import {
 } from "@nightcode/shared";
 
 import { nim, nimSubagent } from "./nim";
+import { getProviderClient, getProviderName } from "./providers";
+import { requestQueue } from "./request-queue";
 
 type NimModelId = Extract<SupportedChatModel, { provider: "nvidia" }>["id"];
 
@@ -60,27 +63,46 @@ const NIM_PROVIDER_OPTIONS: Partial<Record<NimModelId, ProviderOptions>> = {
     },
 };
 
-function assertUnsupportedProvider(provider: never): never {
-    throw new Error(`Unsupported provider: ${provider}`);
+function wrapWithQueue(model: LanguageModelV3): LanguageModel {
+    return {
+        ...model,
+        doGenerate: async (params: any): Promise<any> => await requestQueue.enqueue(() => Promise.resolve(model.doGenerate(params))),
+        doStream: async (params: any): Promise<any> => await requestQueue.enqueue(() => Promise.resolve(model.doStream(params))),
+    } as any;
 }
 
-function resolveNimModel(modelId: NimModelId, subagent = false): ResolvedModel {
+async function resolveNimModel(modelId: NimModelId, subagent = false): Promise<ResolvedModel> {
+    const rawModel = subagent ? await nimSubagent(modelId) : await nim(modelId);
     return {
-        model: subagent ? nimSubagent(modelId) : nim(modelId),
+        model: wrapWithQueue(rawModel),
         provider: "nvidia",
         modelId,
         providerOptions: NIM_PROVIDER_OPTIONS[modelId],
     };
 }
 
-function resolveSupportedChatModel(model: SupportedChatModel, subagent = false): ResolvedModel {
+async function resolveThirdPartyModel(model: SupportedChatModel, subagent = false): Promise<ResolvedModel> {
+    const client = await getProviderClient(model.id);
+    return {
+        model: wrapWithQueue(client),
+        provider: model.provider,
+        modelId: model.id,
+    };
+}
+
+async function resolveSupportedChatModel(model: SupportedChatModel, subagent = false): Promise<ResolvedModel> {
     const provider = model.provider;
 
     switch (provider) {
         case "nvidia":
-            return resolveNimModel(model.id, subagent);
+            return resolveNimModel(model.id as NimModelId, subagent);
+        case "anthropic":
+        case "openai":
+        case "groq":
+            return resolveThirdPartyModel(model, subagent);
         default:
-            return assertUnsupportedProvider(provider);
+            const _exhaustive: never = provider;
+            throw new Error(`Unsupported provider: ${_exhaustive}`);
     }
 }
 
@@ -88,13 +110,13 @@ export function isSupportedChatModel(modelId: string): modelId is SupportedChatM
     return findSupportedChatModel(modelId) !== undefined;
 }
 
-export function resolveChatModel(modelId: string): ResolvedModel {
+export async function resolveChatModel(modelId: string): Promise<ResolvedModel> {
     const model = findSupportedChatModel(modelId);
     if (!model) throw new Error(`Unsupported model: ${modelId}`);
     return resolveSupportedChatModel(model);
 }
 
-export function resolveSubagentChatModel(modelId: string): ResolvedModel {
+export async function resolveSubagentChatModel(modelId: string): Promise<ResolvedModel> {
     const model = findSupportedChatModel(modelId);
     if (!model) throw new Error(`Unsupported model: ${modelId}`);
     return resolveSupportedChatModel(model, true);
