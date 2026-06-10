@@ -15,6 +15,11 @@ const newSessionStateSchema = z.object({
     message: z.string(),
     mode: modeSchema,
     model: z.string(),
+    imageAttachments: z.array(z.object({
+        dataUrl: z.string(),
+        mimeType: z.string(),
+        name: z.string(),
+    })).optional(),
 });
 
 export function NewSession() {
@@ -82,7 +87,7 @@ export function NewSession() {
 
     return (
         <SessionShell onSubmit={() => {}} inputDisabled loading>
-            <UserMessage message={state.message} mode={state.mode} />
+            <UserMessage message={state.message} mode={state.mode} imageCount={state.imageAttachments?.length ?? 0} />
         </SessionShell>
     );
 }
