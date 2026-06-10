@@ -7,9 +7,7 @@ dist
 *.tgz
 
 # CLI build artifacts
-packages/cli/bin/*.js
-packages/cli/bin/*.wasm
-packages/cli/bin/*.scm
+packages/cli/bin/
 
 # code coverage
 coverage
