@@ -15,4 +15,10 @@ export {
     getToolContracts,
     type ToolContracts,
     type ModeType,
+    type ImageContent,
+    type TextContent,
+    type MessageContent,
+    type ConversationBranch,
 } from "./schemas";
+
+export { keychain } from "./keychain";

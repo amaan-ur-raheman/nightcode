@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { TextAttributes } from "@opentui/core";
@@ -10,17 +10,36 @@ import { useTheme } from "@/providers/theme";
 import { Header } from "@/components/header";
 import { InputBar } from "@/components/input-bar";
 import { KeyHint } from "@/components/key-hint";
+import type { ImageAttachment } from "@/hooks/use-chat";
+
+import { readLastSession } from "@/index";
 
 type HomeProps = {
     savedSession?: { id: string; title: string } | null;
 };
 
-export function Home({ savedSession }: HomeProps) {
+export function Home({ savedSession: initialSavedSession }: HomeProps) {
     const navigate = useNavigate();
     const renderer = useRenderer();
     const { mode, model } = usePromptConfig();
     const { colors } = useTheme();
     const { isTopLayer } = useKeyboardLayer();
+
+    const [savedSession, setSavedSession] = useState<{ id: string; title: string } | null>(initialSavedSession ?? null);
+
+    useEffect(() => {
+        setSavedSession(readLastSession());
+    }, []);
+
+    const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
+
+    const handleAddImage = useCallback((attachment: ImageAttachment) => {
+        setImageAttachments((prev) => [...prev, attachment]);
+    }, []);
+
+    const handleRemoveImage = useCallback((index: number) => {
+        setImageAttachments((prev) => prev.filter((_, i) => i !== index));
+    }, []);
 
     // Pre-warm common tools during idle so first tool call is instant
     useEffect(() => {
@@ -37,8 +56,8 @@ export function Home({ savedSession }: HomeProps) {
     }, []);
 
     const handleSubmit = useCallback((text: string) => {
-        navigate("/sessions/new", { state: { message: text, mode, model } });
-    }, [navigate, mode, model]);
+        navigate("/sessions/new", { state: { message: text, mode, model, imageAttachments } });
+    }, [navigate, mode, model, imageAttachments]);
 
     useKeyboard((key) => {
         if (!isTopLayer("base")) return;
@@ -74,7 +93,12 @@ export function Home({ savedSession }: HomeProps) {
                         </text>
                     </box>
                 ) : null}
-                <InputBar onSubmit={handleSubmit} />
+                <InputBar
+                    onSubmit={handleSubmit}
+                    imageAttachments={imageAttachments}
+                    onAddImage={handleAddImage}
+                    onRemoveImage={handleRemoveImage}
+                />
                 <box flexDirection="column" gap={1} marginTop={1}>
                     <box flexDirection="row" gap={1} flexShrink={0} marginLeft="auto">
                         <KeyHint keyName="tab" label="agents" />

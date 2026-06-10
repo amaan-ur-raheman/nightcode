@@ -37,7 +37,7 @@ export async function spawnAgentTool(
 
     const combinedController = new AbortController();
     const onTimeout = () => combinedController.abort(timeoutController.signal.reason);
-    const onCaller  = () => combinedController.abort(signal!.reason);
+    const onCaller  = () => combinedController.abort(signal?.reason);
     timeoutController.signal.addEventListener("abort", onTimeout, { once: true });
     signal?.addEventListener("abort", onCaller, { once: true });
 

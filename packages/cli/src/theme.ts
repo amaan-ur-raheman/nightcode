@@ -19,6 +19,18 @@ export type Theme = {
     colors: ThemeColors;
 };
 
+export type CustomTheme = {
+    name: string;
+    colors: ThemeColors;
+    createdAt: string;
+};
+
+export function getThemeByName(name: string): Theme | CustomTheme | undefined {
+    const builtin = THEMES.find((t) => t.name === name);
+    if (builtin) return builtin;
+    return undefined; // custom themes handled by ThemeManager
+}
+
 export const THEMES: Theme[] = [
     {
         name: "Nightfox",

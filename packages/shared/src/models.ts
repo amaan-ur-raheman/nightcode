@@ -3,7 +3,7 @@ export type ModelPricing = {
     outputUsdPerMillionTokens: number;
 };
 
-export type SupportedProvider = "nvidia";
+export type SupportedProvider = "nvidia" | "anthropic" | "openai" | "groq";
 
 type SupportedChatModelDefinition = {
     id: string;
@@ -12,6 +12,7 @@ type SupportedChatModelDefinition = {
 };
 
 export const SUPPORTED_CHAT_MODELS = [
+    // ── NVIDIA NIM ──
     {
         id: "nvidia/nemotron-3-ultra-550b-a55b",
         provider: "nvidia",
@@ -146,6 +147,68 @@ export const SUPPORTED_CHAT_MODELS = [
         pricing: {
             inputUsdPerMillionTokens: 0,
             outputUsdPerMillionTokens: 0,
+        },
+    },
+
+    // ── Anthropic ──
+    {
+        id: "claude-sonnet-4-20250514",
+        provider: "anthropic",
+        pricing: {
+            inputUsdPerMillionTokens: 3,
+            outputUsdPerMillionTokens: 15,
+        },
+    },
+    {
+        id: "claude-3-5-haiku-20241022",
+        provider: "anthropic",
+        pricing: {
+            inputUsdPerMillionTokens: 0.8,
+            outputUsdPerMillionTokens: 4,
+        },
+    },
+
+    // ── OpenAI ──
+    {
+        id: "gpt-4o",
+        provider: "openai",
+        pricing: {
+            inputUsdPerMillionTokens: 2.5,
+            outputUsdPerMillionTokens: 10,
+        },
+    },
+    {
+        id: "gpt-4o-mini",
+        provider: "openai",
+        pricing: {
+            inputUsdPerMillionTokens: 0.15,
+            outputUsdPerMillionTokens: 0.6,
+        },
+    },
+    {
+        id: "o3-mini",
+        provider: "openai",
+        pricing: {
+            inputUsdPerMillionTokens: 1.1,
+            outputUsdPerMillionTokens: 4.4,
+        },
+    },
+
+    // ── Groq ──
+    {
+        id: "llama-3.3-70b-versatile",
+        provider: "groq",
+        pricing: {
+            inputUsdPerMillionTokens: 0.59,
+            outputUsdPerMillionTokens: 0.79,
+        },
+    },
+    {
+        id: "mixtral-8x7b-32768",
+        provider: "groq",
+        pricing: {
+            inputUsdPerMillionTokens: 0.24,
+            outputUsdPerMillionTokens: 0.24,
         },
     },
 ] as const satisfies readonly SupportedChatModelDefinition[];

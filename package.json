@@ -10,9 +10,16 @@
         "dev:server": "bun run --hot packages/server/src/index.ts",
         "build:cli": "bun run --filter @nightcode/cli build",
         "link:cli": "bun run build:cli && cd packages/cli && bun link",
-        "start": "mprocs"
+        "start": "mprocs",
+        "test": "bun run --filter '*' test",
+        "test:cli": "cd packages/cli && bun run test",
+        "test:server": "cd packages/server && bun run test",
+        "typecheck": "bun run --filter '*' typecheck"
     },
     "dependencies": {
         "dotenv": "^17.4.2"
+    },
+    "devDependencies": {
+        "typescript": "^6.0.3"
     }
 }

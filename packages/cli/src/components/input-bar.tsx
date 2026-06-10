@@ -2,16 +2,19 @@ import { useNavigate } from "react-router";
 import { useRef, useCallback, useEffect } from "react";
 
 import { Mode } from "@nightcode/shared";
-import { useRenderer, useKeyboard } from "@opentui/react";
-import type { KeyBinding, TextareaRenderable } from "@opentui/core";
+import { useRenderer, useKeyboard, usePaste } from "@opentui/react";
+import { decodePasteBytes } from "@opentui/core";
+import { TextAttributes, type KeyBinding, type TextareaRenderable } from "@opentui/core";
 
 import { loadSkillContent } from "@/lib/skills";
 import { getModeColor } from "@/lib/mode-utils";
+import { imageHandler } from "@/lib/image-handler";
 import { useTheme } from "@/providers/theme";
 import { useToast } from "@/providers/toast";
 import { useDialog } from "@/providers/dialog";
 import { usePromptConfig } from "@/providers/prompt-config";
 import { useKeyboardLayer } from "@/providers/keyboard-layer";
+import { useFileTree } from "@/providers/file-tree";
 
 import { EmptyBorder } from "@/components/border";
 import { StatusBar } from "@/components/status-bar";
@@ -21,6 +24,7 @@ import { useCommandMenu } from "@/components/command-menu/use-command-menu";
 import { FileMentionMenu } from "@/components/file-mention";
 import { useFileMention } from "@/components/file-mention/use-file-mention";
 import { ShortcutsDialogContent } from "@/components/dialog/shortcuts-dialog";
+import type { ImageAttachment } from "@/hooks/use-chat";
 
 export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
     { name: "return", action: "submit" },
@@ -29,15 +33,29 @@ export const TEXTAREA_KEY_BINDINGS: KeyBinding[] = [
     { name: "enter", shift: true, action: "newline" },
 ]
 
+type TokenUsage = {
+    inputTokens: number;
+    outputTokens: number;
+    totalCost: number;
+    hasActivity: boolean;
+};
+
 type InputBarProps = {
     onSubmit: (value: string) => void;
     disabled?: boolean;
     onClear?: () => void;
     messageCount?: number;
     sessionTitle?: string;
+    tokenUsage?: TokenUsage;
+    onCreateBranch?: () => void;
+    onSwitchBranch?: (branchId: string) => void;
+    imageAttachments?: ImageAttachment[];
+    onAddImage?: (attachment: ImageAttachment) => void;
+    onRemoveImage?: (index: number) => void;
+    sessionId?: string;
 }
 
-export function InputBar({ onSubmit, disabled = false, onClear, messageCount, sessionTitle }: InputBarProps) {
+export function InputBar({ onSubmit, disabled = false, onClear, messageCount, sessionTitle, tokenUsage, onCreateBranch, onSwitchBranch, imageAttachments = [], onAddImage, onRemoveImage, sessionId }: InputBarProps) {
     const textareaRef = useRef<TextareaRenderable>(null);
     const onSubmitRef = useRef<() => void>(() => { });
 
@@ -48,6 +66,7 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
     const { colors } = useTheme();
     const navigate = useNavigate();
     const { mode, toggleMode, setModel, setMode } = usePromptConfig();
+    const { toggleFileTree } = useFileTree();
 
     const {
         showCommandMenu,
@@ -57,7 +76,9 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
         handleContentChange,
         resolveCommand,
         setSelectedIndex: setCommandSelectedIndex,
-    } = useCommandMenu();
+        trackRecent,
+        items: commandItems,
+    } = useCommandMenu(sessionId);
 
     const {
         showMentionMenu,
@@ -101,6 +122,7 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
     const handleCommand = useCallback((command: Command | undefined) => {
         const textarea = textareaRef.current;
         if (!command || !textarea) return;
+        trackRecent(command.value).catch(() => {});
         textarea.setText("");
         if (command.action) {
             command.action({
@@ -116,11 +138,15 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
                     textarea.cursorOffset = value.length;
                 },
                 clearMessages: () => { onClear?.(); },
+                createBranch: () => { onCreateBranch?.(); },
+                switchBranch: (branchId: string) => { onSwitchBranch?.(branchId); },
+                toggleFileTree,
+                sessionId,
             });
         } else {
             textarea.insertText(command.value + " ");
         }
-    }, [renderer, toast, dialog, navigate, mode, setMode, setModel, onClear]);
+    }, [renderer, toast, dialog, navigate, mode, setMode, setModel, onClear, onCreateBranch, onSwitchBranch, toggleFileTree, sessionId, trackRecent]);
 
     const handleCommandExecute = useCallback((index: number) => {
         handleCommand(resolveCommand(index));
@@ -165,20 +191,86 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
         handleSubmit();
     };
 
+    const handleAttachImage = useCallback(async () => {
+        const textarea = textareaRef.current;
+        if (!textarea || !onAddImage) return;
+
+        // Prompt for file path using a simple approach: user types the path in the textarea
+        // We'll intercept the current text as a file path
+        let filePath = textarea.plainText.trim();
+        if (!filePath) {
+            toast.show({ message: "Type an image file path, then press Ctrl+A to attach", variant: "info" });
+            return;
+        }
+
+        // Clean up quotes from dragging/dropping files
+        if ((filePath.startsWith("'") && filePath.endsWith("'")) || (filePath.startsWith("\"") && filePath.endsWith("\""))) {
+            filePath = filePath.slice(1, -1);
+        }
+
+        if (!imageHandler.isSupportedImage(filePath)) {
+            toast.show({ message: "Unsupported image format. Use PNG, JPEG, GIF, WebP, SVG, or BMP.", variant: "error" });
+            return;
+        }
+
+        try {
+            const { dataUrl, mimeType } = await imageHandler.fileToDataUrl(filePath);
+            if (!imageHandler.validateSize(dataUrl)) {
+                toast.show({ message: "Image too large. Maximum size is 10MB.", variant: "error" });
+                return;
+            }
+            onAddImage({
+                dataUrl,
+                mimeType,
+                name: imageHandler.getDisplayName(filePath),
+            });
+            textarea.setText("");
+            toast.show({ message: `Attached: ${imageHandler.getDisplayName(filePath)}`, variant: "success" });
+        } catch (err) {
+            toast.show({
+                message: err instanceof Error ? err.message : "Failed to read image file",
+                variant: "error",
+            });
+        }
+    }, [onAddImage, toast]);
+
     useKeyboard((key) => {
         if (disabled) return;
-        if (!isTopLayer("base")) return;
+        if (!isTopLayer("base") && !isTopLayer("command") && !isTopLayer("mention")) return;
 
         if (key.name === "tab") {
             key.preventDefault();
             toggleMode();
         }
 
+        if (key.ctrl && (key.name === "a" || key.name === "i")) {
+            key.preventDefault();
+            handleAttachImage();
+            return;
+        }
+
+        if (key.ctrl && key.name === "p") {
+            key.preventDefault();
+            const textarea = textareaRef.current;
+            if (textarea && textarea.plainText.trim().length === 0) {
+                textarea.setText("/");
+            }
+            return;
+        }
+
         if (key.name === "slash" && !key.ctrl) {
             // Don't intercept if typing in textarea
         }
 
-        if (key.name === "?" && key.ctrl) {
+        const isCtrlQuestionOrSlash =
+            (key.ctrl && (key.name === "slash" || key.name === "/" || key.name === "?" || key.name === "_")) ||
+            key.sequence === "\x1f" ||
+            key.sequence === "\u001f" ||
+            key.raw === "\u001f" ||
+            key.raw === "\u001b[47;9u" ||
+            key.raw === "\u001b[47;5u";
+
+        if (isCtrlQuestionOrSlash) {
             key.preventDefault();
             dialog.open({
                 title: "Keyboard Shortcuts",
@@ -187,11 +279,68 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
             return;
         }
 
+        if (key.name === "t" && key.ctrl && sessionId) {
+            key.preventDefault();
+            toggleFileTree();
+            return;
+        }
+
         if (key.name === "backspace" && !showMentionMenu) {
+            const textarea = textareaRef.current;
+            if (textarea && textarea.plainText.length === 0) {
+                if (imageAttachments.length > 0 && onRemoveImage) {
+                    key.preventDefault();
+                    onRemoveImage(imageAttachments.length - 1);
+                    return;
+                }
+            }
             if (handleMentionBackspace()) {
                 key.preventDefault();
             }
         }
+    });
+
+    // Auto-attach image files when pasted as file paths
+    usePaste((event) => {
+        if (disabled || !onAddImage) return;
+
+        const text = decodePasteBytes(event.bytes).trim();
+        if (!text || !imageHandler.isImagePath(text)) return;
+
+        event.preventDefault();
+
+        (async () => {
+            let filePath = text;
+
+            // Clean up quotes from dragging/dropping files
+            if ((filePath.startsWith("'") && filePath.endsWith("'")) || (filePath.startsWith("\"") && filePath.endsWith("\""))) {
+                filePath = filePath.slice(1, -1);
+            }
+
+            if (!imageHandler.isSupportedImage(filePath)) {
+                toast.show({ message: "Unsupported image format. Use PNG, JPEG, GIF, WebP, SVG, or BMP.", variant: "error" });
+                return;
+            }
+
+            try {
+                const { dataUrl, mimeType } = await imageHandler.fileToDataUrl(filePath);
+                if (!imageHandler.validateSize(dataUrl)) {
+                    toast.show({ message: "Image too large. Maximum size is 10MB.", variant: "error" });
+                    return;
+                }
+                onAddImage({
+                    dataUrl,
+                    mimeType,
+                    name: imageHandler.getDisplayName(filePath),
+                });
+                toast.show({ message: `Attached: ${imageHandler.getDisplayName(filePath)}`, variant: "success" });
+            } catch (err) {
+                toast.show({
+                    message: err instanceof Error ? err.message : "Failed to read image file",
+                    variant: "error",
+                });
+            }
+        })();
     });
 
     useEffect(() => {
@@ -243,6 +392,7 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
                                 scrollRef={commandScrollRef}
                                 onSelect={setCommandSelectedIndex}
                                 onExecute={handleCommandExecute}
+                                items={commandItems}
                             />
                         </box>
                     )}
@@ -264,19 +414,56 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
                             />
                         </box>
                     )}
-                    <textarea
-                        width="100%"
-                        ref={textareaRef}
-                        focused={!disabled && (isTopLayer("base") || isTopLayer("command") || isTopLayer("mention"))}
-                        keyBindings={TEXTAREA_KEY_BINDINGS}
-                        onContentChange={handleTextareaContentChange}
-                        onCursorChange={handleTextareaCursorChange}
-                        placeholder={mode === Mode.PLAN
-                            ? "Describe what to plan... (@ for files)"
-                            : "Describe what to build... (@ for files)"
-                        }
-                    />
-                    <StatusBar messageCount={messageCount} sessionTitle={sessionTitle} />
+                    <box flexDirection="row" alignItems="center" gap={1}>
+                        {imageAttachments.length > 0 && (
+                            <box flexDirection="row" gap={1} flexShrink={0}>
+                                {imageAttachments.map((img, i) => {
+                                    const ext = img.name.split(".").pop()?.toUpperCase() ?? "IMG";
+                                    const maxNameLen = 20;
+                                    const displayName = img.name.length > maxNameLen
+                                        ? img.name.slice(0, maxNameLen) + "…"
+                                        : img.name;
+                                    return (
+                                        <box key={`img-${img.name}-${i}`} flexDirection="row" alignItems="center" gap={0}>
+                                            <box
+                                                backgroundColor={colors.planMode}
+                                                paddingLeft={1}
+                                                paddingRight={1}
+                                            >
+                                                <text fg="black" attributes={TextAttributes.BOLD}>{ext}</text>
+                                            </box>
+                                            <text>
+                                                {" "}{displayName}
+                                            </text>
+                                            {onRemoveImage && (
+                                                <text
+                                                    {...{
+                                                        onClick: () => onRemoveImage(i),
+                                                        fg: colors.dimSeparator,
+                                                    } as any}
+                                                >
+                                                    {" ×"}
+                                                </text>
+                                            )}
+                                        </box>
+                                    );
+                                })}
+                            </box>
+                        )}
+                        <textarea
+                            flexGrow={1}
+                            ref={textareaRef}
+                            focused={!disabled && (isTopLayer("base") || isTopLayer("command") || isTopLayer("mention"))}
+                            keyBindings={TEXTAREA_KEY_BINDINGS}
+                            onContentChange={handleTextareaContentChange}
+                            onCursorChange={handleTextareaCursorChange}
+                            placeholder={mode === Mode.PLAN
+                                ? "Describe what to plan... (@ for files)"
+                                : "Describe what to build... (@ for files)"
+                            }
+                        />
+                    </box>
+                    <StatusBar messageCount={messageCount} sessionTitle={sessionTitle} tokenUsage={tokenUsage} />
                 </box>
             </box>
         </box>

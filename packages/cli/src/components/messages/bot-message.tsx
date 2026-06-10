@@ -9,6 +9,8 @@ import { useTheme } from "@/providers/theme";
 import type { Message } from "@/hooks/use-chat";
 import { getModeColor } from "@/lib/mode-utils";
 import { getModelName } from "@/lib/model-names";
+import { highlightCode } from "@/lib/syntax-highlight";
+import { loadSettings } from "@/lib/settings";
 
 import { EmptyBorder } from "@/components/border";
 import { MarkdownText } from "@/lib/markdown";
@@ -67,6 +69,48 @@ function groupConsecutiveParts(parts: ClientMessagePart[]): PartGroup[] {
     }
 
     return groups;
+}
+
+const CODE_BLOCK_REGEX = /```(\w+)?\n([\s\S]*?)```/g;
+
+function renderHighlightedContent(text: string, colors: ReturnType<typeof useTheme>["colors"]): React.ReactNode[] {
+    const settings = loadSettings();
+    if (!settings.syntaxHighlight?.enabled) {
+        return [<MarkdownText key="md">{text}</MarkdownText>];
+    }
+
+    const nodes: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+
+    CODE_BLOCK_REGEX.lastIndex = 0;
+    while ((match = CODE_BLOCK_REGEX.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            const before = text.slice(lastIndex, match.index);
+            nodes.push(
+                <MarkdownText key={`text-${lastIndex}`}>{before}</MarkdownText>
+            );
+        }
+
+        const langHint = match[1];
+        const code = match[2]!;
+        nodes.push(
+            <box key={`code-${match.index}`} flexDirection="column" paddingX={1}>
+                {highlightCode(code, langHint, colors)}
+            </box>
+        );
+
+        lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < text.length) {
+        const remaining = text.slice(lastIndex);
+        nodes.push(
+            <MarkdownText key={`text-${lastIndex}`}>{remaining}</MarkdownText>
+        );
+    }
+
+    return nodes.length > 0 ? nodes : [<MarkdownText key="md-fallback">{text}</MarkdownText>];
 }
 
 export const BotMessage = React.memo(function BotMessage({
@@ -136,7 +180,7 @@ export const BotMessage = React.memo(function BotMessage({
                         if (part.type === "text") {
                             return (
                                 <box key={`text-${j}`} paddingX={3} width="100%">
-                                    <MarkdownText streaming={streaming}>{part.text}</MarkdownText>
+                                    {renderHighlightedContent(part.text, colors)}
                                 </box>
                             );
                         }

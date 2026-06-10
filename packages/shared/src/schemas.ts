@@ -1,6 +1,38 @@
 import { z } from "zod";
 import { tool } from "ai";
 
+// ─── Multimodal content types ────────────────────────────────────────────────
+
+export interface ImageContent {
+    type: "image";
+    image: string; // base64 data URL
+}
+
+export interface TextContent {
+    type: "text";
+    text: string;
+}
+
+export type MessageContent = TextContent | ImageContent;
+
+// ─── Branch types ────────────────────────────────────────────────────────────
+
+export interface ConversationBranch {
+    id: string;
+    parentBranchId?: string;
+    parentMessageIndex?: number;
+    name: string;
+    createdAt: string;
+}
+
+export interface SessionWithBranches {
+    id: string;
+    branches: ConversationBranch[];
+    activeBranchId: string;
+}
+
+// ─── Modes ───────────────────────────────────────────────────────────────────
+
 export const Mode = {
     BUILD: "BUILD",
     PLAN: "PLAN",
@@ -79,6 +111,7 @@ export const toolInputSchemas = {
     }),
     runTests: z.object({
         filter: z.string().optional().describe("Optional test name filter / file pattern"),
+        runner: z.string().optional().describe("Test runner to use (e.g. 'bun test', 'npx vitest run', 'npx jest', 'pytest', 'cargo test', 'go test ./...'). Auto-detected if omitted."),
         timeout: z.number().default(60_000).describe("Timeout in milliseconds (default: 60000)"),
     }),
     codeSearch: z.object({
@@ -107,6 +140,8 @@ export const toolInputSchemas = {
         oldName: z.string().describe("Current symbol name"),
         newName: z.string().describe("New symbol name"),
         glob: z.string().describe("Glob pattern to match files (e.g. 'src/**/*.ts')"),
+        dryRun: z.boolean().optional().describe("Preview changes without applying (default: false)"),
+        fileTypes: z.array(z.string()).optional().describe("Restrict to file extensions, e.g. ['.ts', '.tsx']"),
     }),
     spawnAgent: z.object({
         task: z.string().describe("The full task description for the subagent. Crucial: The subagent does NOT share your chat history or files context automatically, so you must explicitly specify all instructions, relevant file paths, code snippets, dependencies, and expected outputs inside this description."),
@@ -136,6 +171,73 @@ export const toolInputSchemas = {
     spawnResearcher: z.object({
         question: z.string().describe("The research question or topic to investigate in the codebase"),
         model: z.string().optional().describe("Model to use. Defaults to same model as main agent."),
+    }),
+    gitCommit: z.object({
+        message: z.string().describe("Commit message"),
+        files: z.array(z.string()).optional().describe("Optional file paths to auto-stage before committing"),
+    }),
+    gitBranch: z.object({
+        action: z.enum(["create", "list", "delete", "checkout"]).describe("Branch operation to perform"),
+        name: z.string().optional().describe("Branch name (required for create/delete/checkout)"),
+    }),
+    gitLog: z.object({
+        limit: z.number().default(20).describe("Maximum number of commits to return (default: 20)"),
+        oneline: z.boolean().default(true).describe("Show one line per commit (default: true)"),
+        author: z.string().optional().describe("Filter commits by author name"),
+    }),
+    gitBlame: z.object({
+        filePath: z.string().describe("Relative path to the file"),
+        startLine: z.number().optional().describe("Start line number (1-indexed)"),
+        endLine: z.number().optional().describe("End line number (1-indexed)"),
+    }),
+    gitStatusExtended: z.object({}),
+    tokenCount: z.object({
+        text: z.string().describe("The text to count tokens for"),
+    }),
+    undo: z.object({}),
+    memorySet: z.object({
+        key: z.string().describe("Memory key (use descriptive names like 'user偏好:tabs' or 'project:db-schema')"),
+        value: z.string().describe("Value to store"),
+        tags: z.array(z.string()).optional().describe("Optional tags for categorization"),
+    }),
+    memoryGet: z.object({
+        key: z.string().describe("Memory key to retrieve"),
+    }),
+    memoryDelete: z.object({
+        key: z.string().describe("Memory key to delete"),
+    }),
+    memoryList: z.object({
+        tag: z.string().optional().describe("Optional tag to filter by"),
+    }),
+    memorySearch: z.object({
+        query: z.string().describe("Search query to find matching memories"),
+    }),
+    envManage: z.object({
+        action: z.enum(["read", "list", "add", "update", "delete"]).describe("Action to perform on the .env file"),
+        key: z.string().optional().describe("Environment variable key (required for add/update/delete)"),
+        value: z.string().optional().describe("Environment variable value (required for add/update)"),
+        file: z.string().optional().describe("Relative path to the env file (defaults to .env)"),
+    }),
+    processManage: z.object({
+        action: z.enum(["list", "kill", "list-ports"]).describe("Action: 'list' to show dev server processes, 'kill' to stop a process by PID, 'list-ports' to show listening ports"),
+        port: z.number().optional().describe("Port number to check (for list-ports action)"),
+        pid: z.number().optional().describe("Process ID to kill (for kill action)"),
+        name: z.string().optional().describe("Filter processes by name (for list action, e.g. 'node', 'vite')"),
+        force: z.boolean().default(false).describe("Force kill with SIGKILL instead of SIGTERM (for kill action)"),
+    }),
+    secretScan: z.object({
+        path: z.string().describe("Relative path to scan (file or directory)"),
+        recursive: z.boolean().default(false).describe("Scan directories recursively (default: false)"),
+    }),
+    keychainSet: z.object({
+        name: z.string().describe('Key name (e.g., "openai-api-key")'),
+        value: z.string().describe("Secret value to store"),
+    }),
+    keychainGet: z.object({
+        name: z.string().describe("Key name"),
+    }),
+    keychainDelete: z.object({
+        name: z.string().describe("Key name"),
     }),
 } as const;
 
@@ -196,6 +298,30 @@ export const readOnlyToolContracts = {
         description: "Spawn a researcher subagent to explore and summarise a codebase area, architecture question, or dependency. Runs in PLAN (read-only) mode.",
         inputSchema: toolInputSchemas.spawnResearcher,
     }),
+    tokenCount: tool({
+        description: "Count tokens in a text string and estimate API cost. Useful for checking message size before sending or understanding context window usage.",
+        inputSchema: toolInputSchemas.tokenCount,
+    }),
+    memorySet: tool({
+        description: "Store a value in persistent memory that survives across sessions. Use for user preferences, project context, API keys, or any information you need to remember.",
+        inputSchema: toolInputSchemas.memorySet,
+    }),
+    memoryGet: tool({
+        description: "Retrieve a value from persistent memory by key.",
+        inputSchema: toolInputSchemas.memoryGet,
+    }),
+    memoryDelete: tool({
+        description: "Delete a value from persistent memory by key.",
+        inputSchema: toolInputSchemas.memoryDelete,
+    }),
+    memoryList: tool({
+        description: "List all stored memory entries, optionally filtered by tag.",
+        inputSchema: toolInputSchemas.memoryList,
+    }),
+    memorySearch: tool({
+        description: "Search memory entries by key or value content.",
+        inputSchema: toolInputSchemas.memorySearch,
+    }),
 } as const;
 
 export const buildToolContracts = {
@@ -245,7 +371,7 @@ export const buildToolContracts = {
         inputSchema: toolInputSchemas.createFile,
     }),
     renameSymbol: tool({
-        description: "Rename a symbol across all matching files using word-boundary matching.",
+        description: "Rename a variable, function, or class across all matching files. AST-aware: handles declarations, calls, imports, member access, and type annotations while skipping string literals and comments.",
         inputSchema: toolInputSchemas.renameSymbol,
     }),
     spawnCodeReviewer: tool({
@@ -263,6 +389,34 @@ export const buildToolContracts = {
     spawnRefactor: tool({
         description: "Spawn a refactor subagent to improve code structure, readability, or performance without changing behaviour.",
         inputSchema: toolInputSchemas.spawnRefactor,
+    }),
+    undo: tool({
+        description: "Undo the last file modification made by the agent.",
+        inputSchema: toolInputSchemas.undo,
+    }),
+    envManage: tool({
+        description: "Read, add, update, or delete environment variables in .env files. Supports reading raw content, listing parsed variables, and modifying entries while preserving comments and formatting.",
+        inputSchema: toolInputSchemas.envManage,
+    }),
+    processManage: tool({
+        description: "List and kill dev server processes and port owners. Use to find stuck servers, check what's using a port, or stop runaway processes.",
+        inputSchema: toolInputSchemas.processManage,
+    }),
+    secretScan: tool({
+        description: "Scan files for secrets, API keys, and credentials before committing. Detects AWS keys, GitHub tokens, database URLs, private keys, passwords, JWT tokens, and more. False positives are possible — review each finding.",
+        inputSchema: toolInputSchemas.secretScan,
+    }),
+    keychainSet: tool({
+        description: "Store a secret in the OS keychain (macOS Keychain, Linux secret-tool). The secret is encrypted at rest by the OS.",
+        inputSchema: toolInputSchemas.keychainSet,
+    }),
+    keychainGet: tool({
+        description: "Retrieve a secret from the OS keychain by name.",
+        inputSchema: toolInputSchemas.keychainGet,
+    }),
+    keychainDelete: tool({
+        description: "Delete a secret from the OS keychain by name.",
+        inputSchema: toolInputSchemas.keychainDelete,
     }),
 } as const;
 

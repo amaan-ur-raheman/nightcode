@@ -1,4 +1,5 @@
 const MODEL_NAMES: Record<string, string> = {
+    // ── NVIDIA NIM ──
     "nvidia/nemotron-3-ultra-550b-a55b":              "Nemotron 3 Ultra 550B",
     "stepfun-ai/step-3.7-flash":                      "Step 3.7 Flash",
     "moonshotai/kimi-k2.6":                           "Kimi K2.6",
@@ -16,6 +17,19 @@ const MODEL_NAMES: Record<string, string> = {
     "stepfun-ai/step-3.5-flash":                      "Step 3.5 Flash",
     "meta/llama-4-maverick-17b-128e-instruct":        "Llama 4 Maverick",
     "meta/llama-3.3-70b-instruct":                    "Llama 3.3 70B",
+
+    // ── Anthropic ──
+    "claude-sonnet-4-20250514":                       "Claude Sonnet 4",
+    "claude-3-5-haiku-20241022":                      "Claude 3.5 Haiku",
+
+    // ── OpenAI ──
+    "gpt-4o":                                         "GPT-4o",
+    "gpt-4o-mini":                                    "GPT-4o Mini",
+    "o3-mini":                                        "o3-mini",
+
+    // ── Groq ──
+    "llama-3.3-70b-versatile":                        "Llama 3.3 70B",
+    "mixtral-8x7b-32768":                             "Mixtral 8x7B",
 };
 
 export function getModelName(modelId: string): string {

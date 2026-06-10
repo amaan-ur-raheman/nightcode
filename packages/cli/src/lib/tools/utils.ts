@@ -1,5 +1,7 @@
 import { isAbsolute, relative, resolve } from "path";
 import { stat, readFile, writeFile } from "fs/promises";
+import { undoManager } from "../undo-manager";
+import { globCache } from "../glob-cache";
 
 export const IGNORE = new Set(["node_modules", ".git", "dist", "build", ".next", ".turbo", "coverage"]);
 
@@ -112,10 +114,10 @@ export async function globReplace(
     replaceFn: (content: string) => { updated: string; count: number },
 ): Promise<{ filesChanged: number; changes: ReplaceResult[] }> {
     const cwd = process.cwd();
-    const g = new Bun.Glob(globPattern);
 
+    const allMatches = await globCache.getCachedGlob(globPattern, cwd);
     const files: string[] = [];
-    for await (const file of g.scan({ cwd, absolute: false, onlyFiles: true })) {
+    for (const file of allMatches) {
         const resolved = resolve(cwd, file);
         const rel = relative(cwd, resolved);
         if (rel.startsWith("..") || isAbsolute(rel)) continue;
@@ -127,6 +129,7 @@ export async function globReplace(
             const content = await readFile(resolved, "utf-8");
             const { updated, count } = replaceFn(content);
             if (count > 0) {
+                await undoManager.backup(resolved, "searchReplace", `Edit ${relative(cwd, resolved)}`);
                 await writeFile(resolved, updated, "utf-8");
                 return { path: relative(cwd, resolved), replacements: count };
             }
@@ -135,5 +138,6 @@ export async function globReplace(
     );
 
     const changes = results.filter((r): r is ReplaceResult => r !== null);
+    if (changes.length > 0) globCache.invalidate();
     return { filesChanged: changes.length, changes };
 }

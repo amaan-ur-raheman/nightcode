@@ -5,18 +5,25 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router";
 
 import { useKeyboard, useSelectionHandler } from "@opentui/react";
+import { TextAttributes } from "@opentui/core";
 import { type ModeType, type SupportedChatModelId } from "@nightcode/shared";
 
 import { useChat } from "@/hooks/use-chat";
 import { apiClient } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/http-errors";
-import type { Message } from "@/hooks/use-chat";
+import type { Message, ImageAttachment } from "@/hooks/use-chat";
 
 import { useToast } from "@/providers/toast";
 import { usePromptConfig } from "@/providers/prompt-config";
 import { useKeyboardLayer } from "@/providers/keyboard-layer";
+import { useCoalescedMessages } from "@/hooks/use-coalesced-messages";
+import { useTheme } from "@/providers/theme";
+import { useFileTree } from "@/providers/file-tree";
 
 import { SessionShell } from "@/components/session-shell";
+import { FileTree } from "@/components/file-tree";
+import { BranchIndicator } from "@/components/branch-indicator";
+import { ToolConfirmationOverlay } from "@/components/tool-confirmation-overlay";
 import {
     UserMessage,
     ErrorMessage,
@@ -33,7 +40,12 @@ const sessionLocationSchema = z.object({
         .object({
             message: z.string(),
             mode: z.custom<ModeType>(),
-            model: z.custom<SupportedChatModelId>()
+            model: z.custom<SupportedChatModelId>(),
+            imageAttachments: z.array(z.object({
+                dataUrl: z.string(),
+                mimeType: z.string(),
+                name: z.string(),
+            })).optional()
         })
         .optional()
 });
@@ -47,7 +59,14 @@ function ChatMessage(
             .map((p) => p.text)
             .join("");
 
-        return <UserMessage message={text} mode={msg.metadata?.mode ?? "BUILD"} />;
+        const imageAttachments = msg.parts
+            .filter((p) => (p.type as string) === "file")
+            .map((p) => ({
+                name: (p as any).filename ?? "unknown",
+                kind: ((p as any).mediaType?.startsWith("image/") ? "image" : "file") as "image" | "file",
+            }));
+
+        return <UserMessage message={text} mode={msg.metadata?.mode ?? "BUILD"} imageCount={imageAttachments.length} />;
     }
 
     return (
@@ -63,7 +82,9 @@ function ChatMessage(
 
 const MemoizedChatMessage = React.memo(ChatMessage);
 
-import { lastSession } from "@/index";
+const MAX_VISIBLE_MESSAGES = 200;
+
+import { lastSession, writeLastSession } from "@/index";
 
 function SessionChat({
     session,
@@ -73,20 +94,30 @@ function SessionChat({
     initialPrompt?: {
         message: string;
         mode: ModeType,
-        model: SupportedChatModelId
+        model: SupportedChatModelId,
+        imageAttachments?: ImageAttachment[]
     }
 }) {
     const [initialMessages] = useState(session.messages as unknown as Message[]);
     const { mode, model} = usePromptConfig();
+    const { colors } = useTheme();
     const { isTopLayer } = useKeyboardLayer();
-    const { messages, submit, abort, status, interrupt, error, isLoading, clearMessages, retryLast, runningToolName } = useChat(
-        session.id,
-        initialMessages
-    );
+    const {
+        messages, submit, abort, status, interrupt, error, isLoading, clearMessages, retryLast,
+        runningToolName, tokenUsage, branches, activeBranchId, createBranch, switchBranch,
+        confirmationManager, imageAttachments, addImageAttachment, removeImageAttachment,
+    } = useChat(session.id, initialMessages, initialPrompt?.imageAttachments);
     const hasSubmittedInitialPromptRef = useRef(false);
 
-    lastSession.id = session.id;
-    lastSession.title = session.title;
+    // Coalesce streaming updates to ~15fps for smoother rendering
+    const displayMessages = useCoalescedMessages(messages, status === "streaming");
+    const visibleMessages = displayMessages.slice(-MAX_VISIBLE_MESSAGES);
+
+    useEffect(() => {
+        lastSession.id = session.id;
+        lastSession.title = session.title;
+        writeLastSession({ id: session.id, title: session.title ?? "" });
+    }, [session.id, session.title]);
 
     // Stop any pending replies when the user leaves this session
     useEffect(() => {
@@ -97,14 +128,34 @@ function SessionChat({
 
     // Let the user cancel a reply even before the first streamed chunks arrived
     useKeyboard((key) => {
+        // Handle confirmation dialog
+        const pendingConfirmations = confirmationManager.pending;
+        if (pendingConfirmations.size > 0 && isTopLayer("base")) {
+            const requestId = pendingConfirmations.keys().next().value!;
+            if (key.name === "y" || key.name === "return") {
+                key.preventDefault();
+                confirmationManager.confirm(requestId);
+                return;
+            }
+            if (key.name === "n" || key.name === "escape") {
+                key.preventDefault();
+                confirmationManager.cancel(requestId);
+                return;
+            }
+        }
+
         if (key.name === "escape" && isTopLayer("base") && isLoading) {
             key.preventDefault();
             interrupt();
        }
        if (key.name === "r" && key.ctrl && isTopLayer("base") && !isLoading) {
-           key.preventDefault();
-           retryLast();
-       }
+            key.preventDefault();
+            retryLast();
+        }
+        if (key.name === "b" && key.ctrl && isTopLayer("base") && !isLoading) {
+            key.preventDefault();
+            createBranch();
+        }
     });
 
     const toast = useToast();
@@ -177,28 +228,64 @@ function SessionChat({
         });
     }, [initialPrompt, submit]);
 
+    const { showFileTree, selectedFile, setSelectedFile } = useFileTree();
+
     return (
-        <SessionShell
-            onSubmit={(text) =>
-                submit({ userText: text, mode, model })
-            }
-            onClear={clearMessages}
-            loading={isLoading}
-            interruptible={isLoading}
-            canRetry={!isLoading && messages.some((m) => m.role === "user")}
-            runningToolName={runningToolName}
-            messageCount={messages.filter((m) => m.role === "user").length}
-            sessionTitle={session.title}
-        >
-            {messages.map((msg, i) => (
-                <ChatMessage
-                    key={msg.id}
-                    msg={msg}
-                    streaming={status === "streaming" && i === messages.length - 1}
+        <box flexDirection="row" width="100%" height="100%">
+            <ToolConfirmationOverlay manager={confirmationManager} />
+            {showFileTree && (
+                <FileTree
+                    rootPath={process.cwd()}
+                    selectedFile={selectedFile}
+                    onSelectFile={setSelectedFile}
+                    width={30}
                 />
-            ))}
-            {error && <ErrorMessage message={error.message} canRetry={!isLoading} />}
-        </SessionShell>
+            )}
+            <box flexDirection="column" flexGrow={1}>
+                <SessionShell
+                    onSubmit={(text) =>
+                        submit({ userText: text, mode, model })
+                    }
+                    onClear={clearMessages}
+                    loading={isLoading}
+                    interruptible={isLoading}
+                    canRetry={!isLoading && messages.some((m) => m.role === "user")}
+                    runningToolName={runningToolName}
+                    messageCount={messages.filter((m) => m.role === "user").length}
+                    sessionTitle={session.title}
+                    tokenUsage={tokenUsage}
+                    branchIndicator={
+                        <BranchIndicator
+                            branches={branches}
+                            activeBranchId={activeBranchId}
+                            onCreateBranch={() => createBranch()}
+                        />
+                    }
+                    onCreateBranch={() => createBranch()}
+                    onSwitchBranch={switchBranch}
+                    imageAttachments={imageAttachments}
+                    onAddImage={addImageAttachment}
+                    onRemoveImage={removeImageAttachment}
+                    sessionId={session.id}
+                >
+                    {displayMessages.length > MAX_VISIBLE_MESSAGES && (
+                        <box paddingX={3} paddingTop={1}>
+                            <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
+                                {`… ${displayMessages.length - MAX_VISIBLE_MESSAGES} earlier messages hidden`}
+                            </text>
+                        </box>
+                    )}
+                    {visibleMessages.map((msg, i) => (
+                        <ChatMessage
+                            key={msg.id}
+                            msg={msg}
+                            streaming={status === "streaming" && i === visibleMessages.length - 1}
+                        />
+                    ))}
+                    {error && <ErrorMessage message={error.message} canRetry={!isLoading} />}
+                </SessionShell>
+            </box>
+        </box>
     )
 }
 

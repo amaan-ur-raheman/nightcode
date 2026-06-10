@@ -1,18 +1,43 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createContext, useContext, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 
 import { DEFAULT_THEME, THEMES } from "@/theme";
-import type { Theme, ThemeColors } from "@/theme";
+import type { Theme, ThemeColors, CustomTheme } from "@/theme";
 
 const CONFIG_DIR = join(homedir(), ".nightcode");
 const THEME_PREFERENCE_PATH = join(CONFIG_DIR, "preferences.json");
+const CUSTOM_THEMES_PATH = join(CONFIG_DIR, "custom-themes.json");
 
 type ThemePreference = {
     themeName: string;
 };
+
+function loadCustomThemes(): CustomTheme[] {
+    try {
+        if (!existsSync(CUSTOM_THEMES_PATH)) return [];
+        const content = readFileSync(CUSTOM_THEMES_PATH, "utf-8");
+        const store = JSON.parse(content);
+        return store.themes || [];
+    } catch {
+        return [];
+    }
+}
+
+function resolveTheme(name: string): Theme {
+    const builtin = THEMES.find((t) => t.name === name);
+    if (builtin) return builtin;
+
+    const customThemes = loadCustomThemes();
+    const custom = customThemes.find((t) => t.name === name);
+    if (custom) {
+        return { name: custom.name, colors: custom.colors };
+    }
+
+    return DEFAULT_THEME;
+}
 
 function getInitialTheme(): Theme {
     try {
@@ -20,8 +45,10 @@ function getInitialTheme(): Theme {
             readFileSync(THEME_PREFERENCE_PATH, "utf-8")
         ) as Partial<ThemePreference>;
 
-        const savedTheme = THEMES.find((theme) => theme.name === preferences.themeName);
-        return savedTheme ?? DEFAULT_THEME;
+        if (preferences.themeName) {
+            return resolveTheme(preferences.themeName);
+        }
+        return DEFAULT_THEME;
     } catch {
         return DEFAULT_THEME;
     }

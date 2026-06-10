@@ -5,6 +5,11 @@ export { grepTool } from "./grep";
 export { treeTool } from "./tree";
 export { fileInfoTool } from "./file-info";
 export { gitStatusTool, gitDiffTool } from "./git";
+export { gitCommitTool } from "./git-commit";
+export { gitBranchTool } from "./git-branch";
+export { gitLogTool } from "./git-log";
+export { gitBlameTool } from "./git-blame";
+export { gitStatusExtendedTool } from "./git-status-extended";
 export { webFetchTool } from "./web-fetch";
 export { codeSearchTool } from "./code-search";
 export { getOutlineTool } from "./get-outline";
@@ -18,6 +23,7 @@ export { deleteFileTool } from "./delete-file";
 export { moveFileTool } from "./move-file";
 export { createDirectoryTool } from "./create-directory";
 export { runTestsTool } from "./run-tests";
+export type { TestResult } from "./run-tests";
 export { httpRequestTool } from "./http-request";
 export { createFileTool } from "./create-file";
 export { renameSymbolTool } from "./rename-symbol";
@@ -29,6 +35,13 @@ export {
     spawnRefactorTool,
     spawnResearcherTool,
 } from "./preset-agents";
+export { tokenCountTool } from "./token-count";
+export { undoTool } from "./undo";
+export { memorySetTool, memoryGetTool, memoryDeleteTool, memoryListTool, memorySearchTool } from "./memory";
+export { keychainSetTool, keychainGetTool, keychainDeleteTool } from "./keychain";
+export { processManageTool } from "./process-manage";
+export { envManageTool } from "./env-manage";
+export { secretScanTool } from "./secret-scan";
 
 type ToolFn =
     | ((input: unknown) => Promise<unknown>)
@@ -45,8 +58,13 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     grep: () => import("./grep").then(m => m.grepTool),
     tree: () => import("./tree").then(m => m.treeTool),
     fileInfo: () => import("./file-info").then(m => m.fileInfoTool),
-    gitStatus: () => import("./git").then(m => () => m.gitStatusTool()),
+    gitStatus: () => import("./git").then(m => m.gitStatusTool),
     gitDiff: () => import("./git").then(m => m.gitDiffTool),
+    gitCommit: () => import("./git-commit").then(m => m.gitCommitTool),
+    gitBranch: () => import("./git-branch").then(m => m.gitBranchTool),
+    gitLog: () => import("./git-log").then(m => m.gitLogTool),
+    gitBlame: () => import("./git-blame").then(m => m.gitBlameTool),
+    gitStatusExtended: () => import("./git-status-extended").then(m => m.gitStatusExtendedTool),
     webFetch: () => import("./web-fetch").then(m => m.webFetchTool),
     codeSearch: () => import("./code-search").then(m => m.codeSearchTool),
     getOutline: () => import("./get-outline").then(m => m.getOutlineTool),
@@ -69,6 +87,19 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     spawnDebugger: () => import("./preset-agents").then(m => m.spawnDebuggerTool),
     spawnRefactor: () => import("./preset-agents").then(m => m.spawnRefactorTool),
     spawnResearcher: () => import("./preset-agents").then(m => m.spawnResearcherTool),
+    tokenCount: () => import("./token-count").then(m => m.tokenCountTool),
+    undo: () => import("./undo").then(m => m.undoTool),
+    memorySet: () => import("./memory").then(m => m.memorySetTool),
+    memoryGet: () => import("./memory").then(m => m.memoryGetTool),
+    memoryDelete: () => import("./memory").then(m => m.memoryDeleteTool),
+    memoryList: () => import("./memory").then(m => m.memoryListTool),
+    memorySearch: () => import("./memory").then(m => m.memorySearchTool),
+    keychainSet: () => import("./keychain").then(m => m.keychainSetTool),
+    keychainGet: () => import("./keychain").then(m => m.keychainGetTool),
+    keychainDelete: () => import("./keychain").then(m => m.keychainDeleteTool),
+    processManage: () => import("./process-manage").then(m => m.processManageTool),
+    envManage: () => import("./env-manage").then(m => m.envManageTool),
+    secretScan: () => import("./secret-scan").then(m => m.secretScanTool),
 };
 
 const toolCache = new Map<string, ToolFn>();

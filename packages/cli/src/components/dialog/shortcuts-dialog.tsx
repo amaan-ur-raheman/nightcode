@@ -6,9 +6,10 @@ export function ShortcutsDialogContent() {
 
     const shortcuts = [
         { key: "Tab", desc: "Toggle Build/Plan mode" },
-        { key: "Ctrl+X", desc: "Open command palette" },
+        { key: "Ctrl+P", desc: "Open command palette" },
+        { key: "Ctrl+A/I", desc: "Attach image from path" },
         { key: "Ctrl+C", desc: "Copy selection" },
-        { key: "Ctrl+V", desc: "Paste from clipboard" },
+        { key: "Ctrl+V", desc: "Paste (auto-attaches image paths)" },
         { key: "Esc", desc: "Interrupt reply / Close dialog" },
         { key: "w", desc: "Toggle word wrap" },
         { key: "Ctrl+R", desc: "Retry last response" },

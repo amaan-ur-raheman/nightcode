@@ -250,9 +250,9 @@ export function useFileMention(textareaRef: RefObject<TextareaRenderable | null>
             const newText = `${textarea.plainText.slice(0, mention.start)}@${candidate.path} ${textarea.plainText.slice(mention.end)}`;
             textarea.replaceText(newText);
             textarea.cursorOffset = mention.start + candidate.path.length + 2;
-            close();
+            sync(newText, textarea.cursorOffset);
         }
-    }, [sync, close]);
+    }, [sync]);
 
     const handleBackspace = useCallback((): boolean => {
         const textarea = textareaRef.current;

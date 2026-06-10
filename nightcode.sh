@@ -43,8 +43,18 @@ trap 'kill $SERVER_PID 2>/dev/null' EXIT
 # Wait for server to be ready (up to 5s)
 wait_for_server 3000
 
-# Run CLI in foreground
-NIGHTCODE_SESSION_ID="$SESSION_ID" bun run --env-file="$NIGHTCODE_DIR/.env" "$NIGHTCODE_DIR/packages/cli/src/index.tsx"
+# Run CLI in foreground (forward all arguments)
+NIGHTCODE_SESSION_ID="$SESSION_ID" bun run --env-file="$NIGHTCODE_DIR/.env" "$NIGHTCODE_DIR/packages/cli/src/index.tsx" "$@"
+CLI_EXIT=$?
 
-# Print goodbye screen
-bun run --env-file="$NIGHTCODE_DIR/.env" "$NIGHTCODE_DIR/packages/cli/src/goodbye.ts"
+# Only show goodbye screen for interactive TUI sessions
+if [ $CLI_EXIT -eq 0 ]; then
+    # Skip goodbye for non-TUI commands
+    case "$1" in
+        --non-interactive|-n|mcp|init|--help|-h)
+            ;;
+        *)
+            bun run --env-file="$NIGHTCODE_DIR/.env" "$NIGHTCODE_DIR/packages/cli/src/goodbye.ts"
+            ;;
+    esac
+fi

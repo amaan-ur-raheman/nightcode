@@ -6,6 +6,14 @@ import { usePromptConfig } from "@/providers/prompt-config";
 import { Spinner } from "@/components/spinner";
 import { InputBar } from "@/components/input-bar";
 import { KeyHint } from "@/components/key-hint";
+import type { ImageAttachment } from "@/hooks/use-chat";
+
+type TokenUsage = {
+    inputTokens: number;
+    outputTokens: number;
+    totalCost: number;
+    hasActivity: boolean;
+};
 
 type SessionShellProps = {
     children?: ReactNode;
@@ -18,6 +26,14 @@ type SessionShellProps = {
     runningToolName?: string | null;
     messageCount?: number;
     sessionTitle?: string;
+    tokenUsage?: TokenUsage;
+    branchIndicator?: ReactNode;
+    onCreateBranch?: () => void;
+    onSwitchBranch?: (branchId: string) => void;
+    imageAttachments?: ImageAttachment[];
+    onAddImage?: (attachment: ImageAttachment) => void;
+    onRemoveImage?: (index: number) => void;
+    sessionId?: string;
 };
 
 export function SessionShell({
@@ -31,6 +47,14 @@ export function SessionShell({
     runningToolName,
     messageCount,
     sessionTitle,
+    tokenUsage,
+    branchIndicator,
+    onCreateBranch,
+    onSwitchBranch,
+    imageAttachments,
+    onAddImage,
+    onRemoveImage,
+    sessionId,
 }: SessionShellProps) {
     const { mode } = usePromptConfig();
 
@@ -48,7 +72,7 @@ export function SessionShell({
                 <box width="100%" flexDirection="column">{children}</box>
             </scrollbox>
             <box flexShrink={0}>
-                <InputBar onSubmit={onSubmit} disabled={inputDisabled} onClear={onClear} messageCount={messageCount} sessionTitle={sessionTitle} />
+                <InputBar onSubmit={onSubmit} disabled={inputDisabled} onClear={onClear} messageCount={messageCount} sessionTitle={sessionTitle} tokenUsage={tokenUsage} onCreateBranch={onCreateBranch} onSwitchBranch={onSwitchBranch} imageAttachments={imageAttachments} onAddImage={onAddImage} onRemoveImage={onRemoveImage} sessionId={sessionId} />
             </box>
             <box
                 flexShrink={0}
@@ -71,10 +95,13 @@ export function SessionShell({
                             }
                         </>
                     ) : null}
+                    {branchIndicator}
                 </box>
 
                 <box flexDirection="row" gap={1} flexShrink={0} marginLeft="auto">
                     {canRetry ? <KeyHint keyName="ctrl+r" label="retry" /> : null}
+                    <KeyHint keyName="ctrl+b" label="branch" />
+                    <KeyHint keyName="ctrl+t" label="files" />
                     <KeyHint keyName="tab" label="agents" />
                 </box>
             </box>
