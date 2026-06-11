@@ -433,7 +433,7 @@ function highlightCode(code: string, langHint?: string, colors?: ThemeColors): R
             null,
             tokens.map((token, i) =>
                 React.createElement(
-                    "text",
+                    "span",
                     {
                         key: i,
                         fg: getTokenColor(token.type, colors),

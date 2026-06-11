@@ -25,7 +25,7 @@ const DEFAULT_CONFIG: QueueConfig = {
     maxQueueSize: 100,
     retryDelay: 1000,
     maxRetries: 3,
-    timeout: 30000,
+    timeout: 120000,
 };
 
 export interface QueueStats {

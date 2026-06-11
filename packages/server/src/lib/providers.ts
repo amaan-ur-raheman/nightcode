@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { keychain } from "@nightcode/shared";
+import { zen, isZenModel } from "./zen";
 import { requestQueue } from "./request-queue";
 
 type ProviderConfig = {
@@ -95,11 +96,46 @@ const GROQ_PROVIDER: ProviderConfig = {
     ],
 };
 
+const OPENCODE_PROVIDER: ProviderConfig = {
+    name: "opencode",
+    baseUrl: "https://opencode.ai/zen",
+    apiKey: "",
+    models: [
+        // Free models
+        { id: "opencode/deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free" },
+        { id: "opencode/nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free" },
+        { id: "opencode/minimax-m3-free", name: "MiniMax M3 Free" },
+        { id: "opencode/mimo-v2.5-free", name: "MiMo V2.5 Free" },
+        // Paid models - OpenAI
+        { id: "opencode/gpt-5.5", name: "GPT 5.5" },
+        { id: "opencode/gpt-5.4", name: "GPT 5.4" },
+        { id: "opencode/gpt-5.4-mini", name: "GPT 5.4 Mini" },
+        { id: "opencode/gpt-5.4-nano", name: "GPT 5.4 Nano" },
+        { id: "opencode/gpt-5.3-codex", name: "GPT 5.3 Codex" },
+        { id: "opencode/gpt-5.2", name: "GPT 5.2" },
+        { id: "opencode/gpt-5.1-codex", name: "GPT 5.1 Codex" },
+        // Paid models - Anthropic
+        { id: "opencode/claude-opus-4-6", name: "Claude Opus 4.6" },
+        { id: "opencode/claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+        { id: "opencode/claude-haiku-4-5", name: "Claude Haiku 4.5" },
+        // Paid models - Google
+        { id: "opencode/gemini-3.5-flash", name: "Gemini 3.5 Flash" },
+        { id: "opencode/gemini-3.1-pro", name: "Gemini 3.1 Pro" },
+        // Paid models - Other
+        { id: "opencode/grok-build-0.1", name: "Grok Build 0.1" },
+        { id: "opencode/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+        { id: "opencode/kimi-k2.6", name: "Kimi K2.6" },
+        { id: "opencode/glm-5.1", name: "GLM 5.1" },
+        { id: "opencode/qwen3.6-plus", name: "Qwen3.6 Plus" },
+    ],
+};
+
 const ALL_PROVIDERS: ProviderConfig[] = [
     NIM_PROVIDER,
     ANTHROPIC_PROVIDER,
     OPENAI_PROVIDER,
     GROQ_PROVIDER,
+    OPENCODE_PROVIDER,
 ];
 
 async function resolveAllApiKeys(): Promise<void> {
@@ -108,15 +144,21 @@ async function resolveAllApiKeys(): Promise<void> {
         resolveApiKey("ANTHROPIC_API_KEY", "anthropic-api-key"),
         resolveApiKey("OPENAI_API_KEY", "openai-api-key"),
         resolveApiKey("GROQ_API_KEY", "groq-api-key"),
+        resolveApiKey("OPENCODE_API_KEY", "opencode-api-key"),
     ]);
     
     NIM_PROVIDER.apiKey = keys[0];
     ANTHROPIC_PROVIDER.apiKey = keys[1];
     OPENAI_PROVIDER.apiKey = keys[2];
     GROQ_PROVIDER.apiKey = keys[3];
+    OPENCODE_PROVIDER.apiKey = keys[4];
 }
 
 let _keysResolved = false;
+
+async function resetKeysResolved(): Promise<void> {
+    _keysResolved = false;
+}
 
 async function ensureKeysResolved(): Promise<void> {
     if (!_keysResolved) {
@@ -141,6 +183,12 @@ function wrapModelWithQueue(model: LanguageModelV3): LanguageModelV3 {
 
 export async function getProviderClient(modelId: string): Promise<LanguageModelV3> {
     await ensureKeysResolved();
+    
+    // OpenCode Zen models use multi-SDK routing
+    if (isZenModel(modelId)) {
+        const model = await zen(modelId);
+        return wrapModelWithQueue(model);
+    }
     
     const provider = findProviderForModel(modelId);
 

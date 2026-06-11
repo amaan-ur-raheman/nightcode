@@ -15,6 +15,10 @@ import { loadSettings } from "@/lib/settings";
 import { EmptyBorder } from "@/components/border";
 import { MarkdownText } from "@/lib/markdown";
 import { ToolTimer } from "@/components/messages/tool-timer";
+import { SubagentProgressPanel } from "@/components/subagent-progress-panel";
+import { TaskGraphView } from "@/components/task-graph";
+import { useOrchestration } from "@/hooks/use-orchestration";
+import { orchestratorManager } from "@/lib/orchestrator-manager";
 
 type ClientMessagePart = Message["parts"][number];
 type ToolPart = Extract<ClientMessagePart, { type: `tool-${string}` | "dynamic-tool" }>;
@@ -39,9 +43,23 @@ function isToolPart(part: ClientMessagePart): part is ToolPart {
 
 function formatToolArgs(tc: ToolPart): string {
     if (!("input" in tc) || tc.input == null) return "";
-    if (typeof tc.input !== "object") return String(tc.input);
+    if (typeof tc.input !== "object") {
+        const str = String(tc.input);
+        return str.length > 60 ? str.slice(0, 57) + "..." : str;
+    }
 
-    return Object.values(tc.input).map(String).join(" ");
+    const entries = Object.entries(tc.input);
+    const summary = entries
+        .map(([key, val]) => {
+            const str = String(val ?? "");
+            if (str.length > 40) {
+                return `${key}: ${str.slice(0, 37)}...`;
+            }
+            return str;
+        })
+        .join(" ");
+
+    return summary.length > 80 ? summary.slice(0, 77) + "..." : summary;
 }
 
 type PartGroup = {
@@ -73,10 +91,10 @@ function groupConsecutiveParts(parts: ClientMessagePart[]): PartGroup[] {
 
 const CODE_BLOCK_REGEX = /```(\w+)?\n([\s\S]*?)```/g;
 
-function renderHighlightedContent(text: string, colors: ReturnType<typeof useTheme>["colors"]): React.ReactNode[] {
+function renderHighlightedContent(text: string, colors: ReturnType<typeof useTheme>["colors"], streaming = false): React.ReactNode[] {
     const settings = loadSettings();
     if (!settings.syntaxHighlight?.enabled) {
-        return [<MarkdownText key="md">{text}</MarkdownText>];
+        return [<MarkdownText key="md" streaming={streaming}>{text}</MarkdownText>];
     }
 
     const nodes: React.ReactNode[] = [];
@@ -88,7 +106,7 @@ function renderHighlightedContent(text: string, colors: ReturnType<typeof useThe
         if (match.index > lastIndex) {
             const before = text.slice(lastIndex, match.index);
             nodes.push(
-                <MarkdownText key={`text-${lastIndex}`}>{before}</MarkdownText>
+                <MarkdownText key={`text-${lastIndex}`} streaming={streaming}>{before}</MarkdownText>
             );
         }
 
@@ -106,11 +124,11 @@ function renderHighlightedContent(text: string, colors: ReturnType<typeof useThe
     if (lastIndex < text.length) {
         const remaining = text.slice(lastIndex);
         nodes.push(
-            <MarkdownText key={`text-${lastIndex}`}>{remaining}</MarkdownText>
+            <MarkdownText key={`text-${lastIndex}`} streaming={streaming}>{remaining}</MarkdownText>
         );
     }
 
-    return nodes.length > 0 ? nodes : [<MarkdownText key="md-fallback">{text}</MarkdownText>];
+    return nodes.length > 0 ? nodes : [<MarkdownText key="md-fallback" streaming={streaming}>{text}</MarkdownText>];
 }
 
 export const BotMessage = React.memo(function BotMessage({
@@ -121,6 +139,7 @@ export const BotMessage = React.memo(function BotMessage({
     streaming = false,
 }: BotMessageProps) {
     const { colors } = useTheme();
+    const { activeGraphs } = useOrchestration();
 
     return (
         <box alignItems="center" width="100%">
@@ -141,7 +160,9 @@ export const BotMessage = React.memo(function BotMessage({
                                     paddingX={2}
                                 >
                                     <text attributes={TextAttributes.DIM}>
-                                        <em fg={colors.thinking}>Thinking:</em>
+                                        <em fg={colors.thinking}>◆{" "}Thinking</em>
+                                        :
+                                        {streaming && <ToolTimer />}
                                     </text>
                                     <MarkdownText streaming={streaming} attributes={TextAttributes.DIM} fg={colors.dimSeparator}>{part.text}</MarkdownText>
                                 </box>
@@ -153,26 +174,56 @@ export const BotMessage = React.memo(function BotMessage({
                                 ? part.toolName
                                 : part.type.slice("tool-".length)
 
+                            const isRunning = part.state !== "output-available" && part.state !== "output-error";
+                            const isError = part.state === "output-error";
+                            const isComplete = part.state === "output-available" && !isError;
+                            const statusIcon = isError ? "✗" : isComplete ? "✓" : "○";
+                            const statusColor = isError ? colors.error : isComplete ? colors.success : colors.info;
+                            const isSpawnAgent = toolName === "spawnAgent"
+                                || toolName === "spawnCodeReviewer"
+                                || toolName === "spawnTestWriter"
+                                || toolName === "spawnDebugger"
+                                || toolName === "spawnRefactor"
+                                || toolName === "spawnResearcher";
+                            const isOrchestrator = toolName === "orchestrator";
+
+                            // Find the graph for this orchestrator tool call
+                            const graphForTool = isOrchestrator
+                                ? orchestratorManager.getGraphForToolCall(part.toolCallId)
+                                : undefined;
+                            const matchingGraph = graphForTool
+                                ? activeGraphs.find(g => g.id === graphForTool)
+                                : undefined;
+
                             return (
-                                <box
-                                    key={part.toolCallId}
-                                    border={["left"]}
-                                    borderColor={colors.thinkingBorder}
-                                    customBorderChars={{
-                                        ...EmptyBorder,
-                                        vertical: "│",
-                                    }}
-                                    width="100%"
-                                    paddingX={2}
-                                >
-                                    <text attributes={TextAttributes.DIM}>
-                                        <em fg={colors.info}>{formatToolName(toolName)}:</em>{" "}{formatToolArgs(part)}
-                                        {part.state !== "output-available" && part.state !== "output-error"
-                                            ? <ToolTimer />
-                                            : ""
-                                        }
-                                        {part.state === "output-error" ? `${part.errorText}` : ""}
-                                    </text>
+                                <box key={part.toolCallId} flexDirection="column" width="100%">
+                                    <box
+                                        border={["left"]}
+                                        borderColor={isError ? colors.error : isComplete ? colors.success : colors.thinkingBorder}
+                                        customBorderChars={{
+                                            ...EmptyBorder,
+                                            vertical: "│",
+                                        }}
+                                        width="100%"
+                                        paddingX={2}
+                                    >
+                                        <text attributes={TextAttributes.DIM}>
+                                            <em fg={statusColor}>{statusIcon}{" "}</em>
+                                            <em fg={colors.info}>{formatToolName(toolName)}:</em>{" "}{formatToolArgs(part)}
+                                            {isRunning && <ToolTimer />}
+                                            {isError && ` — ${part.errorText ?? "error"}`}
+                                        </text>
+                                    </box>
+                                    {/* Show inline subagent progress for spawnAgent tools */}
+                                    {isSpawnAgent && isRunning && (
+                                        <SubagentProgressPanel toolCallId={part.toolCallId} />
+                                    )}
+                                    {/* Show inline task graph for orchestrator tools */}
+                                    {isOrchestrator && isRunning && matchingGraph && (
+                                        <box paddingLeft={2} width="100%">
+                                            <TaskGraphView graph={matchingGraph} compact />
+                                        </box>
+                                    )}
                                 </box>
                             );
                         }
@@ -180,7 +231,7 @@ export const BotMessage = React.memo(function BotMessage({
                         if (part.type === "text") {
                             return (
                                 <box key={`text-${j}`} paddingX={3} width="100%">
-                                    {renderHighlightedContent(part.text, colors)}
+                                    {renderHighlightedContent(part.text, colors, streaming)}
                                 </box>
                             );
                         }

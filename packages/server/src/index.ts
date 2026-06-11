@@ -10,6 +10,7 @@ import chat from './routes/chat';
 import sessions from './routes/sessions';
 import billing from './routes/billing';
 import subagent from './routes/subagent';
+import orchestrator from './routes/orchestrator';
 import exportRoutes from './routes/export';
 import { requireAuth } from './middleware/require-auth';
 import { serverDebug } from './lib/debug';
@@ -42,6 +43,7 @@ app.use("/billing/checkout", requireAuth);
 app.use("/billing/portal", requireAuth);
 app.use("/billing/credits", requireAuth);
 app.use("/subagent/*", requireAuth);
+app.use("/orchestrator/*", requireAuth);
 app.use("/export/*", requireAuth);
 
 const routes = app
@@ -50,6 +52,7 @@ const routes = app
     .route("/sessions", sessions)
     .route("/chat", chat)
     .route("/subagent", subagent)
+    .route("/orchestrator", orchestrator)
     .route("/export", exportRoutes);
 
 export type AppType = typeof routes;

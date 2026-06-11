@@ -9,6 +9,7 @@ interface BatchedRequest {
     mode: ModeType;
     model?: string;
     signal?: AbortSignal;
+    execId?: string;
     resolve: (result: unknown) => void;
     reject: (error: Error) => void;
 }
@@ -17,12 +18,43 @@ export interface BatchConfig {
     maxBatchSize: number;
     maxWaitTime: number;
     enabledTools: string[];
+    parallelExecutionEnabled: boolean;
+    maxParallelTools: number;
 }
 
+export interface ParallelToolCall {
+    toolName: string;
+    input: unknown;
+    toolCallId: string;
+    signal?: AbortSignal;
+}
+
+export interface ParallelToolResult {
+    toolCallId: string;
+    result: unknown;
+    error?: Error;
+}
+
+const DEFAULT_BATCH_TOOLS = ["readFile", "listDirectory", "glob", "grep", "codeSearch", "tree", "fileInfo"];
+
+const ALL_PARALLEL_TOOLS = [
+    ...DEFAULT_BATCH_TOOLS,
+    "writeFile", "editFile", "bash", "patch", "searchReplace",
+    "deleteFile", "moveFile", "createDirectory", "createFile",
+    "gitStatus", "gitDiff", "gitCommit", "gitBranch", "gitLog", "gitBlame", "gitStatusExtended",
+    "webFetch", "httpRequest", "codeSearch", "getOutline", "diffFiles",
+    "runTests", "processManage", "envManage", "secretScan",
+    "memorySet", "memoryGet", "memoryDelete", "memoryList", "memorySearch",
+    "keychainSet", "keychainGet", "keychainDelete",
+    "tokenCount", "undo", "renameSymbol",
+];
+
 const DEFAULT_CONFIG: BatchConfig = {
-    maxBatchSize: 5,
-    maxWaitTime: 100,
-    enabledTools: ["readFile", "listDirectory", "glob", "grep", "codeSearch", "tree", "fileInfo"],
+    maxBatchSize: 10,
+    maxWaitTime: 50,
+    enabledTools: DEFAULT_BATCH_TOOLS,
+    parallelExecutionEnabled: true,
+    maxParallelTools: 8,
 };
 
 class BatchManager {
@@ -34,13 +66,14 @@ class BatchManager {
     async addRequest(
         tool: string,
         input: unknown,
-        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal) => Promise<unknown>,
+        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, execId?: string) => Promise<unknown>,
         mode: ModeType,
         model?: string,
         signal?: AbortSignal,
+        execId?: string,
     ): Promise<unknown> {
         if (!this.config.enabledTools.includes(tool)) {
-            return executor(tool, input, mode, model, signal);
+            return executor(tool, input, mode, model, signal, execId);
         }
 
         return new Promise((resolve, reject) => {
@@ -51,6 +84,7 @@ class BatchManager {
                 mode,
                 model,
                 signal,
+                execId,
                 resolve,
                 reject,
             };
@@ -78,7 +112,7 @@ class BatchManager {
     }
 
     private async flush(
-        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal) => Promise<unknown>,
+        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, execId?: string) => Promise<unknown>,
     ): Promise<void> {
         if (this.queue.length === 0) return;
 
@@ -109,12 +143,12 @@ class BatchManager {
     private async executeGroup(
         tool: string,
         requests: BatchedRequest[],
-        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal) => Promise<unknown>,
+        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, execId?: string) => Promise<unknown>,
     ): Promise<void> {
         debug.log("batch", `Executing ${requests.length} ${tool} requests in parallel`);
 
         const results = await Promise.allSettled(
-            requests.map((req) => executor(tool, req.input, req.mode, req.model, req.signal)),
+            requests.map((req) => executor(tool, req.input, req.mode, req.model, req.signal, req.execId)),
         );
 
         for (let i = 0; i < requests.length; i++) {
@@ -130,6 +164,55 @@ class BatchManager {
         }
     }
 
+    /**
+     * Execute multiple tool calls in parallel.
+     * Used by the chat hook when the LLM returns multiple tool calls in a single response.
+     */
+    async executeParallel(
+        toolCalls: ParallelToolCall[],
+        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, toolCallId?: string) => Promise<unknown>,
+        mode: ModeType,
+        model?: string,
+        signal?: AbortSignal,
+        onSettled?: (result: ParallelToolResult) => void,
+    ): Promise<ParallelToolResult[]> {
+        if (toolCalls.length === 0) return [];
+
+        const capped = toolCalls.slice(0, this.config.maxParallelTools);
+        if (toolCalls.length > this.config.maxParallelTools) {
+            debug.log("batch", `Capping parallel execution from ${toolCalls.length} to ${this.config.maxParallelTools}`);
+        }
+
+        debug.log("batch", `Executing ${capped.length} tools in parallel: ${capped.map(t => t.toolName).join(", ")}`);
+
+        const notifySettled = (result: ParallelToolResult) => {
+            try {
+                onSettled?.(result);
+            } catch (error) {
+                debug.log("batch", `Parallel settle callback failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        };
+
+        const promises = capped.map(async (tc): Promise<ParallelToolResult> => {
+            try {
+                const result = await executor(tc.toolName, tc.input, mode, model, tc.signal ?? signal, tc.toolCallId);
+                const settled = { toolCallId: tc.toolCallId, result };
+                notifySettled(settled);
+                return settled;
+            } catch (reason) {
+                const settled = {
+                    toolCallId: tc.toolCallId,
+                    result: undefined,
+                    error: reason instanceof Error ? reason : new Error(String(reason)),
+                };
+                notifySettled(settled);
+                return settled;
+            }
+        });
+
+        return Promise.all(promises);
+    }
+
     getConfig(): Readonly<BatchConfig> {
         return this.config;
     }
@@ -143,7 +226,7 @@ class BatchManager {
         if (this.config.enabledTools.length > 0) {
             this.config = { ...this.config, enabledTools: [] };
         } else {
-            this.config = { ...this.config, enabledTools: DEFAULT_CONFIG.enabledTools };
+            this.config = { ...this.config, enabledTools: DEFAULT_BATCH_TOOLS };
         }
         debug.log("batch", `Batching ${this.config.enabledTools.length > 0 ? "enabled" : "disabled"}`);
         return this.config.enabledTools.length > 0;
@@ -154,6 +237,7 @@ class BatchManager {
             queueSize: this.queue.length,
             pendingFlush: this.pendingFlush,
             enabled: this.config.enabledTools.length > 0,
+            parallelExecution: this.config.parallelExecutionEnabled,
         };
     }
 

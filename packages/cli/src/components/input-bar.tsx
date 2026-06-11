@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router";
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 
 import { Mode } from "@nightcode/shared";
 import { useRenderer, useKeyboard, usePaste } from "@opentui/react";
@@ -58,6 +58,8 @@ type InputBarProps = {
 export function InputBar({ onSubmit, disabled = false, onClear, messageCount, sessionTitle, tokenUsage, onCreateBranch, onSwitchBranch, imageAttachments = [], onAddImage, onRemoveImage, sessionId }: InputBarProps) {
     const textareaRef = useRef<TextareaRenderable>(null);
     const onSubmitRef = useRef<() => void>(() => { });
+    const [history, setHistory] = useState<string[]>([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
 
     const renderer = useRenderer();
     const toast = useToast();
@@ -116,6 +118,8 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
         }
 
         onSubmit(text);
+        setHistory(prev => [...prev, text]);
+        setHistoryIndex(-1);
         textarea.setText("");
     }, [disabled, onSubmit]);
 
@@ -297,6 +301,66 @@ export function InputBar({ onSubmit, disabled = false, onClear, messageCount, se
             if (handleMentionBackspace()) {
                 key.preventDefault();
             }
+        }
+
+        // Ctrl+E - move cursor to end of line
+        if (key.ctrl && key.name === "e") {
+            key.preventDefault();
+            const textarea = textareaRef.current;
+            if (textarea) {
+                textarea.cursorOffset = textarea.plainText.length;
+            }
+            return;
+        }
+
+        // Ctrl+W - delete word before cursor
+        if (key.ctrl && key.name === "w") {
+            key.preventDefault();
+            const textarea = textareaRef.current;
+            if (textarea && textarea.plainText.length > 0) {
+                const text = textarea.plainText;
+                const cursorPos = textarea.cursorOffset;
+                const beforeCursor = text.slice(0, cursorPos);
+                const afterCursor = text.slice(cursorPos);
+                const lastSpace = beforeCursor.lastIndexOf(" ");
+                const newBefore = lastSpace >= 0 ? beforeCursor.slice(0, lastSpace) : "";
+                textarea.setText(newBefore + afterCursor);
+                textarea.cursorOffset = newBefore.length;
+            }
+            return;
+        }
+
+        // Ctrl+U - delete entire line
+        if (key.ctrl && key.name === "u") {
+            key.preventDefault();
+            const textarea = textareaRef.current;
+            if (textarea) {
+                textarea.setText("");
+            }
+            return;
+        }
+
+        // Up/Down arrows - history navigation
+        if (key.name === "up" && !showCommandMenu && !showMentionMenu) {
+            key.preventDefault();
+            const textarea = textareaRef.current;
+            if (textarea && history.length > 0) {
+                const newIndex = historyIndex < history.length - 1 ? historyIndex + 1 : historyIndex;
+                setHistoryIndex(newIndex);
+                textarea.setText(history[history.length - 1 - newIndex] ?? "");
+            }
+            return;
+        }
+
+        if (key.name === "down" && !showCommandMenu && !showMentionMenu) {
+            key.preventDefault();
+            const textarea = textareaRef.current;
+            if (textarea && history.length > 0) {
+                const newIndex = historyIndex > 0 ? historyIndex - 1 : -1;
+                setHistoryIndex(newIndex);
+                textarea.setText(newIndex >= 0 ? history[history.length - 1 - newIndex] ?? "" : "");
+            }
+            return;
         }
     });
 

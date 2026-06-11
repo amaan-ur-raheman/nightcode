@@ -2,7 +2,7 @@ import { writeFileSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-import { SUPPORTED_CHAT_MODELS } from "@nightcode/shared";
+import { SUPPORTED_CHAT_MODELS, cancelTask } from "@nightcode/shared";
 
 import { clearAuth } from "@/lib/auth";
 import { performLogin } from "@/lib/oauth";
@@ -19,6 +19,7 @@ import { themeManager } from "@/lib/theme-manager";
 import { toolAnalytics } from "@/lib/tool-analytics";
 import { snapshotManager } from "@/lib/snapshot-manager";
 import { batchManager } from "@/lib/batch-manager";
+import { orchestratorManager } from "@/lib/orchestrator-manager";
 
 import type { Command } from "@/components/command-menu/types";
 import {
@@ -30,6 +31,7 @@ import {
     McpDialogContent,
     MCPScopeDialogContent,
     ModelsDialogContent,
+    OrchestrationDialogContent,
     SessionDialogContent,
     SkillsDialogContent,
     ThemeDialogContent
@@ -784,6 +786,44 @@ export const COMMANDS: Command[] = [
         action: async (ctx) => {
             await snapshotManager.clear();
             ctx.toast.show({ message: "All snapshots cleared", variant: "success" });
+        }
+    },
+    {
+        name: "orchestrate",
+        description: "View active orchestrations and task graphs",
+        value: "/orchestrate",
+        shortcut: "Ctrl+O",
+        category: "session",
+        action: (ctx) => {
+            ctx.dialog.open({
+                title: "Orchestration",
+                children: <OrchestrationDialogContent />,
+            });
+        }
+    },
+    {
+        name: "orchestrate-cancel",
+        description: "Cancel all active orchestrations",
+        value: "/orchestrate-cancel",
+        category: "session",
+        requiresBuildMode: true,
+        action: (ctx) => {
+            const active = orchestratorManager.getAll();
+            if (active.length === 0) {
+                ctx.toast.show({ message: "No active orchestrations", variant: "info" });
+                return;
+            }
+            for (const state of active) {
+                for (const node of Object.values(state.graph.nodes)) {
+                    if (node.status === "pending" || node.status === "running") {
+                        cancelTask(state.graph, node.id);
+                    }
+                }
+                state.graph.status = "cancelled";
+                state.graph.completedAt = Date.now();
+                orchestratorManager.updateGraph(state.graph);
+            }
+            ctx.toast.show({ message: `Cancelled ${active.length} orchestration(s)`, variant: "success" });
         }
     },
 ];

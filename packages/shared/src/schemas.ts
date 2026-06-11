@@ -239,6 +239,34 @@ export const toolInputSchemas = {
     keychainDelete: z.object({
         name: z.string().describe("Key name"),
     }),
+    orchestrator: z.object({
+        task: z.string().describe("High-level task to orchestrate. The orchestrator will decompose this into a DAG of subtasks."),
+        context: z.string().optional().describe("Additional context, constraints, or requirements for the task."),
+        strategy: z.enum(["balanced", "speed", "quality"]).default("balanced").describe("Execution strategy: 'balanced' for reasonable parallelism (default), 'speed' for maximum concurrency, 'quality' for thorough review steps."),
+        maxConcurrency: z.number().default(5).describe("Maximum number of workers to run in parallel."),
+        maxDurationMs: z.number().optional().describe("Max wall-clock ms per worker before timeout (default 300000 = 5 min)."),
+    }),
+    getTaskStatus: z.object({
+        graphId: z.string().optional().describe("Task graph ID to check. Omit to see all active orchestrations."),
+    }),
+    cancelTask: z.object({
+        graphId: z.string().describe("Task graph ID."),
+        taskId: z.string().optional().describe("Specific task to cancel. Omit to cancel the entire orchestration."),
+    }),
+    ai: z.object({
+        model: z.string().describe("Model ID to use for AI generation. Examples: 'deepseek-ai/deepseek-v4-flash', 'gpt-4o', 'claude-3-5-haiku-20241022', 'opencode/deepseek-v4-flash-free'"),
+        messages: z.array(
+            z.object({
+                role: z.enum(["user", "assistant", "system"]).describe("Message role"),
+                content: z.string().describe("Message content"),
+            })
+        ).describe("Array of messages for the AI model"),
+        maxTokens: z.number().optional().describe("Maximum number of tokens to generate"),
+        temperature: z.number().min(0).max(2).optional().describe("Model temperature (0-2, default varies by model)"),
+        systemPrompt: z.string().optional().describe("Optional system prompt to override the default"),
+        stream: z.boolean().default(false).describe("Whether to stream the response (experimental)"),
+        modelProvider: z.string().optional().describe("Optional model provider (e.g., 'nvidia', 'anthropic', 'openai', 'opencode', 'groq'). If omitted, will be inferred from model ID"),
+    }),
 } as const;
 
 export const readOnlyToolContracts = {
@@ -418,6 +446,18 @@ export const buildToolContracts = {
         description: "Delete a secret from the OS keychain by name.",
         inputSchema: toolInputSchemas.keychainDelete,
     }),
+    orchestrator: tool({
+        description: "Orchestrate a complex task by decomposing it into a DAG of subtasks and running specialized worker agents in parallel. Use for multi-step work that benefits from concurrent execution (e.g., 'review file A, write tests for file B, and research best practices for X').",
+        inputSchema: toolInputSchemas.orchestrator,
+    }),
+    getTaskStatus: tool({
+        description: "Check the status of running or completed task orchestration graphs. Shows progress, individual task states, and results.",
+        inputSchema: toolInputSchemas.getTaskStatus,
+    }),
+    cancelTask: tool({
+        description: "Cancel a running orchestration or individual task. Running tasks will be aborted, pending tasks cancelled.",
+        inputSchema: toolInputSchemas.cancelTask,
+    }),
 } as const;
 
 export type ToolContracts = typeof buildToolContracts;
@@ -426,4 +466,30 @@ export function getToolContracts(mode: ModeType) {
     return mode === Mode.PLAN
         ? readOnlyToolContracts
         : buildToolContracts;
+}
+
+/**
+ * Tools that subagents should NOT receive.
+ * Subagents are leaf workers — they must not spawn children, orchestrate, or manage undo state.
+ */
+const SUBAGENT_EXCLUDED_TOOLS = new Set([
+    "spawnAgent", "spawnCodeReviewer", "spawnTestWriter",
+    "spawnDebugger", "spawnRefactor", "spawnResearcher",
+    "orchestrator", "getTaskStatus", "cancelTask",
+    "undo",
+]);
+
+/**
+ * Filtered tool contracts for subagent requests.
+ * Removes spawn/orchestration/undo tools that subagents cannot use, saving ~200 tokens per request.
+ */
+export function getSubagentToolContracts(mode: ModeType) {
+    const base = getToolContracts(mode);
+    const filtered: Record<string, any> = {};
+    for (const [key, value] of Object.entries(base)) {
+        if (!SUBAGENT_EXCLUDED_TOOLS.has(key)) {
+            filtered[key] = value;
+        }
+    }
+    return filtered as typeof base;
 }

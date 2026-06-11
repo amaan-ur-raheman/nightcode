@@ -10,3 +10,4 @@ export { HelpDialogContent } from "@/components/dialog/help-dialog";
 export { AuditDialogContent } from "@/components/dialog/audit-dialog";
 export { RenameDialogContent } from "@/components/dialog/rename-dialog";
 export { ImportDialogContent } from "@/components/dialog/import-dialog";
+export { OrchestrationDialogContent } from "@/components/dialog/orchestration-dialog";

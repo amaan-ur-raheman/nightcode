@@ -87,6 +87,19 @@ function parseTestOutput(raw: string): { passed: number; failed: number } {
     return { passed: 0, failed: 0 };
 }
 
+function killProcessGroup(proc: { pid?: number | null; kill: (signal?: any) => void }) {
+    try {
+        if (proc.pid) {
+            process.kill(-proc.pid, "SIGKILL");
+            return;
+        }
+    } catch {
+        // Fall back to killing the immediate process below.
+    }
+
+    try { proc.kill("SIGKILL"); } catch {}
+}
+
 export interface TestResult {
     success: boolean;
     runner: string;
@@ -134,19 +147,26 @@ export async function runTestsTool(input: unknown, _parentMode?: string, _parent
         stdout: "pipe",
         stderr: "pipe",
         env: { ...process.env, FORCE_COLOR: "0", TERM: "dumb" },
+        detached: true,
     });
-    const timer = setTimeout(() => proc.kill("SIGKILL"), timeout);
+    const timer = setTimeout(() => killProcessGroup(proc), timeout);
 
-    const onAbort = () => proc.kill("SIGKILL");
+    const onAbort = () => killProcessGroup(proc);
     signal?.addEventListener("abort", onAbort);
 
-    const [stdout, stderr] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-    ]);
-    const exitCode = await proc.exited;
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", onAbort);
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 1;
+    try {
+        [stdout, stderr] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+        ]);
+        exitCode = await proc.exited;
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+    }
 
     const output = (stdout + stderr).slice(0, MAX_TEST_OUTPUT);
     const { passed, failed } = parseTestOutput(output);

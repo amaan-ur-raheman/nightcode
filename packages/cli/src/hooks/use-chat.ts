@@ -23,14 +23,25 @@ import { executeLocalTool } from "@/lib/local-tools";
 import { loadMcpTools, callMcpTool, getServerForTool, reconnectServer, type McpToolSchema } from "@/lib/mcp-client";
 import { auditLog } from "@/lib/audit-log";
 import { debug } from "@/lib/debug";
+import { batchManager } from "@/lib/batch-manager";
 import {
     ConfirmationManager,
     getConfirmationLevel,
     formatToolInput,
 } from "@/lib/tools/dangerous-ops";
 import { isConfirmationEnabled } from "@/lib/settings";
+import { setCurrentToolCallContext, getCurrentToolCallContext, setExecutionContext } from "@/lib/subagent-progress";
+import { safeStringify } from "@/lib/safe-json";
 
 const MAX_SUBAGENT_OUTPUT_CHARS = 8000;
+
+/**
+ * Maximum number of spawn tools (spawnAgent, spawnResearcher, etc.) that can
+ * execute per AI response. Prevents runaway spawning where the AI emits
+ * 80+ spawn calls in a single turn, wasting hundreds of thousands of tokens.
+ * Excess spawn calls are rejected with an error.
+ */
+const MAX_SPAWNS_PER_RESPONSE = 5;
 
 const COST_PER_1K_INPUT = 0.0003;
 const COST_PER_1K_OUTPUT = 0.0006;
@@ -107,11 +118,21 @@ export type ImageAttachment = {
     name: string;
 };
 
+type PendingToolCall = {
+    toolName: string;
+    input: unknown;
+    toolCallId: string;
+};
+
 export function useChat(sessionId: string, initialMessages: Message[], initialImageAttachments?: ImageAttachment[]) {
+    const isInterruptedRef = useRef(false);
     const mcpToolsRef = useRef<McpToolSchema[]>([]);
     const activeToolControllers = useRef<Map<string, AbortController>>(new Map());
     const cumulativeUsageRef = useRef({ inputTokens: 0, outputTokens: 0, totalCost: 0 });
     const confirmationManagerRef = useRef(new ConfirmationManager());
+    const chatRef = useRef<ReturnType<typeof useAIChat<Message>> | null>(null);
+    const pendingToolCallsRef = useRef<Map<string, PendingToolCall & { isMcpTool: boolean }>>(new Map());
+    const pendingToolCallsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ─── Image attachments ─────────────────────────────────────────────────
     const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>(initialImageAttachments ?? []);
@@ -209,85 +230,261 @@ export function useChat(sessionId: string, initialMessages: Message[], initialIm
             const mode = lastWithMeta?.metadata?.mode ?? "BUILD";
             const model = lastWithMeta?.metadata?.model;
             const isMcpTool = toolCall.toolName.startsWith("mcp__");
-            const abortController = new AbortController();
-            activeToolControllers.current.set(toolCall.toolCallId, abortController);
 
-            const execute = async () => {
-                // Check if confirmation is needed
-                if (!isMcpTool && isConfirmationEnabled()) {
-                    const { level, reason } = getConfirmationLevel(toolCall.toolName, toolCall.input);
-                    if (level === "confirm") {
-                        const details = formatToolInput(toolCall.toolName, toolCall.input);
-                        const confirmed = await confirmationManagerRef.current.request(
-                            toolCall.toolName,
-                            reason,
-                            details,
-                        );
-                        if (!confirmed) {
-                            return { output: "Action cancelled by user" };
-                        }
+            pendingToolCallsRef.current.set(toolCall.toolCallId, {
+                toolName: toolCall.toolName,
+                input: toolCall.input,
+                toolCallId: toolCall.toolCallId,
+                isMcpTool,
+            });
+
+            if (pendingToolCallsTimer.current) {
+                clearTimeout(pendingToolCallsTimer.current);
+            }
+            pendingToolCallsTimer.current = setTimeout(() => {
+                pendingToolCallsTimer.current = null;
+                flushPendingToolCalls(mode, model);
+            }, 50);
+        },
+        sendAutomaticallyWhen: (msgs) => {
+            if (isInterruptedRef.current) return false;
+            return lastAssistantMessageIsCompleteWithToolCalls(msgs);
+        }
+    });
+
+    // Store chat ref for access in callbacks
+    chatRef.current = chat;
+
+    // Flush collected tool calls — executes single tools directly, batches multiple via batchManager
+    const flushPendingToolCalls = useCallback((
+        mode: ModeType,
+        model: SupportedChatModelId | string | undefined,
+    ) => {
+        const pending = Array.from(pendingToolCallsRef.current.values());
+        pendingToolCallsRef.current.clear();
+
+        if (pending.length === 0) return;
+
+        // Enforce per-response spawn cap to prevent runaway spawning
+        const spawnCount = pending.filter(tc => tc.toolName.startsWith("spawn")).length;
+        if (spawnCount > MAX_SPAWNS_PER_RESPONSE) {
+            debug.log("chat", `Capping spawns: ${spawnCount} requested, ${MAX_SPAWNS_PER_RESPONSE} allowed`);
+            const kept: typeof pending = [];
+            const rejected: typeof pending = [];
+            let spawnsKept = 0;
+            for (const tc of pending) {
+                const isSpawn = tc.toolName.startsWith("spawn");
+                if (isSpawn && spawnsKept >= MAX_SPAWNS_PER_RESPONSE) {
+                    rejected.push(tc);
+                } else {
+                    if (isSpawn) spawnsKept++;
+                    kept.push(tc);
+                }
+            }
+            // Report errors for rejected spawn calls
+            for (const tc of rejected) {
+                chat.addToolOutput({
+                    tool: tc.toolName as keyof ChatTools,
+                    toolCallId: tc.toolCallId,
+                    state: "output-error",
+                    errorText: `Spawn cap reached (${MAX_SPAWNS_PER_RESPONSE} per response). Too many subagents requested — batch related work into fewer, broader subagent calls instead.`,
+                });
+            }
+            pending.length = 0;
+            pending.push(...kept);
+        }
+
+        debug.log("chat", `Flushing ${pending.length} pending tool call(s): ${pending.map(t => t.toolName).join(", ")}`);
+
+        const runTool = async (tc: PendingToolCall & { isMcpTool: boolean }) => {
+            const abortController = new AbortController();
+            activeToolControllers.current.set(tc.toolCallId, abortController);
+
+            if (!tc.isMcpTool && isConfirmationEnabled()) {
+                const { level, reason } = getConfirmationLevel(tc.toolName, tc.input);
+                if (level === "confirm") {
+                    const details = formatToolInput(tc.toolName, tc.input);
+                    const confirmed = await confirmationManagerRef.current.request(
+                        tc.toolName,
+                        reason,
+                        details,
+                    );
+                    if (!confirmed) {
+                        return { output: "Action cancelled by user" };
                     }
                 }
+            }
 
-                return isMcpTool
-                    ? callMcpTool(toolCall.toolName, toolCall.input)
-                    : executeLocalTool(toolCall.toolName, toolCall.input, mode, model, abortController.signal);
-            };
+            const execId = setExecutionContext(tc.toolCallId);
+            setCurrentToolCallContext(tc.toolCallId);
+            try {
+                return tc.isMcpTool
+                    ? callMcpTool(tc.toolName, tc.input)
+                    : executeLocalTool(tc.toolName, tc.input, mode, model, abortController.signal, execId);
+            } finally {
+                // Only clear if this tool still owns the context (prevents clobbering
+                // context set by orchestratorTool or other tools that set their own)
+                if (getCurrentToolCallContext() === tc.toolCallId) {
+                    setCurrentToolCallContext(null);
+                }
+            }
+        };
 
+        const reportResult = (tc: PendingToolCall & { isMcpTool: boolean }, output: unknown, startTime: number) => {
+            activeToolControllers.current.delete(tc.toolCallId);
+            auditLog.log({
+                sessionId,
+                tool: tc.toolName,
+                input: tc.input,
+                output: safeStringify(output),
+                duration: Date.now() - startTime,
+                success: true,
+            });
+            chat.addToolOutput({
+                tool: tc.toolName as keyof ChatTools,
+                toolCallId: tc.toolCallId,
+                output: typeof output === "object" && output !== null && "output" in output
+                    ? (output as { output: unknown }).output
+                    : output,
+            });
+        };
+
+        const reportError = (tc: PendingToolCall & { isMcpTool: boolean }, error: Error, startTime: number) => {
+            activeToolControllers.current.delete(tc.toolCallId);
+            if (tc.isMcpTool) {
+                const serverName = getServerForTool(tc.toolName);
+                if (serverName) {
+                    debug.log("mcp", `Tool call failed, attempting reconnect for ${serverName}`);
+                    void reconnectServer(serverName);
+                }
+            }
+            auditLog.log({
+                sessionId,
+                tool: tc.toolName,
+                input: tc.input,
+                error: error.message,
+                duration: Date.now() - startTime,
+                success: false,
+            });
+            chat.addToolOutput({
+                tool: tc.toolName as keyof ChatTools,
+                toolCallId: tc.toolCallId,
+                state: "output-error",
+                errorText: error.message,
+            });
+        };
+
+        // Single tool call — execute directly
+        if (pending.length === 1) {
+            const tc = pending[0]!;
             const startTime = Date.now();
+            void runTool(tc)
+                .then((output) => reportResult(tc, output, startTime))
+                .catch((error) => reportError(tc, error instanceof Error ? error : new Error(String(error)), startTime));
+            return;
+        }
 
-            void execute()
-                .then((output) => {
-                    activeToolControllers.current.delete(toolCall.toolCallId);
+        // Multiple tool calls — execute in parallel via batchManager
+        if (batchManager.getConfig().parallelExecutionEnabled) {
+            const startTime = Date.now();
+            debug.log("chat", `Parallel execution: ${pending.length} tools`, {
+                tools: pending.map(t => t.toolName),
+            });
 
-                    auditLog.log({
-                        sessionId,
-                        tool: toolCall.toolName,
-                        input: toolCall.input,
-                        output: typeof output === 'string' ? output : JSON.stringify(output),
-                        duration: Date.now() - startTime,
-                        success: true,
-                    });
+            const toolCalls = pending.map(tc => {
+                const abortController = new AbortController();
+                activeToolControllers.current.set(tc.toolCallId, abortController);
+                return {
+                    toolName: tc.toolName,
+                    input: tc.input,
+                    toolCallId: tc.toolCallId,
+                    signal: abortController.signal,
+                };
+            });
 
-                    chat.addToolOutput({
-                        tool: toolCall.toolName as keyof ChatTools,
-                        toolCallId: toolCall.toolCallId,
-                        output: typeof output === "object" && output !== null && "output" in output
-                            ? (output as { output: unknown }).output
-                            : output,
-                    });
-                })
-                .catch(async (error) => {
-                    activeToolControllers.current.delete(toolCall.toolCallId);
+            const reportedIds = new Set<string>();
 
-                    // Auto-reconnect MCP server on failure
-                    if (isMcpTool) {
-                        const serverName = getServerForTool(toolCall.toolName);
-                        if (serverName) {
-                            debug.log("mcp", `Tool call failed, attempting reconnect for ${serverName}`);
-                            void reconnectServer(serverName);
+            void batchManager.executeParallel(
+                toolCalls,
+                async (toolName, input, execMode, execModel, execSignal, toolCallId) => {
+                    const tc = pending.find(t => t.toolCallId === toolCallId);
+                    const isMcp = tc?.isMcpTool ?? toolName.startsWith("mcp__");
+                    if (!isMcp && isConfirmationEnabled()) {
+                        const { level, reason } = getConfirmationLevel(toolName, input);
+                        if (level === "confirm") {
+                            const details = formatToolInput(toolName, input);
+                            const confirmed = await confirmationManagerRef.current.request(toolName, reason, details);
+                            if (!confirmed) return { output: "Action cancelled by user" };
                         }
                     }
-
-                    auditLog.log({
-                        sessionId,
-                        tool: toolCall.toolName,
-                        input: toolCall.input,
-                        error: error instanceof Error ? error.message : String(error),
-                        duration: Date.now() - startTime,
-                        success: false,
-                    });
-
-                    chat.addToolOutput({
-                        tool: toolCall.toolName as keyof ChatTools,
-                        toolCallId: toolCall.toolCallId,
-                        state: 'output-error',
-                        errorText: error instanceof Error ? error.message : String(error),
-                    })
-                })
-        },
-        sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls
-    });
+                    const execId = tc ? setExecutionContext(tc.toolCallId) : undefined;
+                    setCurrentToolCallContext(tc?.toolCallId ?? null);
+                    try {
+                        return isMcp
+                            ? callMcpTool(toolName, input)
+                            : executeLocalTool(toolName, input, execMode, execModel, execSignal, execId);
+                    } finally {
+                        // Only clear if this tool still owns the context
+                        if (tc && getCurrentToolCallContext() === tc.toolCallId) {
+                            setCurrentToolCallContext(null);
+                        }
+                    }
+                },
+                mode,
+                model,
+                undefined,
+                (result) => {
+                    const tc = pending.find(t => t.toolCallId === result.toolCallId);
+                    if (!tc || reportedIds.has(result.toolCallId)) return;
+                    reportedIds.add(result.toolCallId);
+                    if (result.error) {
+                        reportError(tc, result.error, startTime);
+                    } else {
+                        reportResult(tc, result.result, startTime);
+                    }
+                },
+            ).then((results) => {
+                const executedIds = new Set(results.map(result => result.toolCallId));
+                for (const result of results) {
+                    const tc = pending.find(t => t.toolCallId === result.toolCallId);
+                    if (!tc || reportedIds.has(result.toolCallId)) continue;
+                    reportedIds.add(result.toolCallId);
+                    if (result.error) {
+                        reportError(tc, result.error, startTime);
+                    } else {
+                        reportResult(tc, result.result, startTime);
+                    }
+                }
+                for (const tc of pending) {
+                    if (!executedIds.has(tc.toolCallId)) {
+                        activeToolControllers.current.delete(tc.toolCallId);
+                        chat.addToolOutput({
+                            tool: tc.toolName as keyof ChatTools,
+                            toolCallId: tc.toolCallId,
+                            state: "output-error",
+                            errorText: "Tool execution skipped due to parallel limit.",
+                        });
+                    }
+                }
+                debug.log("chat", `Parallel batch complete: ${results.length} tools in ${Date.now() - startTime}ms`);
+            }).catch((error) => {
+                const err = error instanceof Error ? error : new Error(String(error));
+                for (const tc of pending) {
+                    if (!reportedIds.has(tc.toolCallId)) {
+                        reportError(tc, err, startTime);
+                    }
+                }
+            });
+        } else {
+            // Parallel disabled — execute each tool directly
+            for (const tc of pending) {
+                const startTime = Date.now();
+                void runTool(tc)
+                    .then((output) => reportResult(tc, output, startTime))
+                    .catch((error) => reportError(tc, error instanceof Error ? error : new Error(String(error)), startTime));
+            }
+        }
+    }, [sessionId, chat]);
 
     // The messages shown depend on active branch
     const effectiveMessages = useMemo(() => {
@@ -296,6 +493,7 @@ export function useChat(sessionId: string, initialMessages: Message[], initialIm
     }, [activeBranchId, chat.messages, branchMessages]);
 
     const abortAllTools = useCallback(() => {
+        isInterruptedRef.current = true;
         activeToolControllers.current.forEach((c) => c.abort());
         activeToolControllers.current.clear();
         chat.stop();
@@ -327,8 +525,9 @@ export function useChat(sessionId: string, initialMessages: Message[], initialIm
     }, [chat.messages]);
 
     const lastMessage = chat.messages.at(-1);
-    const runningToolName = useMemo(() => {
-        if (!lastMessage) return null;
+    const runningToolNames = useMemo(() => {
+        if (!lastMessage) return [];
+        const names: string[] = [];
         for (const p of lastMessage.parts) {
             if (p.type === "dynamic-tool" || (typeof p.type === "string" && p.type.startsWith("tool-"))) {
                 const toolPart = p as any;
@@ -336,12 +535,14 @@ export function useChat(sessionId: string, initialMessages: Message[], initialIm
                     const name = p.type === "dynamic-tool"
                         ? toolPart.toolName
                         : p.type.slice("tool-".length);
-                    return name;
+                    names.push(name);
                 }
             }
         }
-        return null;
+        return names;
     }, [lastMessage]);
+
+    const runningToolName = runningToolNames.length > 0 ? runningToolNames.join(" + ") : null;
 
     const createBranch = useCallback(async (messageIndex?: number) => {
         const idx = messageIndex ?? Math.max(0, chat.messages.length - 1);
@@ -414,6 +615,7 @@ export function useChat(sessionId: string, initialMessages: Message[], initialIm
         ),
         runningToolName,
         submit: (params: { userText: string, mode: ModeType, model: SupportedChatModelId }) => {
+            isInterruptedRef.current = false;
             debug.log("chat", "Submitting message", {
                 mode: params.mode,
                 model: params.model,
@@ -455,6 +657,7 @@ export function useChat(sessionId: string, initialMessages: Message[], initialIm
             chat.setMessages([]);
         },
         retryLast: () => {
+            isInterruptedRef.current = false;
             const messages = chat.messages;
             const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
             if (lastUserIdx === -1) return;

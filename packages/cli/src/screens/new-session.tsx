@@ -7,6 +7,7 @@ import { Mode, modeSchema } from "@nightcode/shared";
 import { useToast } from "@/providers/toast";
 import { apiClient } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/http-errors";
+import { orchestratorManager } from "@/lib/orchestrator-manager";
 
 import { UserMessage } from "@/components/messages";
 import { SessionShell } from "@/components/session-shell";
@@ -68,6 +69,15 @@ export function NewSession() {
                 );
             } catch (error) {
                 if (ignore) return;
+                // Don't redirect to home if orchestration is running
+                const hasActiveOrchestrations = orchestratorManager.getAll().length > 0;
+                if (hasActiveOrchestrations) {
+                    toast.show({
+                        variant: "error",
+                        message: error instanceof Error ? error.message : "Failed to create session (orchestration active)",
+                    });
+                    return;
+                }
                 toast.show({
                     variant: "error",
                     message: error instanceof Error ? error.message : "Failed to create session",

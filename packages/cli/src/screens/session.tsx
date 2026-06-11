@@ -18,6 +18,7 @@ import { usePromptConfig } from "@/providers/prompt-config";
 import { useKeyboardLayer } from "@/providers/keyboard-layer";
 import { useCoalescedMessages } from "@/hooks/use-coalesced-messages";
 import { useTheme } from "@/providers/theme";
+import { orchestratorManager } from "@/lib/orchestrator-manager";
 import { useFileTree } from "@/providers/file-tree";
 
 import { SessionShell } from "@/components/session-shell";
@@ -324,6 +325,15 @@ export function Session() {
                 setSession(resolved);
             } catch (err) {
                 if (ignore) return;
+                // Don't redirect to home if orchestration is running — workers need the session
+                const hasActiveOrchestrations = orchestratorManager.getAll().length > 0;
+                if (hasActiveOrchestrations) {
+                    toast.show({
+                        variant: "error",
+                        message: err instanceof Error ? err.message : "Failed to load session (orchestration active)",
+                    });
+                    return;
+                }
                 toast.show({
                     variant: "error",
                     message: err instanceof Error ? err.message : "Failed to load session",
