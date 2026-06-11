@@ -45,7 +45,7 @@ export { secretScanTool } from "./secret-scan";
 
 type ToolFn =
     | ((input: unknown) => Promise<unknown>)
-    | ((input: unknown, parentMode?: ModeType, parentModel?: string, signal?: AbortSignal) => Promise<unknown>);
+    | ((input: unknown, parentMode?: ModeType, parentModel?: string, signal?: AbortSignal, execId?: string) => Promise<unknown>);
 
 type ModeType = "BUILD" | "PLAN";
 
@@ -100,6 +100,9 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     processManage: () => import("./process-manage").then(m => m.processManageTool),
     envManage: () => import("./env-manage").then(m => m.envManageTool),
     secretScan: () => import("./secret-scan").then(m => m.secretScanTool),
+    orchestrator: () => import("./orchestrator").then(m => m.orchestratorTool),
+    getTaskStatus: () => import("./orchestrator").then(m => m.getTaskStatusTool),
+    cancelTask: () => import("./orchestrator").then(m => m.cancelTaskTool),
 };
 
 const toolCache = new Map<string, ToolFn>();

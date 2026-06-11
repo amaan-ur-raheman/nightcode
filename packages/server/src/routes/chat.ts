@@ -93,12 +93,11 @@ const app = new Hono<AuthenticatedEnv>()
             const userId = c.get("userId");
             const { id, messages, mode, model, mcpTools, projectContext } = c.req.valid("json");
 
+            const reqId = Math.random().toString(36).slice(2, 8);
+            console.log(`[chat:${reqId}] → Request: model=${model} mode=${mode} messages=${messages.length} session=${id.slice(0, 8)} mcpTools=${mcpTools?.length ?? 0}`);
             serverDebug.log("chat", "Request received", {
-                sessionId: id,
-                mode,
-                model,
-                messageCount: messages.length,
-                hasMcpTools: !!mcpTools?.length,
+                reqId, sessionId: id, mode, model,
+                messageCount: messages.length, hasMcpTools: !!mcpTools?.length,
             });
 
             const session = await db.session.findUnique({
@@ -122,8 +121,10 @@ const app = new Hono<AuthenticatedEnv>()
             const startTime = Date.now();
             const systemPrompt = buildSystemPrompt({ mode, projectContext, currentModel: model });
             const tokenCount = estimateTokens(systemPrompt);
-            serverDebug.log("chat", `system prompt: ${tokenCount} tokens (~${(tokenCount * 4 / 1024).toFixed(1)}KB)`);
+            console.log(`[chat:${reqId}]   System prompt: ~${tokenCount} tokens (~${(tokenCount * 4 / 1024).toFixed(1)}KB) projectContext=${projectContext ? `${projectContext.length} chars` : 'none'}`);
             const builtinTools = getToolContracts(mode);
+            const builtinToolNames = Object.keys(builtinTools);
+            console.log(`[chat:${reqId}]   Builtin tools (${builtinToolNames.length}): ${builtinToolNames.join(', ')}`);
 
             // Merge MCP tools (dynamic, from the CLI) with built-in tools
             const dynamicTools = mcpTools?.reduce((acc, t) => {
@@ -134,9 +135,17 @@ const app = new Hono<AuthenticatedEnv>()
                 return acc;
             }, {} as Record<string, ReturnType<typeof tool>>);
 
+            const mcpToolNames = dynamicTools ? Object.keys(dynamicTools) : [];
+            if (mcpToolNames.length > 0) {
+                console.log(`[chat:${reqId}]   MCP tools (${mcpToolNames.length}): ${mcpToolNames.join(', ')}`);
+            }
+
             const tools = dynamicTools && Object.keys(dynamicTools).length > 0
                 ? { ...builtinTools, ...dynamicTools }
                 : builtinTools;
+            const totalToolCount = Object.keys(tools).length;
+            console.log(`[chat:${reqId}]   Total tools: ${totalToolCount}`);
+
             const previousMessage = Array.isArray(session.messages)
                 ? (session.messages as unknown as NightCodeUIMessage[])
                 : [];
@@ -154,6 +163,7 @@ const app = new Hono<AuthenticatedEnv>()
             // Sliding window: truncate session history to prevent context overflow
             // Always preserve the first user message as a context anchor
             const firstUserIdx = mergedMessages.findIndex(m => m.role === "user");
+            console.log(`[chat:${reqId}]   Previous messages in session: ${previousMessage.length}, merged: ${mergedMessages.length}, truncation threshold: ${MAX_SESSION_MESSAGES}`);
             let truncatedMessages: NightCodeUIMessage[] = mergedMessages;
             if (mergedMessages.length > MAX_SESSION_MESSAGES) {
                 const firstUserMessage = firstUserIdx >= 0 ? mergedMessages[firstUserIdx] : null;
@@ -186,10 +196,10 @@ const app = new Hono<AuthenticatedEnv>()
                 tools,
             });
             const modelMessages = await convertToModelMessages(nextMessages, { tools });
+            console.log(`[chat:${reqId}]   After truncation: ${truncatedMessages.length} msgs → validated: ${nextMessages.length} → modelMessages: ${modelMessages.length}`);
             let completedUsage: LanguageModelUsage | null = null;
             let actualModel: ResolvedModel = await resolveChatModel(model);
-
-            serverDebug.log("chat", "Starting stream", { model, fallbackModel: model });
+            console.log(`[chat:${reqId}]   Model resolved: provider=${actualModel.provider} modelId=${actualModel.modelId}`);
 
             const { result, modelUsed, fallbackTriggered, note } = await withFallback(
                 async (modelId) => {
@@ -211,6 +221,8 @@ const app = new Hono<AuthenticatedEnv>()
                 MAX_STREAM_RETRIES,
             );
 
+            console.log(`[chat:${reqId}]   Stream started, waiting for response...`);
+            serverDebug.log("chat", `Starting stream with ${totalToolCount} tools`);
             return result.toUIMessageStreamResponse<NightCodeUIMessage>({
                 originalMessages: nextMessages,
                 messageMetadata({ part }) {
@@ -246,7 +258,14 @@ const app = new Hono<AuthenticatedEnv>()
                     }
 
                     // Skip title generation and billing for aborted streams
-                    if (event.isAborted) return;
+                    if (event.isAborted) {
+                        console.log(`[chat:${reqId}] ✗ Aborted after ${Date.now() - startTime}ms`);
+                        return;
+                    }
+
+                    const elapsed = Date.now() - startTime;
+                    const tokens = completedUsage ? (completedUsage.inputTokens ?? 0) + (completedUsage.outputTokens ?? 0) : 0;
+                    console.log(`[chat:${reqId}] ✓ Complete: ${elapsed}ms ${tokens} tokens (${completedUsage?.inputTokens ?? 0} in / ${completedUsage?.outputTokens ?? 0} out) provider=${actualModel.provider} model=${actualModel.modelId}`);
 
                     if (hasPendingToolCalls(event.responseMessage)) return;
 
@@ -277,6 +296,7 @@ const app = new Hono<AuthenticatedEnv>()
                             model: actualModel.modelId,
                             usage: completedUsage,
                         });
+                        console.log(`[chat:${reqId}]   Billing: ${billableUsage.credits} credits for ${actualModel.provider}/${actualModel.modelId}`);
 
                         await ingestAIUsage({
                             externalCustomerId: userId,
@@ -284,18 +304,13 @@ const app = new Hono<AuthenticatedEnv>()
                             credits: billableUsage.credits,
                         });
                     } catch (error) {
-                        console.error("Failed to ingest Polar AI usage for chat message:", {
-                            error,
-                            sessionId: id,
-                            messageId: event.responseMessage.id,
-                            userId
-                        });
+                        console.error(`[chat:${reqId}]   Billing failed:`, error instanceof Error ? error.message : error);
                     }
                 },
                 onError(error) {
                     const name = error instanceof Error ? error.constructor.name : "UnknownError";
                     const msg = error instanceof Error ? error.message : String(error);
-                    console.error(`[chat] stream error (${name}):`, msg);
+                    console.error(`[chat:${reqId}] ✗ Error after ${Date.now() - startTime}ms (${name}): ${msg}`);
                     return `${name}: ${msg}`;
                 }
             })

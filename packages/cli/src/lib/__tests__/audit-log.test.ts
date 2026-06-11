@@ -60,4 +60,25 @@ describe("AuditLogger", () => {
         expect(fsPromises.appendFile).toHaveBeenCalled();
         expect(errorSpy).not.toHaveBeenCalled();
     });
+
+    it("redacts and flushes circular inputs without throwing", async () => {
+        vi.mocked(fsPromises.appendFile).mockResolvedValue(undefined);
+        const input: Record<string, unknown> = { apiKey: "secret-value-123" };
+        input.self = input;
+
+        await auditLog.log({
+            sessionId: "test-session",
+            tool: "bash",
+            input,
+            output: "ok",
+            duration: 100,
+            success: true,
+        });
+
+        await auditLog.destroy();
+
+        const written = vi.mocked(fsPromises.appendFile).mock.calls.at(-1)?.[1] as string;
+        expect(written).toContain("[REDACTED]");
+        expect(written).toContain("[Circular]");
+    });
 });

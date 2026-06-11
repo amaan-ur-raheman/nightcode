@@ -3,6 +3,16 @@ import type { AppType } from "@nightcode/server";
 
 import { clearAuth, getAuth } from "./auth";
 
+/**
+ * Track whether an orchestration is active.
+ * When true, we don't auto-clear auth on 401 to avoid disrupting running workers.
+ */
+let orchestrationActive = false;
+
+export function setOrchestrationActive(active: boolean) {
+    orchestrationActive = active;
+}
+
 export const apiClient = hc<AppType>(
     process.env.API_URL ?? "http://localhost:3000",
     {
@@ -19,7 +29,7 @@ export const apiClient = hc<AppType>(
 
             const response = await fetch(input, { ...init, headers });
 
-            if (response.status === 401) {
+            if (response.status === 401 && !orchestrationActive) {
                 clearAuth();
             }
 

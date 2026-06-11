@@ -19,6 +19,8 @@ interface AnalyticsData {
     totalToolCalls: number;
     tools: Record<string, ToolUsageEntry>;
     dailyUsage: Record<string, number>;
+    parallelExecutions: number;
+    totalParallelTools: number;
 }
 
 class ToolAnalytics {
@@ -27,6 +29,8 @@ class ToolAnalytics {
         totalToolCalls: 0,
         tools: {},
         dailyUsage: {},
+        parallelExecutions: 0,
+        totalParallelTools: 0,
     };
     private loaded = false;
     private dirty = false;
@@ -92,11 +96,20 @@ class ToolAnalytics {
         }
     }
 
+    async recordParallelExecution(toolCount: number): Promise<void> {
+        await this.load();
+        this.data.parallelExecutions++;
+        this.data.totalParallelTools += toolCount;
+        this.dirty = true;
+    }
+
     async getStats(): Promise<{
         totalCalls: number;
         topTools: Array<{ tool: string; count: number; avgTime: number; errorRate: number }>;
         dailyAverage: number;
         sessions: number;
+        parallelExecutions: number;
+        avgParallelTools: number;
     }> {
         await this.load();
 
@@ -121,6 +134,10 @@ class ToolAnalytics {
             topTools,
             dailyAverage,
             sessions: this.data.sessions,
+            parallelExecutions: this.data.parallelExecutions,
+            avgParallelTools: this.data.parallelExecutions > 0
+                ? Math.round(this.data.totalParallelTools / this.data.parallelExecutions)
+                : 0,
         };
     }
 
@@ -130,6 +147,8 @@ class ToolAnalytics {
             totalToolCalls: 0,
             tools: {},
             dailyUsage: {},
+            parallelExecutions: 0,
+            totalParallelTools: 0,
         };
         this.dirty = true;
         await this.save();

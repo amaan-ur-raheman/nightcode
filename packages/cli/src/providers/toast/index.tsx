@@ -4,12 +4,11 @@ import {
     useRef,
     useState,
     useCallback,
-    useMemo,
-    useEffect
+    useMemo
 } from "react";
 import type { ReactNode } from "react";
 
-import { useTerminalDimensions, useTimeline } from "@opentui/react";
+import { useTerminalDimensions } from "@opentui/react";
 
 import { useTheme } from "@/providers/theme";
 import { DEFAULT_DURATION } from "@/providers/toast/types";
@@ -80,22 +79,6 @@ type ToastProps = {
 function Toast({ currentToast }: ToastProps) {
     const { width } = useTerminalDimensions();
     const { colors } = useTheme();
-    const boxRef = useRef<any>(null);
-    const [opacity, setOpacity] = useState(0);
-
-    const timeline = useTimeline();
-
-    useEffect(() => {
-        if (currentToast && boxRef.current) {
-            setOpacity(0);
-            timeline.add(boxRef.current, {
-                opacity: 1,
-                duration: 200,
-                ease: "outQuad",
-            });
-            timeline.play();
-        }
-    }, [currentToast, timeline]);
 
     if (!currentToast) {
         return null;
@@ -113,7 +96,6 @@ function Toast({ currentToast }: ToastProps) {
 
     return (
         <box
-            ref={boxRef}
             position="absolute"
             justifyContent="center"
             alignItems="flex-start"
@@ -128,7 +110,6 @@ function Toast({ currentToast }: ToastProps) {
             borderColor={borderColor}
             border={["left", "right"]}
             customBorderChars={SplitBorderChars}
-            opacity={opacity}
         >
             <box flexDirection="column" gap={1} width="100%">
                 <text fg={colors.text} wrapMode="word" width="100%">

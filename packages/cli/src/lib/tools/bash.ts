@@ -6,6 +6,19 @@ export function spawnCommand(command: string, options: Record<string, any>) {
     return Bun.spawn(["bash", "-c", command], options);
 }
 
+function killProcessGroup(proc: { pid?: number | null; kill: (signal?: any) => void }) {
+    try {
+        if (proc.pid) {
+            process.kill(-proc.pid, "SIGKILL");
+            return;
+        }
+    } catch {
+        // Fall back to killing the immediate process below.
+    }
+
+    try { proc.kill("SIGKILL"); } catch {}
+}
+
 export async function bashTool(input: unknown, _parentMode?: string, _parentModel?: string, signal?: AbortSignal) {
     const { command, timeout } = toolInputSchemas.bash.parse(input);
 
@@ -30,21 +43,27 @@ export async function bashTool(input: unknown, _parentMode?: string, _parentMode
     });
     const timer = setTimeout(() => {
         timedOut = true;
-        try { process.kill(-proc.pid!, 9); } catch { proc.kill(9); }
+        killProcessGroup(proc);
     }, timeout);
 
     const onAbort = () => {
-        try { process.kill(-proc.pid!, 9); } catch { proc.kill(9); }
+        killProcessGroup(proc);
     };
     signal?.addEventListener("abort", onAbort);
 
-    const [stdout, stderr] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-    ]);
-    const exitCode = await proc.exited;
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", onAbort);
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 1;
+    try {
+        [stdout, stderr] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+        ]);
+        exitCode = await proc.exited;
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+    }
 
     const result: {
         stdout: string;

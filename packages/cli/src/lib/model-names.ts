@@ -30,6 +30,34 @@ const MODEL_NAMES: Record<string, string> = {
     // ── Groq ──
     "llama-3.3-70b-versatile":                        "Llama 3.3 70B",
     "mixtral-8x7b-32768":                             "Mixtral 8x7B",
+
+    // ── OpenCode Zen (free) ──
+    "opencode/deepseek-v4-flash-free":                "Zen: DeepSeek V4 Flash Free",
+    "opencode/nemotron-3-ultra-free":                 "Zen: Nemotron 3 Ultra Free",
+    "opencode/minimax-m3-free":                       "Zen: MiniMax M3 Free",
+    "opencode/mimo-v2.5-free":                        "Zen: MiMo V2.5 Free",
+    "opencode/north-mini-code-free":                 "Zen: North Mini Code Free",
+    "opencode/big-pickle":                          "Zen: Big Pickle",
+    "opencode/qwen3.6-plus-free":                    "Zen: Qwen3.6 Plus Free",
+
+    // ── OpenCode Zen (paid) ──
+    "opencode/gpt-5.5":                               "Zen: GPT 5.5",
+    "opencode/gpt-5.4":                               "Zen: GPT 5.4",
+    "opencode/gpt-5.4-mini":                          "Zen: GPT 5.4 Mini",
+    "opencode/gpt-5.4-nano":                          "Zen: GPT 5.4 Nano",
+    "opencode/gpt-5.3-codex":                         "Zen: GPT 5.3 Codex",
+    "opencode/gpt-5.2":                               "Zen: GPT 5.2",
+    "opencode/gpt-5.1-codex":                         "Zen: GPT 5.1 Codex",
+    "opencode/claude-opus-4-6":                       "Zen: Claude Opus 4.6",
+    "opencode/claude-sonnet-4-6":                     "Zen: Claude Sonnet 4.6",
+    "opencode/claude-haiku-4-5":                      "Zen: Claude Haiku 4.5",
+    "opencode/gemini-3.5-flash":                      "Zen: Gemini 3.5 Flash",
+    "opencode/gemini-3.1-pro":                        "Zen: Gemini 3.1 Pro",
+    "opencode/grok-build-0.1":                        "Zen: Grok Build 0.1",
+    "opencode/deepseek-v4-flash":                     "Zen: DeepSeek V4 Flash",
+    "opencode/kimi-k2.6":                             "Zen: Kimi K2.6",
+    "opencode/glm-5.1":                               "Zen: GLM 5.1",
+    "opencode/qwen3.6-plus":                          "Zen: Qwen3.6 Plus",
 };
 
 export function getModelName(modelId: string): string {

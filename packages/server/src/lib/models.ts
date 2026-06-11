@@ -74,7 +74,7 @@ function wrapWithQueue(model: LanguageModelV3): LanguageModel {
 async function resolveNimModel(modelId: NimModelId, subagent = false): Promise<ResolvedModel> {
     const rawModel = subagent ? await nimSubagent(modelId) : await nim(modelId);
     return {
-        model: wrapWithQueue(rawModel),
+        model: subagent ? rawModel : wrapWithQueue(rawModel),
         provider: "nvidia",
         modelId,
         providerOptions: NIM_PROVIDER_OPTIONS[modelId],
@@ -84,7 +84,7 @@ async function resolveNimModel(modelId: NimModelId, subagent = false): Promise<R
 async function resolveThirdPartyModel(model: SupportedChatModel, subagent = false): Promise<ResolvedModel> {
     const client = await getProviderClient(model.id);
     return {
-        model: wrapWithQueue(client),
+        model: subagent ? client : wrapWithQueue(client),
         provider: model.provider,
         modelId: model.id,
     };
@@ -96,6 +96,7 @@ async function resolveSupportedChatModel(model: SupportedChatModel, subagent = f
     switch (provider) {
         case "nvidia":
             return resolveNimModel(model.id as NimModelId, subagent);
+        case "opencode":
         case "anthropic":
         case "openai":
         case "groq":

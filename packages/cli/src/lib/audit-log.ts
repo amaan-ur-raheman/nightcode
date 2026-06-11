@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
+import { safeStringify } from './safe-json';
 
 const AUDIT_DIR = join(homedir(), '.nightcode', 'logs');
 const AUDIT_FILE = join(AUDIT_DIR, 'audit.jsonl');
@@ -17,7 +18,7 @@ const SENSITIVE_PATTERNS = [
     /credential/i,
 ];
 
-function redactSensitive(value: unknown): unknown {
+function redactSensitive(value: unknown, seen = new WeakSet<object>()): unknown {
     if (value == null) return value;
     if (typeof value === 'string') {
         // Redact strings that look like they contain secrets
@@ -27,15 +28,19 @@ function redactSensitive(value: unknown): unknown {
         return value;
     }
     if (Array.isArray(value)) {
-        return value.map(redactSensitive);
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
+        return value.map((item) => redactSensitive(item, seen));
     }
     if (typeof value === 'object') {
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
         const result: Record<string, unknown> = {};
         for (const [key, val] of Object.entries(value)) {
             if (SENSITIVE_PATTERNS.some(p => p.test(key))) {
                 result[key] = '[REDACTED]';
             } else {
-                result[key] = redactSensitive(val);
+                result[key] = redactSensitive(val, seen);
             }
         }
         return result;
@@ -138,7 +143,7 @@ class AuditLogger {
         const lower = query.toLowerCase();
         return entries.filter(e =>
             e.tool.toLowerCase().includes(lower) ||
-            JSON.stringify(e.input).toLowerCase().includes(lower) ||
+            safeStringify(e.input).toLowerCase().includes(lower) ||
             (e.error && e.error.toLowerCase().includes(lower))
         );
     }
