@@ -3,7 +3,7 @@ export type ModelPricing = {
     outputUsdPerMillionTokens: number;
 };
 
-export type SupportedProvider = "nvidia" | "anthropic" | "openai" | "groq";
+export type SupportedProvider = "nvidia" | "anthropic" | "openai" | "groq" | "opencode";
 
 type SupportedChatModelDefinition = {
     id: string;
@@ -209,6 +209,202 @@ export const SUPPORTED_CHAT_MODELS = [
         pricing: {
             inputUsdPerMillionTokens: 0.24,
             outputUsdPerMillionTokens: 0.24,
+        },
+    },
+
+    // ── OpenCode Zen (free models) ──
+    {
+        id: "opencode/deepseek-v4-flash-free",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: "opencode/nemotron-3-ultra-free",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: "opencode/minimax-m3-free",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: "opencode/mimo-v2.5-free",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+
+    // ── OpenCode Zen (paid models) ──
+    {
+        id: "opencode/gpt-5.5",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 5,
+            outputUsdPerMillionTokens: 30,
+        },
+    },
+    {
+        id: "opencode/gpt-5.4",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 2.5,
+            outputUsdPerMillionTokens: 15,
+        },
+    },
+    {
+        id: "opencode/gpt-5.4-mini",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0.75,
+            outputUsdPerMillionTokens: 4.5,
+        },
+    },
+    {
+        id: "opencode/gpt-5.4-nano",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0.2,
+            outputUsdPerMillionTokens: 1.25,
+        },
+    },
+    {
+        id: "opencode/gpt-5.3-codex",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 1.75,
+            outputUsdPerMillionTokens: 14,
+        },
+    },
+    {
+        id: "opencode/gpt-5.2",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 1.75,
+            outputUsdPerMillionTokens: 14,
+        },
+    },
+    {
+        id: "opencode/gpt-5.1-codex",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 1.07,
+            outputUsdPerMillionTokens: 8.5,
+        },
+    },
+    {
+        id: "opencode/claude-opus-4-6",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 5,
+            outputUsdPerMillionTokens: 25,
+        },
+    },
+    {
+        id: "opencode/claude-sonnet-4-6",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 3,
+            outputUsdPerMillionTokens: 15,
+        },
+    },
+    {
+        id: "opencode/claude-haiku-4-5",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 1,
+            outputUsdPerMillionTokens: 5,
+        },
+    },
+    {
+        id: "opencode/gemini-3.5-flash",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 1.5,
+            outputUsdPerMillionTokens: 9,
+        },
+    },
+    {
+        id: "opencode/gemini-3.1-pro",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 2,
+            outputUsdPerMillionTokens: 12,
+        },
+    },
+    {
+        id: "opencode/grok-build-0.1",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 1,
+            outputUsdPerMillionTokens: 2,
+        },
+    },
+    {
+        id: "opencode/deepseek-v4-flash",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0.14,
+            outputUsdPerMillionTokens: 0.28,
+        },
+    },
+    {
+        id: "opencode/kimi-k2.6",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0.95,
+            outputUsdPerMillionTokens: 4,
+        },
+    },
+    {
+        id: "opencode/glm-5.1",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 1.4,
+            outputUsdPerMillionTokens: 4.4,
+        },
+    },
+    {
+        id: "opencode/qwen3.6-plus",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0.5,
+            outputUsdPerMillionTokens: 3,
+        },
+    },
+    {
+        id: "opencode/north-mini-code-free",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: "opencode/big-pickle",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: "opencode/qwen3.6-plus-free",
+        provider: "opencode",
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
         },
     },
 ] as const satisfies readonly SupportedChatModelDefinition[];

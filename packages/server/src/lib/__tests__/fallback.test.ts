@@ -25,7 +25,7 @@ describe("getFallbackChain", () => {
     it("returns Anthropic fallbacks for Anthropic models", () => {
         const chain = getFallbackChain("claude-sonnet-4-20250514");
         expect(chain).toEqual([
-            "openai/gpt-4o",
+            "gpt-4o",
             "nvidia/nemotron-3-ultra-550b-a55b",
         ]);
     });
@@ -33,7 +33,7 @@ describe("getFallbackChain", () => {
     it("returns OpenAI fallbacks for OpenAI models", () => {
         const chain = getFallbackChain("gpt-4o");
         expect(chain).toEqual([
-            "anthropic/claude-sonnet-4-20250514",
+            "claude-sonnet-4-20250514",
             "nvidia/nemotron-3-ultra-550b-a55b",
         ]);
     });

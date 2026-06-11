@@ -2,8 +2,12 @@ import { execSync, execFileSync } from 'child_process';
 
 class KeychainManager {
     private serviceName = 'nightcode';
+    private notFoundCache = new Set<string>();
     
     async setKey(account: string, password: string): Promise<boolean> {
+        // Clear negative cache so newly-set keys are found on next lookup
+        this.notFoundCache.delete(account);
+
         try {
             if (process.platform === 'darwin') {
                 try {
@@ -38,14 +42,22 @@ class KeychainManager {
     }
     
     async getKey(account: string): Promise<string | null> {
+        // Cache negative results to avoid repeated keychain CLI calls that
+        // produce noisy stderr warnings ("The specified item could not be found")
+        if (this.notFoundCache.has(account)) {
+            return null;
+        }
+
         try {
             if (process.platform === 'darwin') {
                 const result = execFileSync(
                     'security',
                     ['find-generic-password', '-s', this.serviceName, '-a', account, '-w'],
-                    { encoding: 'utf-8' }
+                    { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }
                 ).trim();
-                return result || null;
+                if (result) return result;
+                this.notFoundCache.add(account);
+                return null;
             }
             
             if (process.platform === 'linux') {
@@ -54,11 +66,14 @@ class KeychainManager {
                     ['lookup', this.serviceName, account],
                     { encoding: 'utf-8' }
                 ).trim();
-                return result || null;
+                if (result) return result;
+                this.notFoundCache.add(account);
+                return null;
             }
             
             return null;
         } catch {
+            this.notFoundCache.add(account);
             return null;
         }
     }

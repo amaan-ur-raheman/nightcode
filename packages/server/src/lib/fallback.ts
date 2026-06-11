@@ -26,6 +26,11 @@ const FALLBACK_CHAINS: Record<string, string[]> = {
         "nvidia/nemotron-3-ultra-550b-a55b",
         "deepseek-ai/deepseek-v4-pro",
     ],
+    "opencode": [
+        "opencode/gpt-5.4",
+        "opencode/claude-sonnet-4-6",
+        "opencode/deepseek-v4-flash-free",
+    ],
 };
 
 export function getFallbackChain(modelId: string): string[] {

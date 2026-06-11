@@ -13,6 +13,7 @@ export {
     modeSchema,
     toolInputSchemas,
     getToolContracts,
+    getSubagentToolContracts,
     type ToolContracts,
     type ModeType,
     type ImageContent,
@@ -22,3 +23,20 @@ export {
 } from "./schemas";
 
 export { keychain } from "./keychain";
+
+export {
+    createTaskGraph,
+    getReadyTasks,
+    markTaskRunning,
+    markTaskCompleted,
+    markTaskFailed,
+    cancelTask,
+    getTopologicalOrder,
+    getCriticalPath,
+    getGraphStats,
+    validateGraph,
+    type TaskStatus,
+    type AgentRole,
+    type TaskNode,
+    type TaskGraph,
+} from "./task-graph";
