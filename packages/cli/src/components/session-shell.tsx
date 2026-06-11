@@ -103,6 +103,7 @@ export function SessionShell({
                     <KeyHint keyName="ctrl+b" label="branch" />
                     <KeyHint keyName="ctrl+t" label="files" />
                     <KeyHint keyName="tab" label="agents" />
+                    <KeyHint keyName="ctrl+o" label="orchestrate" />
                 </box>
             </box>
         </box>
