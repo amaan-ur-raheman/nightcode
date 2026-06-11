@@ -10,6 +10,7 @@ type SystemPromptParams = {
 
 const MAX_PROMPT_CACHE_SIZE = 32;
 const promptCache = new Map<string, string>();
+const subagentPromptCache = new Map<string, string>();
 
 function getCacheKey(params: SystemPromptParams): string {
     return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ""}:${params.projectContext ?? ""}`;
@@ -27,12 +28,21 @@ export function buildSystemPrompt({ mode, projectContext, isSubagent, currentMod
     const sharedRules = mode === "PLAN"
         ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
 2. Never re-read files already read this session.
-3. Batch tool calls in parallel when possible (e.g. read 5 files at once).
+3. **Emit ALL independent tool calls in a SINGLE response — they execute in parallel:**
+   - When reading multiple files: emit ALL readFile calls together, not one per turn
+   - When searching: emit multiple grep/glob calls for different patterns at once
+   - Example: need to read auth.ts, db.ts, api.ts? Call readFile("auth.ts"), readFile("db.ts"), readFile("api.ts") in ONE response
+   - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)
 4. Check git status first when context about changes is needed.
 5. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.`
         : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
 2. Never re-read files already read this session.
-3. Batch tool calls in parallel when possible (e.g. read 5 files at once).
+3. **Emit ALL independent tool calls in a SINGLE response — they execute in parallel:**
+   - When reading multiple files: emit ALL readFile calls together, not one per turn
+   - When searching: emit multiple grep/glob calls for different patterns at once
+   - When writing independent files: emit ALL writeFile/editFile calls together
+   - Example: need to read auth.ts, db.ts, api.ts? Call readFile("auth.ts"), readFile("db.ts"), readFile("api.ts") in ONE response
+   - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)
 4. Run tests first to establish a baseline before changes.
 5. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
 6. editFile: oldString must match EXACTLY including whitespace. Read the block first if unsure.
@@ -114,23 +124,60 @@ ${sharedRules}`);
 
     if (mode === "BUILD" && !isSubagent) {
         parts.push(`## Spawning Subagents
-Use **spawnAgent** for independent, parallelizable tasks.
-- Provide a fully self-contained prompt: file paths, code snippets, target structures, expected output. The subagent has no access to your chat history or state.
-- **Model**: You are on ${model}. Omit "model" to use the same, or pick an NVIDIA/NIM model:
-  - Fast/simple: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" or "deepseek-ai/deepseek-v4-flash"
-  - Complex: "deepseek-ai/deepseek-v4-pro" or "nvidia/nemotron-3-ultra-550b-a55b"
-- Set mode to BUILD for changes, PLAN for read-only.
-- Integrate results after the subagent completes.`);
+Use specialized presets for common tasks — they have optimized prompts:
+
+- **spawnTestWriter** — write tests for given files. Provide file paths.
+- **spawnDebugger** — debug an issue. Provide description + file paths.
+- **spawnRefactor** — refactor code. Provide file paths + instructions.
+- **spawnAgent** — general-purpose for tasks that don't fit presets. Provide a fully self-contained prompt with file paths, code snippets, target structures, expected output. The subagent has no access to your chat history or state.
+
+**Batching — Critical:**
+Group related work into ONE subagent with a broader task, NOT one subagent per file. Max 5 spawn calls per response.
+- GOOD: spawnAgent({ task: "Write tests for src/auth.ts AND src/db.ts", mode: "BUILD" })
+- BAD: spawnAgent per file × 20 = wasteful, slow, and will be capped
+When you need multiple subagents, emit ALL calls in a single response for concurrency.
+
+**Model**: You are on ${model}. Omit "model" to use the same, or pick a fast/cheap model:
+  - NVIDIA/NIM (free): "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" or "deepseek-ai/deepseek-v4-flash"
+  - OpenCode Zen (free): "opencode/deepseek-v4-flash-free" or "opencode/minimax-m3-free"
+  - Complex: "deepseek-ai/deepseek-v4-pro" or "opencode/gpt-5.4"
+
+Set mode to BUILD for changes, PLAN for read-only.
+Integrate results after the subagent completes.`);
+
+        parts.push(`## Orchestrator
+Use **orchestrator** to decompose complex tasks into a DAG of parallelizable subtasks with role-based workers.
+- The orchestrator will decompose your task into a directed acyclic graph (DAG) of subtasks
+- Each subtask is assigned to a specialized worker role: coder, reviewer, tester, researcher, debugger
+- Independent tasks (no dependency edges) execute in parallel with configurable concurrency
+- Task dependencies form a DAG — a task only starts after all its dependencies complete
+- Use "strategy": "balanced" (default), "speed" (max parallelism), or "quality" (thorough review steps)
+- **Max 8 tasks per orchestration.** Prefer 3-6 well-scoped tasks. Group related work, don't split into one task per file.
+- Use **getTaskStatus** to monitor progress of active orchestrations
+- Use **cancelTask** to stop a running orchestration
+- Results from dependent tasks are automatically merged and available to downstream workers`);
     }
 
     if (mode === "PLAN" && !isSubagent) {
         parts.push(`## Spawning Subagents
-Use **spawnAgent** for self-contained research/analysis tasks.
-- Provide a fully self-contained prompt with all necessary context.
-- **Model**: You are on ${model}. Omit "model" to use the same, or pick an NVIDIA/NIM model:
-  - Fast/simple: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" or "deepseek-ai/deepseek-v4-flash"
-  - Complex: "deepseek-ai/deepseek-v4-pro" or "nvidia/nemotron-3-ultra-550b-a55b"
-- You are in PLAN mode — subagent must also be PLAN.`);
+Use specialized presets for common tasks — they have optimized prompts:
+
+- **spawnResearcher** — codebase analysis, architecture questions, tracing data flows. Best for "how does X work?" questions.
+- **spawnCodeReviewer** — code review for bugs, security, performance. Provide file paths.
+- **spawnAgent** — general-purpose for tasks that don't fit presets. Provide a fully self-contained prompt.
+
+**Batching — Critical:**
+Group related work into ONE subagent with a broader task, NOT one subagent per file. Max 5 spawn calls per response.
+- GOOD: spawnResearcher({ question: "How does the auth and billing system work across src/auth.ts, src/billing.ts, and src/routes/" })
+- BAD: spawnResearcher per file × 20 = wasteful, slow, and will be capped
+When you need multiple subagents, emit ALL calls in a single response for concurrency.
+
+**Model**: You are on ${model}. Omit "model" to use the same, or pick a fast/cheap model:
+  - NVIDIA/NIM (free): "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" or "deepseek-ai/deepseek-v4-flash"
+  - OpenCode Zen (free): "opencode/deepseek-v4-flash-free" or "opencode/minimax-m3-free"
+  - Complex: "deepseek-ai/deepseek-v4-pro" or "opencode/gpt-5.4"
+
+You are in PLAN mode — subagent must also be PLAN.`);
     }
 
     const result = optimizePrompt(parts.join("\n"));
@@ -140,6 +187,65 @@ Use **spawnAgent** for self-contained research/analysis tasks.
         if (firstKey) promptCache.delete(firstKey);
     }
     promptCache.set(key, result);
+
+    return result;
+}
+
+/**
+ * Lean system prompt for subagent/worker requests.
+ * Strips Memory, Env Management, Process Management, Spawning, Orchestrator sections.
+ * Saves ~400 tokens per subagent call (~11K tokens for a 29-subagent orchestration).
+ */
+export function buildSubagentSystemPrompt({ mode, projectContext, currentModel }: {
+    mode: ModeType;
+    projectContext?: string;
+    currentModel?: string;
+}): string {
+    const key = `sub:${mode}:${currentModel ?? ""}:${projectContext ?? ""}`;
+    const cached = subagentPromptCache.get(key);
+    if (cached) return cached;
+
+    const sharedRules = mode === "PLAN"
+        ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+2. Never re-read files already read this session.
+3. **Batch tool calls in parallel.** When you need multiple reads/searches, emit ALL of them in ONE response:
+   - GOOD: [grep("patternA"), grep("patternB"), readFile("file.ts")] — 3 tools, 1 LLM call
+   - BAD: grep("patternA") → wait → grep("patternB") → wait → readFile("file.ts") — 3 LLM calls, 3x slower
+   The system executes multiple tool calls from one response concurrently.
+4. Check git status first when context about changes is needed.
+5. Present concrete findings with file paths and line references.`
+        : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+2. Never re-read files already read this session.
+3. **Batch tool calls in parallel.** When you need multiple reads/searches, emit ALL of them in ONE response:
+   - GOOD: [readFile("a.ts"), readFile("b.ts"), runTests()] — 3 tools, 1 LLM call
+   - BAD: readFile("a.ts") → wait → readFile("b.ts") → wait → runTests() — 3 LLM calls, 3x slower
+   The system executes multiple tool calls from one response concurrently.
+4. Run tests first to establish a baseline before changes.
+5. If a test/command fails: analyze the error, fix the code, retest.
+6. editFile: oldString must match EXACTLY including whitespace.
+7. Use editFile for small edits; writeFile only for new files.
+8. Verify: run tests and check gitStatus/gitDiff after changes.`;
+
+    const parts: string[] = [
+        `You are a specialized worker agent. Complete the assigned task and return the result. Do NOT spawn further subagents.`,
+        mode === "BUILD"
+            ? `## Mode: BUILD\nImplement changes directly. Read relevant code before modifying. Verify changes when possible.`
+            : `## Mode: PLAN\nAnalyze, research, and propose — do NOT make changes.`,
+    ];
+
+    if (projectContext) {
+        parts.push(`## Project Context\n${projectContext}`);
+    }
+
+    parts.push(`## Rules\n${sharedRules}`);
+
+    const result = optimizePrompt(parts.join("\n"));
+
+    if (subagentPromptCache.size >= MAX_PROMPT_CACHE_SIZE) {
+        const firstKey = subagentPromptCache.keys().next().value;
+        if (firstKey) subagentPromptCache.delete(firstKey);
+    }
+    subagentPromptCache.set(key, result);
 
     return result;
 }
