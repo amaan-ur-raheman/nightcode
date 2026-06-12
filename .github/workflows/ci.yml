@@ -1,23 +1,25 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
+    test:
+        runs-on: ubuntu-latest
         env:
-          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
-      - run: bun run build
-      - run: bun run test
-      - run: bun run typecheck
-      - run: bun run lint
+            DATABASE_URL: 'postgresql://dummy:dummy@localhost:5432/dummy'
+            CLERK_SECRET_KEY: 'dummy_secret'
+            CLERK_PUBLISHABLE_KEY: 'dummy_publishable'
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+            - run: bun install
+            - run: bun run build
+            - run: bun run test
+            - run: bun run typecheck
+            - run: bun run lint
