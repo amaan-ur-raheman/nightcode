@@ -1,8 +1,9 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
-import { keychain } from "@nightcode/shared";
-import { zen, isZenModel } from "./zen";
-import { requestQueue } from "./request-queue";
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
+import { SUPPORTED_CHAT_MODELS } from '@nightcode/shared';
+import { zen, isZenModel, isZenModelId } from './zen';
+import { requestQueue } from './request-queue';
 
 type ProviderConfig = {
     name: string;
@@ -16,7 +17,10 @@ type ProviderInstance = {
     getClient: (modelId: string) => LanguageModelV3;
 };
 
-const providerCache = new Map<string, ReturnType<typeof createOpenAICompatible>>();
+const providerCache = new Map<
+    string,
+    ReturnType<typeof createOpenAICompatible>
+>();
 
 function getOrCreateProvider(name: string, baseUrl: string, apiKey: string) {
     const cacheKey = `${name}:${apiKey}`;
@@ -32,102 +36,98 @@ function getOrCreateProvider(name: string, baseUrl: string, apiKey: string) {
     return provider;
 }
 
-async function resolveApiKey(envVar: string, keychainName: string): Promise<string> {
-    if (keychain.isAvailable()) {
-        const key = await keychain.getKey(keychainName);
-        if (key) return key;
-    }
-    return process.env[envVar] ?? "";
+// Model lists derived from SUPPORTED_CHAT_MODELS to avoid drift
+// between shared/models.ts and server/providers.ts
+function modelsForProvider(
+    provider: string,
+): Array<{ id: string; name: string }> {
+    return SUPPORTED_CHAT_MODELS.filter((m) => m.provider === provider).map(
+        (m) => ({ id: m.id, name: m.id.split('/').pop() ?? m.id }),
+    );
 }
 
 const NIM_PROVIDER: ProviderConfig = {
-    name: "nim",
-    baseUrl: "https://integrate.api.nvidia.com/v1",
-    apiKey: process.env.NIM_API_KEY ?? "",
-    models: [
-        { id: "nvidia/nemotron-3-ultra-550b-a55b", name: "Nemotron 3 Ultra 550B" },
-        { id: "stepfun-ai/step-3.7-flash", name: "Step 3.7 Flash" },
-        { id: "moonshotai/kimi-k2.6", name: "Kimi K2.6" },
-        { id: "mistralai/mistral-medium-3.5-128b", name: "Mistral Medium 3.5" },
-        { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", name: "Nemotron 3 Nano 30B" },
-        { id: "deepseek-ai/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
-        { id: "deepseek-ai/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
-        { id: "z-ai/glm-5.1", name: "GLM 5.1" },
-        { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7" },
-        { id: "google/gemma-4-31b-it", name: "Gemma 4 31B" },
-        { id: "mistralai/mistral-small-4-119b-2603", name: "Mistral Small 4" },
-        { id: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super 120B" },
-        { id: "qwen/qwen3.5-122b-a10b", name: "Qwen 3.5 122B" },
-        { id: "qwen/qwen3.5-397b-a17b", name: "Qwen 3.5 397B" },
-        { id: "stepfun-ai/step-3.5-flash", name: "Step 3.5 Flash" },
-        { id: "meta/llama-4-maverick-17b-128e-instruct", name: "Llama 4 Maverick" },
-        { id: "meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B" },
-    ],
+    name: 'nim',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    apiKey: '',
+    models: modelsForProvider('nvidia'),
 };
 
 const ANTHROPIC_PROVIDER: ProviderConfig = {
-    name: "anthropic",
-    baseUrl: "https://api.anthropic.com/v1",
-    apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-    models: [
-        { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
-        { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku" },
-    ],
+    name: 'anthropic',
+    baseUrl: 'https://api.anthropic.com/v1',
+    apiKey: '',
+    models: modelsForProvider('anthropic'),
 };
 
 const OPENAI_PROVIDER: ProviderConfig = {
-    name: "openai",
-    baseUrl: "https://api.openai.com/v1",
-    apiKey: process.env.OPENAI_API_KEY ?? "",
-    models: [
-        { id: "gpt-4o", name: "GPT-4o" },
-        { id: "gpt-4o-mini", name: "GPT-4o Mini" },
-        { id: "o3-mini", name: "o3-mini" },
-    ],
+    name: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: '',
+    models: modelsForProvider('openai'),
 };
 
 const GROQ_PROVIDER: ProviderConfig = {
-    name: "groq",
-    baseUrl: "https://api.groq.com/openai/v1",
-    apiKey: process.env.GROQ_API_KEY ?? "",
-    models: [
-        { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B" },
-        { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B" },
-    ],
+    name: 'groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    apiKey: '',
+    models: modelsForProvider('groq'),
 };
 
 const OPENCODE_PROVIDER: ProviderConfig = {
-    name: "opencode",
-    baseUrl: "https://opencode.ai/zen",
-    apiKey: "",
-    models: [
-        // Free models
-        { id: "opencode/deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free" },
-        { id: "opencode/nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free" },
-        { id: "opencode/minimax-m3-free", name: "MiniMax M3 Free" },
-        { id: "opencode/mimo-v2.5-free", name: "MiMo V2.5 Free" },
-        // Paid models - OpenAI
-        { id: "opencode/gpt-5.5", name: "GPT 5.5" },
-        { id: "opencode/gpt-5.4", name: "GPT 5.4" },
-        { id: "opencode/gpt-5.4-mini", name: "GPT 5.4 Mini" },
-        { id: "opencode/gpt-5.4-nano", name: "GPT 5.4 Nano" },
-        { id: "opencode/gpt-5.3-codex", name: "GPT 5.3 Codex" },
-        { id: "opencode/gpt-5.2", name: "GPT 5.2" },
-        { id: "opencode/gpt-5.1-codex", name: "GPT 5.1 Codex" },
-        // Paid models - Anthropic
-        { id: "opencode/claude-opus-4-6", name: "Claude Opus 4.6" },
-        { id: "opencode/claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
-        { id: "opencode/claude-haiku-4-5", name: "Claude Haiku 4.5" },
-        // Paid models - Google
-        { id: "opencode/gemini-3.5-flash", name: "Gemini 3.5 Flash" },
-        { id: "opencode/gemini-3.1-pro", name: "Gemini 3.1 Pro" },
-        // Paid models - Other
-        { id: "opencode/grok-build-0.1", name: "Grok Build 0.1" },
-        { id: "opencode/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
-        { id: "opencode/kimi-k2.6", name: "Kimi K2.6" },
-        { id: "opencode/glm-5.1", name: "GLM 5.1" },
-        { id: "opencode/qwen3.6-plus", name: "Qwen3.6 Plus" },
-    ],
+    name: 'opencode',
+    baseUrl: 'https://opencode.ai/zen',
+    apiKey: '',
+    models: modelsForProvider('opencode'),
+};
+
+const OPENROUTER_PROVIDER: ProviderConfig = {
+    name: 'openrouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: '',
+    models: [],
+};
+
+const TOGETHER_PROVIDER: ProviderConfig = {
+    name: 'together',
+    baseUrl: 'https://api.together.xyz/v1',
+    apiKey: '',
+    models: [],
+};
+
+const FIREWORKS_PROVIDER: ProviderConfig = {
+    name: 'fireworks',
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
+    apiKey: '',
+    models: [],
+};
+
+const CEREBRAS_PROVIDER: ProviderConfig = {
+    name: 'cerebras',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    apiKey: '',
+    models: [],
+};
+
+const DEEPSEEK_PROVIDER: ProviderConfig = {
+    name: 'deepseek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    apiKey: '',
+    models: [],
+};
+
+const GEMINI_PROVIDER: ProviderConfig = {
+    name: 'gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    apiKey: '',
+    models: [],
+};
+
+const KILO_PROVIDER: ProviderConfig = {
+    name: 'kilo',
+    baseUrl: 'https://api.kilo.ai/api/gateway',
+    apiKey: '',
+    models: [],
 };
 
 const ALL_PROVIDERS: ProviderConfig[] = [
@@ -136,106 +136,159 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     OPENAI_PROVIDER,
     GROQ_PROVIDER,
     OPENCODE_PROVIDER,
+    OPENROUTER_PROVIDER,
+    TOGETHER_PROVIDER,
+    FIREWORKS_PROVIDER,
+    CEREBRAS_PROVIDER,
+    DEEPSEEK_PROVIDER,
+    GEMINI_PROVIDER,
+    KILO_PROVIDER,
 ];
 
-async function resolveAllApiKeys(): Promise<void> {
-    const keys = await Promise.all([
-        resolveApiKey("NIM_API_KEY", "nim-api-key"),
-        resolveApiKey("ANTHROPIC_API_KEY", "anthropic-api-key"),
-        resolveApiKey("OPENAI_API_KEY", "openai-api-key"),
-        resolveApiKey("GROQ_API_KEY", "groq-api-key"),
-        resolveApiKey("OPENCODE_API_KEY", "opencode-api-key"),
-    ]);
-    
-    NIM_PROVIDER.apiKey = keys[0];
-    ANTHROPIC_PROVIDER.apiKey = keys[1];
-    OPENAI_PROVIDER.apiKey = keys[2];
-    GROQ_PROVIDER.apiKey = keys[3];
-    OPENCODE_PROVIDER.apiKey = keys[4];
-}
-
-let _keysResolved = false;
-
-async function resetKeysResolved(): Promise<void> {
-    _keysResolved = false;
-}
-
-async function ensureKeysResolved(): Promise<void> {
-    if (!_keysResolved) {
-        await resolveAllApiKeys();
-        _keysResolved = true;
-    }
-}
+// Provider prefix mapping for dynamic model IDs
+const PROVIDER_PREFIXES: Record<string, string> = {
+    'nvidia/': 'nim',
+    'openrouter/': 'openrouter',
+    'together/': 'together',
+    'fireworks/': 'fireworks',
+    'cerebras/': 'cerebras',
+    'deepseek/': 'deepseek',
+    'gemini/': 'gemini',
+    'google/': 'gemini',
+    'kilo/': 'kilo',
+};
 
 function findProviderForModel(modelId: string): ProviderConfig | undefined {
-    return ALL_PROVIDERS.find((p) =>
-        p.apiKey && p.models.some((m) => m.id === modelId)
+    // First try exact match in hardcoded models
+    const exactMatch = ALL_PROVIDERS.find((p) =>
+        p.models.some((m) => m.id === modelId),
     );
+    if (exactMatch) return exactMatch;
+
+    // Then try provider prefix matching for dynamic models
+    for (const [prefix, providerName] of Object.entries(PROVIDER_PREFIXES)) {
+        if (modelId.startsWith(prefix)) {
+            return ALL_PROVIDERS.find((p) => p.name === providerName);
+        }
+    }
+
+    return undefined;
+}
+
+function getProviderForDynamicModel(
+    modelId: string,
+): { provider: ProviderConfig; actualModelId: string } | undefined {
+    // Check if model ID has a provider prefix (e.g., "openrouter/anthropic/claude-3.5-sonnet")
+    for (const [prefix, providerName] of Object.entries(PROVIDER_PREFIXES)) {
+        if (modelId.startsWith(prefix)) {
+            const provider = ALL_PROVIDERS.find((p) => p.name === providerName);
+            if (provider) {
+                // Strip the prefix to get the actual model ID for the provider
+                const actualModelId = modelId.slice(prefix.length);
+                return { provider, actualModelId };
+            }
+        }
+    }
+    return undefined;
 }
 
 function wrapModelWithQueue(model: LanguageModelV3): LanguageModelV3 {
     return {
         ...model,
-        doGenerate: async (params: any): Promise<any> => await requestQueue.enqueue(async () => model.doGenerate(params) as any),
-        doStream: async (params: any): Promise<any> => await requestQueue.enqueue(async () => model.doStream(params) as any),
+        doGenerate: async (params: any): Promise<any> =>
+            await requestQueue.enqueue(
+                async () => model.doGenerate(params) as any,
+            ),
+        doStream: async (params: any): Promise<any> =>
+            await requestQueue.enqueue(
+                async () => model.doStream(params) as any,
+            ),
     } as any;
 }
 
-export async function getProviderClient(modelId: string): Promise<LanguageModelV3> {
-    await ensureKeysResolved();
-    
+/**
+ * Resolve a provider client for the given model ID.
+ *
+ * API keys are now provided by the client via the `apiKey` parameter.
+ * The server no longer reads keys from the OS keychain or env vars.
+ * If no apiKey is provided, the server falls back to env vars for backward compatibility.
+ */
+export async function getProviderClient(
+    modelId: string,
+    apiKey?: string,
+): Promise<LanguageModelV3> {
     // OpenCode Zen models use multi-SDK routing
     if (isZenModel(modelId)) {
-        const model = await zen(modelId);
+        const model = await zen(modelId, apiKey);
         return wrapModelWithQueue(model);
     }
-    
+
+    // Check for dynamic model with provider prefix
+    const dynamicProvider = getProviderForDynamicModel(modelId);
+    if (dynamicProvider) {
+        const { provider, actualModelId } = dynamicProvider;
+        const resolvedKey = apiKey || provider.apiKey || '';
+        if (!resolvedKey) {
+            throw new Error(
+                `No API key provided for provider "${provider.name}". ` +
+                    `Configure the key in your client settings.`,
+            );
+        }
+        // Gemini uses a non-OpenAI-compatible API, route through Google AI SDK
+        if (provider.name === 'gemini') {
+            const googleProvider = createGoogleGenerativeAI({
+                apiKey: resolvedKey,
+            });
+            return wrapModelWithQueue(googleProvider(actualModelId));
+        }
+        const sdk = getOrCreateProvider(
+            provider.name,
+            provider.baseUrl,
+            resolvedKey,
+        );
+        return wrapModelWithQueue(sdk(actualModelId));
+    }
+
     const provider = findProviderForModel(modelId);
 
     if (!provider) {
         throw new Error(
             `No provider found for model "${modelId}". ` +
-            `Check the model ID or configure the appropriate provider.`
+                `Check the model ID or configure the appropriate provider.`,
         );
     }
 
-    if (!provider.apiKey) {
+    const resolvedKey = apiKey || provider.apiKey || '';
+    if (!resolvedKey) {
         throw new Error(
-            `No API key configured for provider "${provider.name}". ` +
-            `Set the appropriate environment variable or store in OS keychain.`
+            `No API key provided for provider "${provider.name}". ` +
+                `Configure the key in your client settings.`,
         );
     }
 
-    const sdk = getOrCreateProvider(provider.name, provider.baseUrl, provider.apiKey);
+    const sdk = getOrCreateProvider(
+        provider.name,
+        provider.baseUrl,
+        resolvedKey,
+    );
     return wrapModelWithQueue(sdk(modelId));
 }
 
-export async function getAllModels(): Promise<Array<{ id: string; name: string; provider: string }>> {
-    await ensureKeysResolved();
-    
-    const models: Array<{ id: string; name: string; provider: string }> = [];
-
-    for (const provider of ALL_PROVIDERS) {
-        if (!provider.apiKey) continue;
-        for (const model of provider.models) {
-            models.push({
-                id: model.id,
-                name: model.name,
-                provider: provider.name,
-            });
-        }
-    }
-
-    return models;
-}
-
 export async function isModelAvailable(modelId: string): Promise<boolean> {
-    await ensureKeysResolved();
     const provider = findProviderForModel(modelId);
-    return provider !== undefined && !!provider.apiKey;
+    return provider !== undefined;
 }
 
 export function getProviderName(modelId: string): string {
+    // Check for dynamic model with provider prefix
+    for (const [prefix, providerName] of Object.entries(PROVIDER_PREFIXES)) {
+        if (modelId.startsWith(prefix)) {
+            return providerName;
+        }
+    }
+
     const provider = findProviderForModel(modelId);
-    return provider?.name ?? "nim";
+    return provider?.name ?? 'nim';
 }
+
+export { isZenModelId };

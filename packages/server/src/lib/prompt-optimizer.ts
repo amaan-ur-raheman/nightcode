@@ -43,14 +43,14 @@ export function buildContextualSections(ctx: ContextOptions): string[] {
             `Use **spawnAgent** for independent, parallelizable tasks.`,
             `- Provide a self-contained prompt with all context (file paths, code, targets). The subagent has no access to your history.`,
             `- Mode: Set to BUILD for changes, PLAN for read-only.`,
-            `- Integrate results after the subagent completes.`
+            `- Integrate results after the subagent completes.`,
         );
     } else if (!ctx.isSubagent) {
         sections.push(
             `## Spawning Subagents`,
             `Use **spawnAgent** for self-contained research/analysis tasks.`,
             `- Provide a self-contained prompt with all context.`,
-            `- You are in PLAN mode — subagent must also be PLAN.`
+            `- You are in PLAN mode — subagent must also be PLAN.`,
         );
     }
 

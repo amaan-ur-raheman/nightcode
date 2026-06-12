@@ -1,4 +1,4 @@
-import { getProviderName, isModelAvailable } from "./providers";
+import { getProviderName, isModelAvailable } from './providers';
 
 type FallbackConfig = {
     primary: string;
@@ -9,42 +9,48 @@ type FallbackConfig = {
 
 // Default fallback chains per provider
 const FALLBACK_CHAINS: Record<string, string[]> = {
-    "nim": [
-        "deepseek-ai/deepseek-v4-pro",
-        "qwen/qwen3.5-397b-a17b",
-        "meta/llama-3.3-70b-instruct",
+    nim: [
+        'nvidia/deepseek-ai/deepseek-v4-pro',
+        'nvidia/qwen/qwen3.5-397b-a17b',
+        'nvidia/meta/llama-3.3-70b-instruct',
     ],
-    "anthropic": [
-        "gpt-4o",
-        "nvidia/nemotron-3-ultra-550b-a55b",
+    anthropic: ['gpt-4o', 'nvidia/nemotron-3-ultra-550b-a55b'],
+    openai: ['claude-sonnet-4-20250514', 'nvidia/nemotron-3-ultra-550b-a55b'],
+    groq: [
+        'nvidia/nemotron-3-ultra-550b-a55b',
+        'nvidia/deepseek-ai/deepseek-v4-pro',
     ],
-    "openai": [
-        "claude-sonnet-4-20250514",
-        "nvidia/nemotron-3-ultra-550b-a55b",
+    opencode: [
+        'opencode/gpt-5.4',
+        'opencode/claude-sonnet-4-6',
+        'opencode/deepseek-v4-flash-free',
     ],
-    "groq": [
-        "nvidia/nemotron-3-ultra-550b-a55b",
-        "deepseek-ai/deepseek-v4-pro",
-    ],
-    "opencode": [
-        "opencode/gpt-5.4",
-        "opencode/claude-sonnet-4-6",
-        "opencode/deepseek-v4-flash-free",
+    kilo: [
+        'kilo/anthropic/claude-sonnet-4.5',
+        'kilo/openai/gpt-4o',
+        'kilo/openai/gpt-4o-mini',
     ],
 };
 
 export function getFallbackChain(modelId: string): string[] {
     const provider = getProviderName(modelId);
-    return (FALLBACK_CHAINS[provider] ?? FALLBACK_CHAINS["nim"]) as string[];
+    return (FALLBACK_CHAINS[provider] ?? FALLBACK_CHAINS['nim']) as string[];
 }
 
 function isNonRetryableError(error: unknown): boolean {
     if (error instanceof Error) {
         const msg = error.message.toLowerCase();
-        if (msg.includes("401") || msg.includes("403") || msg.includes("unauthorized") || msg.includes("forbidden")) return true;
-        if (msg.includes("invalid api key") || msg.includes("authentication")) return true;
+        if (
+            msg.includes('401') ||
+            msg.includes('403') ||
+            msg.includes('unauthorized') ||
+            msg.includes('forbidden')
+        )
+            return true;
+        if (msg.includes('invalid api key') || msg.includes('authentication'))
+            return true;
     }
-    if (typeof error === "object" && error !== null && "statusCode" in error) {
+    if (typeof error === 'object' && error !== null && 'statusCode' in error) {
         const status = (error as { statusCode: number }).statusCode;
         if (status === 401 || status === 403) return true;
     }
@@ -53,13 +59,13 @@ function isNonRetryableError(error: unknown): boolean {
 
 function getFriendlyModelName(modelId: string): string {
     // Extract human-readable name from model IDs like "deepseek-ai/deepseek-v4-pro"
-    const parts = modelId.split("/");
+    const parts = modelId.split('/');
     const name = parts[parts.length - 1] ?? modelId;
     return name
-        .replace(/-/g, " ")
+        .replace(/-/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase())
-        .replace(/ v4 pro/i, " V4 Pro")
-        .replace(/ v4 flash/i, " V4 Flash");
+        .replace(/ v4 pro/i, ' V4 Pro')
+        .replace(/ v4 flash/i, ' V4 Flash');
 }
 
 export type FallbackResult<T> = {

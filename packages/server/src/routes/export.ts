@@ -1,10 +1,10 @@
-import { Hono } from "hono";
-import { z } from "zod";
+import { Hono } from 'hono';
+import { z } from 'zod';
 
-import { db } from "@nightcode/database/client";
-import { zValidator } from "@hono/zod-validator";
+import { db } from '@nightcode/database/client';
+import { zValidator } from '@hono/zod-validator';
 
-import type { AuthenticatedEnv } from "../middleware/require-auth";
+import type { AuthenticatedEnv } from '../middleware/require-auth';
 
 const importSessionSchema = z.object({
     title: z.string().min(1).max(200),
@@ -14,19 +14,19 @@ const importSessionSchema = z.object({
 });
 
 const importSessionValidator = zValidator(
-    "json",
+    'json',
     importSessionSchema,
     (result, c) => {
         if (!result.success) {
-            return c.json({ error: "Invalid import data" }, 400);
+            return c.json({ error: 'Invalid import data' }, 400);
         }
-    }
+    },
 );
 
 const app = new Hono<AuthenticatedEnv>()
-    .get("/session/:id", async (c) => {
-        const id = c.req.param("id");
-        const userId = c.get("userId");
+    .get('/session/:id', async (c) => {
+        const id = c.req.param('id');
+        const userId = c.get('userId');
 
         const session = await db.session.findUnique({
             where: { id, userId },
@@ -42,7 +42,7 @@ const app = new Hono<AuthenticatedEnv>()
         });
 
         if (!session) {
-            return c.json({ error: "Session not found" }, 404);
+            return c.json({ error: 'Session not found' }, 404);
         }
 
         return c.json({
@@ -51,12 +51,12 @@ const app = new Hono<AuthenticatedEnv>()
             session,
         });
     })
-    .get("/all", async (c) => {
-        const userId = c.get("userId");
+    .get('/all', async (c) => {
+        const userId = c.get('userId');
 
         const sessions = await db.session.findMany({
             where: { userId },
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: 'desc' },
             select: {
                 id: true,
                 title: true,
@@ -74,9 +74,9 @@ const app = new Hono<AuthenticatedEnv>()
             sessions,
         });
     })
-    .post("/import", importSessionValidator, async (c) => {
-        const userId = c.get("userId");
-        const data = c.req.valid("json");
+    .post('/import', importSessionValidator, async (c) => {
+        const userId = c.get('userId');
+        const data = c.req.valid('json');
 
         const session = await db.session.create({
             data: {
@@ -84,7 +84,7 @@ const app = new Hono<AuthenticatedEnv>()
                 title: data.title,
                 messages: data.messages ?? [],
                 branches: data.branches ?? [],
-                activeBranchId: data.activeBranchId ?? "main",
+                activeBranchId: data.activeBranchId ?? 'main',
             },
             select: {
                 id: true,

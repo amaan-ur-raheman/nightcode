@@ -1,6 +1,6 @@
-import { Polar } from "@polar-sh/sdk";
+import { Polar } from '@polar-sh/sdk';
 
-type PolarServer = "sandbox" | "production";
+type PolarServer = 'sandbox' | 'production';
 
 function getRequiredEnv(name: string): string {
     const value = process.env[name];
@@ -11,25 +11,27 @@ function getRequiredEnv(name: string): string {
 }
 
 export function getPolarAccessToken(): string {
-    return getRequiredEnv("POLAR_ACCESS_TOKEN");
+    return getRequiredEnv('POLAR_ACCESS_TOKEN');
 }
 
 export function getPolarProductId(): string {
-    return getRequiredEnv("POLAR_PRODUCT_ID");
+    return getRequiredEnv('POLAR_PRODUCT_ID');
 }
 
 export function getPolarCreditsMeterId(): string {
-    return getRequiredEnv("POLAR_CREDITS_METER_ID");
+    return getRequiredEnv('POLAR_CREDITS_METER_ID');
 }
 
 export function getPolarServer(): PolarServer {
-    const server = process.env.POLAR_SERVER
+    const server = process.env.POLAR_SERVER;
     if (!server) {
-        return "sandbox";
+        return 'sandbox';
     }
 
-    if (server !== "sandbox" && server !== "production") {
-        throw new Error("POLAR_SERVER must be either 'sandbox' or 'production'");
+    if (server !== 'sandbox' && server !== 'production') {
+        throw new Error(
+            "POLAR_SERVER must be either 'sandbox' or 'production'",
+        );
     }
 
     return server;
@@ -49,10 +51,10 @@ function getPolar(): Polar {
 
 function hasStatusCode(error: unknown): error is { statusCode: number } {
     return (
-        typeof error === "object" &&
+        typeof error === 'object' &&
         error !== null &&
-        "statusCode" in error &&
-        typeof error.statusCode === "number"
+        'statusCode' in error &&
+        typeof error.statusCode === 'number'
     );
 }
 
@@ -67,9 +69,9 @@ export async function createCheckoutUrl({
 }: CreateCheckoutUrlParams) {
     const result = await getPolar().checkouts.create({
         products: [getPolarProductId()],
-        successUrl: new URL("/billing/success", requestUrl).toString(),
+        successUrl: new URL('/billing/success', requestUrl).toString(),
         externalCustomerId: customerExternalId,
-        metadata: { source: "nightcode-cli" }
+        metadata: { source: 'nightcode-cli' },
     });
 
     return result.url;
@@ -81,7 +83,7 @@ export async function createCustomerPortalUrl({
 }: CreateCheckoutUrlParams) {
     const result = await getPolar().customerSessions.create({
         externalCustomerId: customerExternalId,
-        returnUrl: new URL("/billing/success", requestUrl).toString(),
+        returnUrl: new URL('/billing/success', requestUrl).toString(),
     });
 
     return result.customerPortalUrl;
@@ -90,32 +92,41 @@ export async function createCustomerPortalUrl({
 const creditsCache = new Map<string, { balance: number; expiry: number }>();
 const CREDITS_CACHE_TTL_MS = 30_000;
 
-export function getCachedCreditsBalance(customerExternalId: string): number | null {
+export function getCachedCreditsBalance(
+    customerExternalId: string,
+): number | null {
     const cached = creditsCache.get(customerExternalId);
     if (cached && Date.now() < cached.expiry) return cached.balance;
     return null;
 }
 
-export async function getAvailableCreditsBalance(customerExternalId: string): Promise<number> {
+export async function getAvailableCreditsBalance(
+    customerExternalId: string,
+): Promise<number> {
     const cached = creditsCache.get(customerExternalId);
     if (cached && Date.now() < cached.expiry) return cached.balance;
 
     try {
         const customerState = await getPolar().customers.getStateExternal({
-            externalId: customerExternalId
+            externalId: customerExternalId,
         });
 
         const matchingMeters = customerState.activeMeters.filter(
-            (meter) => meter.meterId === getPolarCreditsMeterId()
+            (meter) => meter.meterId === getPolarCreditsMeterId(),
         );
 
         if (matchingMeters.length > 1) {
-            throw new Error("Expected exactly one matching Polar credits meter");
+            throw new Error(
+                'Expected exactly one matching Polar credits meter',
+            );
         }
 
         const creditsMeter = matchingMeters[0];
         const balance = creditsMeter?.balance ?? 0;
-        creditsCache.set(customerExternalId, { balance, expiry: Date.now() + CREDITS_CACHE_TTL_MS });
+        creditsCache.set(customerExternalId, {
+            balance,
+            expiry: Date.now() + CREDITS_CACHE_TTL_MS,
+        });
         return balance;
     } catch (error) {
         if (hasStatusCode(error) && error.statusCode === 404) {
@@ -130,7 +141,7 @@ type IngestAIUsageParams = {
     externalCustomerId: string;
     eventId: string;
     credits: number;
-}
+};
 
 export async function ingestAIUsage({
     externalCustomerId,
@@ -144,11 +155,11 @@ export async function ingestAIUsage({
     await getPolar().events.ingest({
         events: [
             {
-                name: "nightcode_usage",
+                name: 'nightcode_usage',
                 externalId: eventId,
                 externalCustomerId,
-                metadata: { credits }
-            }
-        ]
+                metadata: { credits },
+            },
+        ],
     });
 }

@@ -1,5 +1,5 @@
-import { type ModeType } from "@nightcode/shared";
-import { optimizePrompt } from "./lib/prompt-optimizer";
+import { type ModeType } from '@nightcode/shared';
+import { optimizePrompt } from './lib/prompt-optimizer';
 
 type SystemPromptParams = {
     mode: ModeType;
@@ -13,20 +13,28 @@ const promptCache = new Map<string, string>();
 const subagentPromptCache = new Map<string, string>();
 
 function getCacheKey(params: SystemPromptParams): string {
-    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ""}:${params.projectContext ?? ""}`;
+    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}`;
 }
 
-export function buildSystemPrompt({ mode, projectContext, isSubagent, currentModel }: SystemPromptParams): string {
+export function buildSystemPrompt({
+    mode,
+    projectContext,
+    isSubagent,
+    currentModel,
+}: SystemPromptParams): string {
     const key = getCacheKey({ mode, projectContext, isSubagent, currentModel });
     const cached = promptCache.get(key);
     if (cached) return cached;
 
-    const model = currentModel ?? "the main model";
+    const model = currentModel ?? 'the main model';
 
-    const spawnAgentDesc = isSubagent ? "" : `- **spawnAgent** — Delegate a self-contained task to a subagent that runs autonomously and returns the result. Omit "model" to use the same model (${model}).`;
+    const spawnAgentDesc = isSubagent
+        ? ''
+        : `- **spawnAgent** — Delegate a self-contained task to a subagent that runs autonomously and returns the result. Omit "model" to use the same model (${model}).`;
 
-    const sharedRules = mode === "PLAN"
-        ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+    const sharedRules =
+        mode === 'PLAN'
+            ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
 2. Never re-read files already read this session.
 3. **Emit ALL independent tool calls in a SINGLE response — they execute in parallel:**
    - When reading multiple files: emit ALL readFile calls together, not one per turn
@@ -35,7 +43,7 @@ export function buildSystemPrompt({ mode, projectContext, isSubagent, currentMod
    - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)
 4. Check git status first when context about changes is needed.
 5. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.`
-        : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+            : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
 2. Never re-read files already read this session.
 3. **Emit ALL independent tool calls in a SINGLE response — they execute in parallel:**
    - When reading multiple files: emit ALL readFile calls together, not one per turn
@@ -65,18 +73,20 @@ export function buildSystemPrompt({ mode, projectContext, isSubagent, currentMod
 You are a subagent. Complete the assigned task and return the result. Do NOT spawn further subagents.`);
     }
 
-    parts.push(mode === "PLAN"
-        ? `## Mode: PLAN
+    parts.push(
+        mode === 'PLAN'
+            ? `## Mode: PLAN
 Analyze, research, and propose — do NOT make changes.
 - Explore the codebase with tools
 - Present analysis and a clear plan
 - Explain trade-offs; ask for clarification when needed`
-        : `## Mode: BUILD
+            : `## Mode: BUILD
 Implement changes directly.
 - Read relevant code before modifying
 - writeFile for new files, editFile for targeted edits
 - Use bash for commands (tests, builds, git)
-- Verify changes when possible`);
+- Verify changes when possible`,
+    );
 
     parts.push(`## Memory
 Persistent memory across sessions. Use it for:
@@ -119,10 +129,39 @@ When extended reasoning is enabled, think step-by-step through complex problems 
 - Provide your reasoning before the final answer
 - Use this for: architecture decisions, debugging complex issues, optimizing code
 
+### Asking Questions
+Use the **askQuestion** tool to prompt the user for input when you need clarification or a decision:
+- Provide 1-10 questions, each with optional predefined choices
+- Set allowCustom to true (default) to let users type their own answers
+- The user answers each question in sequence via an interactive overlay
+- Returns an array of answers (empty strings for cancelled questions)
+- Use when: choosing between implementation approaches, confirming design decisions, gathering preferences
+- Do NOT use for: yes/no confirmations (just ask in chat), simple clarifications (just ask in chat)
+
+Example:
+askQuestion({ questions: [{ question: "Which state manager?", choices: ["Zustand", "Jotai", "Redux Toolkit"], allowCustom: true }] })
+
 ### Rules
 ${sharedRules}`);
 
-    if (mode === "BUILD" && !isSubagent) {
+    if (mode === 'BUILD' && !isSubagent) {
+        parts.push(`## Task Lists
+For complex multi-step requests (3+ distinct steps), use the **taskList** tool to create a visible checklist:
+
+1. **Before starting work**: Call taskList with action="create" and your planned tasks
+2. **When starting a task**: Call taskList with action="update" with the taskId and status="in-progress"
+3. **When finishing a task**: Call taskList with action="complete" with the taskId
+4. **If a task fails**: Call taskList with action="update" with the taskId and status="failed"
+
+This gives users visibility into your plan and progress. Always create a task list for:
+- Bug fixes that involve investigation + fix + test
+- Feature implementation with multiple files
+- Refactoring across multiple modules
+- Any request with 3+ explicit steps
+
+Keep tasks concise (one line each). Group related work into single tasks.
+Do NOT create task lists for simple single-step requests.`);
+
         parts.push(`## Spawning Subagents
 Use specialized presets for common tasks — they have optimized prompts:
 
@@ -136,11 +175,6 @@ Group related work into ONE subagent with a broader task, NOT one subagent per f
 - GOOD: spawnAgent({ task: "Write tests for src/auth.ts AND src/db.ts", mode: "BUILD" })
 - BAD: spawnAgent per file × 20 = wasteful, slow, and will be capped
 When you need multiple subagents, emit ALL calls in a single response for concurrency.
-
-**Model**: You are on ${model}. Omit "model" to use the same, or pick a fast/cheap model:
-  - NVIDIA/NIM (free): "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" or "deepseek-ai/deepseek-v4-flash"
-  - OpenCode Zen (free): "opencode/deepseek-v4-flash-free" or "opencode/minimax-m3-free"
-  - Complex: "deepseek-ai/deepseek-v4-pro" or "opencode/gpt-5.4"
 
 Set mode to BUILD for changes, PLAN for read-only.
 Integrate results after the subagent completes.`);
@@ -158,7 +192,7 @@ Use **orchestrator** to decompose complex tasks into a DAG of parallelizable sub
 - Results from dependent tasks are automatically merged and available to downstream workers`);
     }
 
-    if (mode === "PLAN" && !isSubagent) {
+    if (mode === 'PLAN' && !isSubagent) {
         parts.push(`## Spawning Subagents
 Use specialized presets for common tasks — they have optimized prompts:
 
@@ -172,15 +206,10 @@ Group related work into ONE subagent with a broader task, NOT one subagent per f
 - BAD: spawnResearcher per file × 20 = wasteful, slow, and will be capped
 When you need multiple subagents, emit ALL calls in a single response for concurrency.
 
-**Model**: You are on ${model}. Omit "model" to use the same, or pick a fast/cheap model:
-  - NVIDIA/NIM (free): "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" or "deepseek-ai/deepseek-v4-flash"
-  - OpenCode Zen (free): "opencode/deepseek-v4-flash-free" or "opencode/minimax-m3-free"
-  - Complex: "deepseek-ai/deepseek-v4-pro" or "opencode/gpt-5.4"
-
 You are in PLAN mode — subagent must also be PLAN.`);
     }
 
-    const result = optimizePrompt(parts.join("\n"));
+    const result = optimizePrompt(parts.join('\n'));
 
     if (promptCache.size >= MAX_PROMPT_CACHE_SIZE) {
         const firstKey = promptCache.keys().next().value;
@@ -196,17 +225,22 @@ You are in PLAN mode — subagent must also be PLAN.`);
  * Strips Memory, Env Management, Process Management, Spawning, Orchestrator sections.
  * Saves ~400 tokens per subagent call (~11K tokens for a 29-subagent orchestration).
  */
-export function buildSubagentSystemPrompt({ mode, projectContext, currentModel }: {
+export function buildSubagentSystemPrompt({
+    mode,
+    projectContext,
+    currentModel,
+}: {
     mode: ModeType;
     projectContext?: string;
     currentModel?: string;
 }): string {
-    const key = `sub:${mode}:${currentModel ?? ""}:${projectContext ?? ""}`;
+    const key = `sub:${mode}:${currentModel ?? ''}:${projectContext ?? ''}`;
     const cached = subagentPromptCache.get(key);
     if (cached) return cached;
 
-    const sharedRules = mode === "PLAN"
-        ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+    const sharedRules =
+        mode === 'PLAN'
+            ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
 2. Never re-read files already read this session.
 3. **Batch tool calls in parallel.** When you need multiple reads/searches, emit ALL of them in ONE response:
    - GOOD: [grep("patternA"), grep("patternB"), readFile("file.ts")] — 3 tools, 1 LLM call
@@ -214,7 +248,7 @@ export function buildSubagentSystemPrompt({ mode, projectContext, currentModel }
    The system executes multiple tool calls from one response concurrently.
 4. Check git status first when context about changes is needed.
 5. Present concrete findings with file paths and line references.`
-        : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+            : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
 2. Never re-read files already read this session.
 3. **Batch tool calls in parallel.** When you need multiple reads/searches, emit ALL of them in ONE response:
    - GOOD: [readFile("a.ts"), readFile("b.ts"), runTests()] — 3 tools, 1 LLM call
@@ -228,7 +262,7 @@ export function buildSubagentSystemPrompt({ mode, projectContext, currentModel }
 
     const parts: string[] = [
         `You are a specialized worker agent. Complete the assigned task and return the result. Do NOT spawn further subagents.`,
-        mode === "BUILD"
+        mode === 'BUILD'
             ? `## Mode: BUILD\nImplement changes directly. Read relevant code before modifying. Verify changes when possible.`
             : `## Mode: PLAN\nAnalyze, research, and propose — do NOT make changes.`,
     ];
@@ -239,7 +273,7 @@ export function buildSubagentSystemPrompt({ mode, projectContext, currentModel }
 
     parts.push(`## Rules\n${sharedRules}`);
 
-    const result = optimizePrompt(parts.join("\n"));
+    const result = optimizePrompt(parts.join('\n'));
 
     if (subagentPromptCache.size >= MAX_PROMPT_CACHE_SIZE) {
         const firstKey = subagentPromptCache.keys().next().value;
