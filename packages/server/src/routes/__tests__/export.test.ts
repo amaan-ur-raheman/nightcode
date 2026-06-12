@@ -5,13 +5,11 @@ const mockDb = vi.hoisted(() => ({
     session: {
         findUnique: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
-        create: vi
-            .fn()
-            .mockResolvedValue({
-                id: 'new-session',
-                title: 'Imported',
-                createdAt: new Date(),
-            }),
+        create: vi.fn().mockResolvedValue({
+            id: 'new-session',
+            title: 'Imported',
+            createdAt: new Date(),
+        }),
     },
 }));
 
