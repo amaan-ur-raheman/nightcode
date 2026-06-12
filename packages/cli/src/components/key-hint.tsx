@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core";
+import { TextAttributes } from '@opentui/core';
 
 type KeyHintProps = {
     keyName: string;

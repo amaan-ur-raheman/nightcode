@@ -4,17 +4,17 @@ import {
     useRef,
     useState,
     useCallback,
-    useMemo
-} from "react";
-import type { ReactNode } from "react";
+    useMemo,
+} from 'react';
+import type { ReactNode } from 'react';
 
-import { useTerminalDimensions } from "@opentui/react";
+import { useTerminalDimensions } from '@opentui/react';
 
-import { useTheme } from "@/providers/theme";
-import { DEFAULT_DURATION } from "@/providers/toast/types";
-import type { ToastVariant, ToastOptions } from "@/providers/toast/types";
+import { useTheme } from '@/providers/theme';
+import { DEFAULT_DURATION } from '@/providers/toast/types';
+import type { ToastVariant, ToastOptions } from '@/providers/toast/types';
 
-import { SplitBorderChars } from "@/components/border";
+import { SplitBorderChars } from '@/components/border';
 
 export type ToastContextValue = {
     show: (options: ToastOptions) => void;
@@ -25,7 +25,7 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 export function useToast(): ToastContextValue {
     const value = useContext(ToastContext);
     if (!value) {
-        throw new Error("useToast must be used within a ToastProvider");
+        throw new Error('useToast must be used within a ToastProvider');
     }
 
     return value;
@@ -46,21 +46,24 @@ export function ToastProvider({ children }: ToastProviderProps) {
         }
     }, []);
 
-    const show = useCallback((options: ToastOptions) => {
-        const duration = options.duration ?? DEFAULT_DURATION;
+    const show = useCallback(
+        (options: ToastOptions) => {
+            const duration = options.duration ?? DEFAULT_DURATION;
 
-        clearCurrentTimeout();
+            clearCurrentTimeout();
 
-        setCurrentToast({
-            ...options,
-            variant: options.variant ?? "info",
-            duration,
-        });
+            setCurrentToast({
+                ...options,
+                variant: options.variant ?? 'info',
+                duration,
+            });
 
-        timeoutHandleRef.current = setTimeout(() => {
-            setCurrentToast(null);
-        }, duration).unref();
-    }, [clearCurrentTimeout]);
+            timeoutHandleRef.current = setTimeout(() => {
+                setCurrentToast(null);
+            }, duration).unref();
+        },
+        [clearCurrentTimeout],
+    );
 
     const value = useMemo(() => ({ show }), [show]);
 
@@ -69,7 +72,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
             {children}
             <Toast currentToast={currentToast} />
         </ToastContext.Provider>
-    )
+    );
 }
 
 type ToastProps = {
@@ -108,7 +111,7 @@ function Toast({ currentToast }: ToastProps) {
             paddingBottom={1}
             backgroundColor={colors.surface}
             borderColor={borderColor}
-            border={["left", "right"]}
+            border={['left', 'right']}
             customBorderChars={SplitBorderChars}
         >
             <box flexDirection="column" gap={1} width="100%">
@@ -117,5 +120,5 @@ function Toast({ currentToast }: ToastProps) {
                 </text>
             </box>
         </box>
-    )
+    );
 }

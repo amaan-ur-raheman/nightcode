@@ -1,11 +1,11 @@
-import type { RefObject } from "react";
+import type { RefObject } from 'react';
 
-import { TextAttributes } from "@opentui/core";
-import type { ScrollBoxRenderable } from "@opentui/core";
+import { TextAttributes } from '@opentui/core';
+import type { ScrollBoxRenderable } from '@opentui/core';
 
-import { useTheme } from "@/providers/theme";
+import { useTheme } from '@/providers/theme';
 
-import type { MentionCandidate } from "@/components/file-mention/use-file-mention";
+import type { MentionCandidate } from '@/components/file-mention/use-file-mention';
 
 const MAX_VISIBLE_MENTIONS = 8;
 
@@ -30,7 +30,9 @@ export function FileMentionMenu({
     if (candidates.length === 0) {
         return (
             <box paddingX={1}>
-                <text attributes={TextAttributes.DIM}>No matching files or folders</text>
+                <text attributes={TextAttributes.DIM}>
+                    No matching files or folders
+                </text>
             </box>
         );
     }
@@ -46,18 +48,28 @@ export function FileMentionMenu({
                         paddingX={1}
                         height={1}
                         overflow="hidden"
-                        backgroundColor={isSelected ? colors.selection : undefined}
+                        backgroundColor={
+                            isSelected ? colors.selection : undefined
+                        }
                         onMouseMove={() => onSelect(index)}
                         onMouseDown={() => onExecute(index)}
                     >
                         <box flexGrow={1} flexShrink={1} overflow="hidden">
-                            <text selectable={false} fg={isSelected ? "black" : "white"}>
+                            <text
+                                selectable={false}
+                                fg={isSelected ? 'black' : 'white'}
+                            >
                                 {candidate.path}
                             </text>
                         </box>
                         <box width={8} alignItems="flex-end" flexShrink={0}>
-                            <text selectable={false} fg={isSelected ? "black" : "gray"}>
-                                {candidate.kind === "directory" ? "Folder" : "File"}
+                            <text
+                                selectable={false}
+                                fg={isSelected ? 'black' : 'gray'}
+                            >
+                                {candidate.kind === 'directory'
+                                    ? 'Folder'
+                                    : 'File'}
                             </text>
                         </box>
                     </box>

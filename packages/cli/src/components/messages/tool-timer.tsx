@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import prettyMs from "pretty-ms";
+import { useState, useEffect, useRef } from 'react';
+import prettyMs from 'pretty-ms';
 
-import { TextAttributes } from "@opentui/core";
-import { useTheme } from "@/providers/theme";
+import { TextAttributes } from '@opentui/core';
+import { useTheme } from '@/providers/theme';
 
 /**
  * Displays a live elapsed-time counter while a tool call is in progress.
@@ -21,9 +21,5 @@ export function ToolTimer() {
         return () => clearInterval(id);
     }, []);
 
-    return (
-        <em fg={colors.dimSeparator}>
-            {" "}{prettyMs(elapsed)}
-        </em>
-    );
+    return <em fg={colors.dimSeparator}> {prettyMs(elapsed)}</em>;
 }

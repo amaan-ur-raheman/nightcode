@@ -1,12 +1,18 @@
-import type { ReactNode } from "react";
-import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import type { ReactNode } from 'react';
+import {
+    createContext,
+    useContext,
+    useState,
+    useCallback,
+    useMemo,
+} from 'react';
 
-import { TextAttributes, RGBA } from "@opentui/core";
-import { useKeyboard, useTerminalDimensions } from "@opentui/react";
+import { TextAttributes, RGBA } from '@opentui/core';
+import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 
-import { useTheme } from "@/providers/theme";
-import type { DialogConfig } from "@/providers/dialog/types";
-import { useKeyboardLayer } from "@/providers/keyboard-layer";
+import { useTheme } from '@/providers/theme';
+import type { DialogConfig } from '@/providers/dialog/types';
+import { useKeyboardLayer } from '@/providers/keyboard-layer';
 
 export type DialogContextValue = {
     open: (config: DialogConfig) => void;
@@ -18,7 +24,7 @@ const DialogContext = createContext<DialogContextValue | null>(null);
 export function useDialog(): DialogContextValue {
     const context = useContext(DialogContext);
     if (!context) {
-        throw new Error("useDialog must be used within a DialogProvider");
+        throw new Error('useDialog must be used within a DialogProvider');
     }
 
     return context;
@@ -29,34 +35,41 @@ type DialogProviderProps = {
 };
 
 export const DialogProvider = ({ children }: DialogProviderProps) => {
-    const [currentDialog, setCurrentDialog] = useState<DialogConfig | null>(null);
+    const [currentDialog, setCurrentDialog] = useState<DialogConfig | null>(
+        null,
+    );
     const { push, pop } = useKeyboardLayer();
 
     const close = useCallback(() => {
         setCurrentDialog(null);
-        pop("dialog");
+        pop('dialog');
     }, [pop]);
 
-    const open = useCallback((config: DialogConfig) => {
-        setCurrentDialog(config);
-        push("dialog", () => {
-            close();
-            return true;
-        });
-    }, [push, close]);
+    const open = useCallback(
+        (config: DialogConfig) => {
+            setCurrentDialog(config);
+            push('dialog', () => {
+                close();
+                return true;
+            });
+        },
+        [push, close],
+    );
 
-
-    const value: DialogContextValue = useMemo(() => ({
-        open,
-        close,
-    }), [open, close]);
+    const value: DialogContextValue = useMemo(
+        () => ({
+            open,
+            close,
+        }),
+        [open, close],
+    );
 
     return (
         <DialogContext.Provider value={value}>
             {children}
             <Dialog currentDialog={currentDialog} close={close} />
         </DialogContext.Provider>
-    )
+    );
 };
 
 type DialogProps = {
@@ -70,9 +83,9 @@ function Dialog({ currentDialog, close }: DialogProps) {
     const { colors } = useTheme();
 
     useKeyboard((key) => {
-        if (!currentDialog || !isTopLayer("dialog")) return;
+        if (!currentDialog || !isTopLayer('dialog')) return;
 
-        if (key.name === "escape") {
+        if (key.name === 'escape') {
             close();
         }
     });
@@ -113,12 +126,15 @@ function Dialog({ currentDialog, close }: DialogProps) {
                     justifyContent="space-between"
                 >
                     <text attributes={TextAttributes.BOLD}>{title}</text>
-                    <text attributes={TextAttributes.DIM} onMouseDown={() => close()}>
+                    <text
+                        attributes={TextAttributes.DIM}
+                        onMouseDown={() => close()}
+                    >
                         esc
                     </text>
                 </box>
                 <box flexGrow={1}>{children}</box>
             </box>
         </box>
-    )
+    );
 }

@@ -4,7 +4,7 @@ import React, {
     useState,
     useCallback,
     useRef,
-    useMemo
+    useMemo,
 } from 'react';
 
 import { useKeyboard, useRenderer } from '@opentui/react';
@@ -18,10 +18,16 @@ type KeyboardLayerContextValue = {
     setResponder: (id: string, responder: Responder | null) => void;
 };
 
-const KeyboardLayerContext = createContext<KeyboardLayerContextValue | null>(null);
+const KeyboardLayerContext = createContext<KeyboardLayerContextValue | null>(
+    null,
+);
 
-export function KeyboardLayerProvider({ children }: { children: React.ReactNode }) {
-    const [stack, setStack] = useState<string[]>(["base"]);
+export function KeyboardLayerProvider({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    const [stack, setStack] = useState<string[]>(['base']);
 
     const stackRef = useRef(stack);
     stackRef.current = stack;
@@ -40,7 +46,7 @@ export function KeyboardLayerProvider({ children }: { children: React.ReactNode 
             }
 
             return [...prev, id];
-        })
+        });
     }, []);
 
     const pop = useCallback((id: string) => {
@@ -48,21 +54,27 @@ export function KeyboardLayerProvider({ children }: { children: React.ReactNode 
         setStack((prev) => prev.filter((layer) => layer !== id));
     }, []);
 
-    const isTopLayer = useCallback((id: string) => {
-        return stack.length === 0 || stack[stack.length - 1] === id;
-    }, [stack]);
+    const isTopLayer = useCallback(
+        (id: string) => {
+            return stack.length === 0 || stack[stack.length - 1] === id;
+        },
+        [stack],
+    );
 
-    const setResponder = useCallback((id: string, responder: Responder | null) => {
-        if (responder) {
-            responders.current.set(id, responder);
-        } else {
-            responders.current.delete(id);
-        }
-    }, []);
+    const setResponder = useCallback(
+        (id: string, responder: Responder | null) => {
+            if (responder) {
+                responders.current.set(id, responder);
+            } else {
+                responders.current.delete(id);
+            }
+        },
+        [],
+    );
 
     // Single ctrl+c handler that walks the responder chain
     useKeyboard((key) => {
-        if (!key.ctrl || key.name !== "c") return;
+        if (!key.ctrl || key.name !== 'c') return;
 
         const currentStack = stackRef.current;
         for (let i = currentStack.length - 1; i >= 0; i--) {
@@ -77,7 +89,10 @@ export function KeyboardLayerProvider({ children }: { children: React.ReactNode 
         renderer.destroy();
     });
 
-    const value = useMemo(() => ({ push, pop, isTopLayer, setResponder }), [push, pop, isTopLayer, setResponder]);
+    const value = useMemo(
+        () => ({ push, pop, isTopLayer, setResponder }),
+        [push, pop, isTopLayer, setResponder],
+    );
 
     return (
         <KeyboardLayerContext.Provider value={value}>
@@ -89,8 +104,10 @@ export function KeyboardLayerProvider({ children }: { children: React.ReactNode 
 export function useKeyboardLayer(): KeyboardLayerContextValue {
     const context = useContext(KeyboardLayerContext);
     if (!context) {
-        throw new Error("useKeyboardLayer must be used within a KeyboardLayerProvider");
+        throw new Error(
+            'useKeyboardLayer must be used within a KeyboardLayerProvider',
+        );
     }
-    
+
     return context;
 }
