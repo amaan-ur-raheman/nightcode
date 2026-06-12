@@ -1,6 +1,12 @@
-import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import {
+    readFileSync,
+    writeFileSync,
+    existsSync,
+    statSync,
+    mkdirSync,
+} from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 export type McpServerConfig = {
     // Stdio transport
@@ -18,8 +24,8 @@ export type McpServer = {
     toolCount?: number;
 };
 
-export function getTransportType(config: McpServerConfig): "http" | "stdio" {
-    return config.url ? "http" : "stdio";
+export function getTransportType(config: McpServerConfig): 'http' | 'stdio' {
+    return config.url ? 'http' : 'stdio';
 }
 
 export type Settings = {
@@ -56,7 +62,7 @@ export type Settings = {
     };
     reasoning?: {
         enabled: boolean;
-        mode: "auto" | "always" | "never";
+        mode: 'auto' | 'always' | 'never';
     };
     theme?: {
         name: string;
@@ -84,7 +90,7 @@ export type Settings = {
     };
 };
 
-const SETTINGS_PATH = join(homedir(), ".nightcode", "settings.json");
+const SETTINGS_PATH = join(homedir(), '.nightcode', 'settings.json');
 
 let _cachedSettings: Settings | null = null;
 let _cachedMtime: number = 0;
@@ -100,7 +106,7 @@ export function loadSettings(): Settings {
             return _cachedSettings;
         }
 
-        const raw = readFileSync(SETTINGS_PATH, "utf8");
+        const raw = readFileSync(SETTINGS_PATH, 'utf8');
         _cachedSettings = JSON.parse(raw) as Settings;
         _cachedMtime = mtimeMs;
         return _cachedSettings;
@@ -113,8 +119,8 @@ export function loadSettings(): Settings {
 
 export function saveSettings(settings: Settings): void {
     try {
-        mkdirSync(join(homedir(), ".nightcode"), { recursive: true });
-        writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf8");
+        mkdirSync(join(homedir(), '.nightcode'), { recursive: true });
+        writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf8');
         _cachedSettings = settings;
         _cachedMtime = statSync(SETTINGS_PATH).mtimeMs;
     } catch {
@@ -140,8 +146,10 @@ export function loadMcpServers(): McpServer[] {
     if (!settings.mcp?.servers) return [];
 
     return Object.entries(settings.mcp.servers).flatMap(([name, config]) => {
-        if (name.includes("__")) {
-            console.warn(`MCP server name "${name}" contains "__" and will be skipped.`);
+        if (name.includes('__')) {
+            console.warn(
+                `MCP server name "${name}" contains "__" and will be skipped.`,
+            );
             return [];
         }
         return [{ name, config }];
@@ -156,12 +164,16 @@ export function isReasoningEnabled(): boolean {
 export function toggleReasoning(): boolean {
     const settings = loadSettings();
     const enabled = !(settings.reasoning?.enabled ?? false);
-    settings.reasoning = { ...settings.reasoning, enabled, mode: settings.reasoning?.mode ?? "auto" };
+    settings.reasoning = {
+        ...settings.reasoning,
+        enabled,
+        mode: settings.reasoning?.mode ?? 'auto',
+    };
     saveSettings(settings);
     return enabled;
 }
 
-export function getReasoningMode(): "auto" | "always" | "never" {
+export function getReasoningMode(): 'auto' | 'always' | 'never' {
     const settings = loadSettings();
-    return settings.reasoning?.mode ?? "auto";
+    return settings.reasoning?.mode ?? 'auto';
 }

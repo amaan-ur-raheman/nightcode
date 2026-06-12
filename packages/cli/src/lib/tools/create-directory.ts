@@ -1,7 +1,7 @@
-import { mkdir } from "fs/promises";
-import { relative } from "path";
-import { toolInputSchemas } from "@nightcode/shared";
-import { resolveInsideCwd } from "./utils";
+import { mkdir } from 'fs/promises';
+import { relative } from 'path';
+import { toolInputSchemas } from '@nightcode/shared';
+import { resolveInsideCwd } from './utils';
 
 export async function createDirectoryTool(input: unknown) {
     const { path } = toolInputSchemas.createDirectory.parse(input);

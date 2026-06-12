@@ -1,6 +1,6 @@
-import { stat, readdir } from "fs/promises";
-import { join, relative } from "path";
-import { IGNORE } from "./tools/utils";
+import { stat, readdir } from 'fs/promises';
+import { join, relative } from 'path';
+import { IGNORE } from './tools/utils';
 
 interface CacheEntry {
     rootDir: string;
@@ -29,9 +29,10 @@ class GlobCache {
         const entries = await this.scanGlob(pattern, rootDir);
 
         // Cap entry size to prevent unbounded memory growth
-        const trimmed = entries.length > this.maxEntrySize
-            ? entries.slice(0, this.maxEntrySize)
-            : entries;
+        const trimmed =
+            entries.length > this.maxEntrySize
+                ? entries.slice(0, this.maxEntrySize)
+                : entries;
 
         if (this.cache.size >= this.maxEntries) {
             const oldestKey = this.cache.keys().next().value;
@@ -47,7 +48,10 @@ class GlobCache {
         return trimmed;
     }
 
-    private async scanGlob(pattern: string, rootDir: string): Promise<string[]> {
+    private async scanGlob(
+        pattern: string,
+        rootDir: string,
+    ): Promise<string[]> {
         const entries: string[] = [];
         const regex = this.globToRegex(pattern);
 
@@ -56,12 +60,12 @@ class GlobCache {
                 const items = await readdir(dir);
 
                 for (const item of items) {
-                    if (item.startsWith(".") || IGNORE.has(item)) continue;
+                    if (item.startsWith('.') || IGNORE.has(item)) continue;
 
                     const fullPath = join(dir, item);
                     const relativePath = relative(rootDir, fullPath);
 
-                    let stats: import("fs").Stats;
+                    let stats: import('fs').Stats;
                     try {
                         stats = await stat(fullPath);
                     } catch {
@@ -88,16 +92,16 @@ class GlobCache {
 
     private globToRegex(pattern: string): RegExp {
         let regexStr = pattern
-            .replace(/\./g, "\\.")
-            .replace(/\*\*/g, "\0GLOBSTAR\0")
-            .replace(/\*/g, "[^/]*")
-            .replace(/\?/g, "[^/]");
+            .replace(/\./g, '\\.')
+            .replace(/\*\*/g, '\0GLOBSTAR\0')
+            .replace(/\*/g, '[^/]*')
+            .replace(/\?/g, '[^/]');
 
         // **/foo should match both "foo" (root) and "sub/foo" (nested)
         // Make the directory prefix optional when ** is followed by /
-        regexStr = regexStr.replace(/\0GLOBSTAR\0\//g, "(.+/)?");
+        regexStr = regexStr.replace(/\0GLOBSTAR\0\//g, '(.+/)?');
         // Standalone ** matches everything
-        regexStr = regexStr.replace(/\0GLOBSTAR\0/g, ".*");
+        regexStr = regexStr.replace(/\0GLOBSTAR\0/g, '.*');
 
         return new RegExp(`^${regexStr}$`);
     }
@@ -105,7 +109,7 @@ class GlobCache {
     invalidate(pattern?: string): void {
         if (pattern) {
             for (const key of this.cache.keys()) {
-                const idx = key.indexOf(":");
+                const idx = key.indexOf(':');
                 if (idx !== -1) {
                     const keyPattern = key.substring(idx + 1);
                     if (keyPattern === pattern) {

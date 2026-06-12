@@ -1,25 +1,35 @@
-import { Hono } from "hono";
+import { Hono } from 'hono';
 
-import type { AuthenticatedEnv } from "../middleware/require-auth";
-import { createCheckoutUrl, createCustomerPortalUrl, getAvailableCreditsBalance } from "../lib/polar";
+import type { AuthenticatedEnv } from '../middleware/require-auth';
+import {
+    createCheckoutUrl,
+    createCustomerPortalUrl,
+    getAvailableCreditsBalance,
+} from '../lib/polar';
 
 const app = new Hono<AuthenticatedEnv>()
-    .post("/checkout", async (c) => {
-        const userId = c.get("userId");
+    .post('/checkout', async (c) => {
+        const userId = c.get('userId');
 
         return c.json({
-            url: await createCheckoutUrl({ customerExternalId: userId, requestUrl: c.req.url })
+            url: await createCheckoutUrl({
+                customerExternalId: userId,
+                requestUrl: c.req.url,
+            }),
         });
     })
-    .post("/portal", async (c) => {
-        const userId = c.get("userId");
+    .post('/portal', async (c) => {
+        const userId = c.get('userId');
 
         return c.json({
-            url: await createCustomerPortalUrl({ customerExternalId: userId, requestUrl: c.req.url })
+            url: await createCustomerPortalUrl({
+                customerExternalId: userId,
+                requestUrl: c.req.url,
+            }),
         });
     })
-    .get("/credits", async (c) => {
-        const userId = c.get("userId");
+    .get('/credits', async (c) => {
+        const userId = c.get('userId');
 
         try {
             const balance = await getAvailableCreditsBalance(userId);
@@ -28,8 +38,10 @@ const app = new Hono<AuthenticatedEnv>()
             return c.json({ balance: null });
         }
     })
-    .get("/success",  (c) => {
-        return c.text("Done. You can close this tab and return to NightCode CLI")
+    .get('/success', (c) => {
+        return c.text(
+            'Done. You can close this tab and return to NightCode CLI',
+        );
     });
 
 export default app;

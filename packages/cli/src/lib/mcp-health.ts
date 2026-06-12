@@ -1,5 +1,5 @@
-import { debug } from "./debug";
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { debug } from './debug';
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 export interface ServerHealth {
     name: string;
@@ -39,7 +39,9 @@ class MCPHealthManager {
 
     startMonitoring(): void {
         if (this.checkTimer) return;
-        debug.log("mcp", "Starting health monitoring", { intervalMs: this.checkInterval });
+        debug.log('mcp', 'Starting health monitoring', {
+            intervalMs: this.checkInterval,
+        });
         this.checkTimer = setInterval(() => {
             void this.checkAllServers();
         }, this.checkInterval);
@@ -49,7 +51,7 @@ class MCPHealthManager {
         if (this.checkTimer) {
             clearInterval(this.checkTimer);
             this.checkTimer = undefined;
-            debug.log("mcp", "Stopped health monitoring");
+            debug.log('mcp', 'Stopped health monitoring');
         }
     }
 
@@ -60,8 +62,9 @@ class MCPHealthManager {
                 name,
                 connected: false,
                 lastCheck: new Date(),
-                lastError: "No client registered",
-                reconnectAttempts: this.health.get(name)?.reconnectAttempts ?? 0,
+                lastError: 'No client registered',
+                reconnectAttempts:
+                    this.health.get(name)?.reconnectAttempts ?? 0,
             });
             return false;
         }
@@ -77,7 +80,8 @@ class MCPHealthManager {
             return true;
         } catch (error) {
             const prev = this.health.get(name);
-            const errMsg = error instanceof Error ? error.message : String(error);
+            const errMsg =
+                error instanceof Error ? error.message : String(error);
             this.health.set(name, {
                 name,
                 connected: false,
@@ -85,7 +89,7 @@ class MCPHealthManager {
                 lastError: errMsg,
                 reconnectAttempts: prev?.reconnectAttempts ?? 0,
             });
-            debug.warn("mcp", `Health check failed for ${name}: ${errMsg}`);
+            debug.warn('mcp', `Health check failed for ${name}: ${errMsg}`);
             return false;
         }
     }
@@ -93,13 +97,13 @@ class MCPHealthManager {
     async reconnect(name: string): Promise<boolean> {
         const health = this.health.get(name);
         if (health && health.reconnectAttempts >= this.maxReconnectAttempts) {
-            debug.error("mcp", `Max reconnect attempts reached for ${name}`);
+            debug.error('mcp', `Max reconnect attempts reached for ${name}`);
             return false;
         }
 
         const reconnectFn = this.reconnectFns.get(name);
         if (!reconnectFn) {
-            debug.error("mcp", `No reconnect function registered for ${name}`);
+            debug.error('mcp', `No reconnect function registered for ${name}`);
             return false;
         }
 
@@ -112,10 +116,11 @@ class MCPHealthManager {
                 lastCheck: new Date(),
                 reconnectAttempts: 0,
             });
-            debug.log("mcp", `Reconnected to ${name} successfully`);
+            debug.log('mcp', `Reconnected to ${name} successfully`);
             return true;
         } catch (error) {
-            const errMsg = error instanceof Error ? error.message : String(error);
+            const errMsg =
+                error instanceof Error ? error.message : String(error);
             const prev = this.health.get(name);
             this.health.set(name, {
                 name,
@@ -124,7 +129,11 @@ class MCPHealthManager {
                 lastError: errMsg,
                 reconnectAttempts: (prev?.reconnectAttempts ?? 0) + 1,
             });
-            debug.error("mcp", `Reconnect failed for ${name}`, error instanceof Error ? error : undefined);
+            debug.error(
+                'mcp',
+                `Reconnect failed for ${name}`,
+                error instanceof Error ? error : undefined,
+            );
             return false;
         } finally {
             this.reconnecting.delete(name);
@@ -138,18 +147,24 @@ class MCPHealthManager {
                 const healthy = await this.checkServer(name);
                 if (!healthy) {
                     if (this.reconnecting.has(name)) {
-                        debug.log("mcp", `Reconnect already in progress for ${name}, skipping duplicate attempt`);
+                        debug.log(
+                            'mcp',
+                            `Reconnect already in progress for ${name}, skipping duplicate attempt`,
+                        );
                         return;
                     }
-                    debug.log("mcp", `Attempting auto-reconnect for ${name}`);
+                    debug.log('mcp', `Attempting auto-reconnect for ${name}`);
                     this.reconnecting.add(name);
                     await this.reconnect(name);
                 }
             }),
         );
         for (const result of results) {
-            if (result.status === "rejected") {
-                debug.warn("mcp", `Unexpected error during health check: ${String(result.reason)}`);
+            if (result.status === 'rejected') {
+                debug.warn(
+                    'mcp',
+                    `Unexpected error during health check: ${String(result.reason)}`,
+                );
             }
         }
     }

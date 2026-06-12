@@ -1,4 +1,4 @@
-import type { TaskGraph } from "@nightcode/shared";
+import type { TaskGraph } from '@nightcode/shared';
 
 export interface OrchestratorState {
     graph: TaskGraph;
@@ -65,7 +65,11 @@ class OrchestratorManager {
             state.graph = { ...graph, nodes: { ...graph.nodes } };
             this.notify();
             // M1: Auto-cleanup terminal graphs after 30s to give UI time to display final status
-            if (graph.status === "completed" || graph.status === "failed" || graph.status === "cancelled") {
+            if (
+                graph.status === 'completed' ||
+                graph.status === 'failed' ||
+                graph.status === 'cancelled'
+            ) {
                 setTimeout(() => this.remove(graph.id), 30_000);
             }
         }
@@ -90,20 +94,28 @@ class OrchestratorManager {
     remove(graphId: string): void {
         this.active.delete(graphId);
         // Cleanup workspace asynchronously with error handling
-        import("@/lib/workspace").then(m => m.cleanupWorkspace(graphId)).catch(() => {});
+        import('@/lib/workspace')
+            .then((m) => m.cleanupWorkspace(graphId))
+            .catch(() => {});
         this.notify();
     }
 
     cleanup(): void {
         const toRemove: string[] = [];
         for (const [id, state] of this.active) {
-            if (state.graph.status === "completed" || state.graph.status === "failed" || state.graph.status === "cancelled") {
+            if (
+                state.graph.status === 'completed' ||
+                state.graph.status === 'failed' ||
+                state.graph.status === 'cancelled'
+            ) {
                 toRemove.push(id);
             }
         }
         for (const id of toRemove) {
             this.active.delete(id);
-            import("@/lib/workspace").then(m => m.cleanupWorkspace(id)).catch(() => {});
+            import('@/lib/workspace')
+                .then((m) => m.cleanupWorkspace(id))
+                .catch(() => {});
         }
         if (toRemove.length > 0) this.notify();
     }
@@ -112,27 +124,35 @@ class OrchestratorManager {
     cleanupCompleted(): void {
         const completedIds: string[] = [];
         for (const [id, state] of this.active) {
-            if (state.graph.status === "completed" || state.graph.status === "failed" || state.graph.status === "cancelled") {
+            if (
+                state.graph.status === 'completed' ||
+                state.graph.status === 'failed' ||
+                state.graph.status === 'cancelled'
+            ) {
                 completedIds.push(id);
             }
         }
-        
+
         // Remove completed graphs immediately
         for (const id of completedIds) {
             this.active.delete(id);
         }
-        
+
         // Schedule workspace cleanup for removed graphs
-        completedIds.forEach(id => {
-            import("@/lib/workspace").then(m => m.cleanupWorkspace(id)).catch(() => {});
+        completedIds.forEach((id) => {
+            import('@/lib/workspace')
+                .then((m) => m.cleanupWorkspace(id))
+                .catch(() => {});
         });
-        
+
         if (completedIds.length > 0) this.notify();
     }
 
     subscribe(listener: OrchestratorListener): () => void {
         this.listeners.add(listener);
-        return () => { this.listeners.delete(listener); };
+        return () => {
+            this.listeners.delete(listener);
+        };
     }
 
     private notify(): void {
@@ -140,7 +160,7 @@ class OrchestratorManager {
             try {
                 listener(this.getAll());
             } catch (error) {
-                console.error("[orchestrator-manager] Listener error:", error);
+                console.error('[orchestrator-manager] Listener error:', error);
             }
         }
     }

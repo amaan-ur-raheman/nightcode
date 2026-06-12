@@ -1,20 +1,26 @@
 const BLOCKED_COMMANDS = [
-    "rm -rf /",
-    "rm -rf /*",
-    "rm -rf ~",
-    "rm -rf ~/",
-    "mkfs",
-    "dd if=",
-    ":(){",
-    "shutdown",
-    "reboot",
-    "halt",
-    "poweroff",
-    "init 0",
-    "init 6",
+    'rm -rf /',
+    'rm -rf /*',
+    'rm -rf ~',
+    'rm -rf ~/',
+    'mkfs',
+    'dd if=',
+    ':(){',
+    'shutdown',
+    'reboot',
+    'halt',
+    'poweroff',
+    'init 0',
+    'init 6',
 ];
 
-const DANGEROUS_FLAGS = ["--force", "-f", "--no-preserve-root", "--recursive", "-r"];
+const DANGEROUS_FLAGS = [
+    '--force',
+    '-f',
+    '--no-preserve-root',
+    '--recursive',
+    '-r',
+];
 
 const SUSPICIOUS_PATTERNS: RegExp[] = [
     /rm\s+(-[rRf]+\s+)*[\/~]/,
@@ -57,7 +63,7 @@ export function checkCommandSafety(command: string): SafetyCheckResult {
             return {
                 safe: true,
                 blocked: false,
-                warning: "Warning: suspicious pattern detected",
+                warning: 'Warning: suspicious pattern detected',
             };
         }
     }

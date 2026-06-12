@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { Message } from "@/hooks/use-chat";
+import { useEffect, useRef, useState } from 'react';
+import type { Message } from '@/hooks/use-chat';
 
 /**
  * Coalesces streaming message updates so React re-renders at ~15 fps

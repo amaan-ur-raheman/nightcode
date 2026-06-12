@@ -1,8 +1,13 @@
-import { createInterface } from "readline";
-import { readFile } from "fs/promises";
-import { getAuth } from "@/lib/auth";
-import { apiClient } from "@/lib/api-client";
-import { Mode, DEFAULT_CHAT_MODEL_ID } from "@nightcode/shared";
+import { createInterface } from 'readline';
+import { readFile } from 'fs/promises';
+import { getValidAuth } from '@/lib/auth';
+import { apiClient } from '@/lib/api-client';
+import {
+    Mode,
+    DEFAULT_CHAT_MODEL_ID,
+    resolveProviderForModel,
+} from '@nightcode/shared';
+import { getApiKeyForProvider } from '@/lib/api-keys';
 
 interface NonInteractiveOptions {
     prompt?: string;
@@ -14,10 +19,10 @@ export async function runNonInteractive(args: string[]): Promise<void> {
     const options = parseArgs(args);
 
     // Get input from file, argument, or stdin
-    let input = "";
+    let input = '';
 
     if (options.file) {
-        input = await readFile(options.file, "utf-8");
+        input = await readFile(options.file, 'utf-8');
     } else if (options.prompt) {
         input = options.prompt;
     } else {
@@ -25,14 +30,16 @@ export async function runNonInteractive(args: string[]): Promise<void> {
     }
 
     if (!input.trim()) {
-        console.error("No input provided.");
+        console.error('No input provided.');
         process.exit(1);
     }
 
     // Verify auth
-    const auth = getAuth();
+    const auth = await getValidAuth();
     if (!auth) {
-        console.error("Not authenticated. Run `nightcode` interactively first to sign in.");
+        console.error(
+            'Not authenticated. Run `nightcode` interactively first to sign in.',
+        );
         process.exit(1);
     }
 
@@ -43,14 +50,14 @@ export async function runNonInteractive(args: string[]): Promise<void> {
         });
 
         if (!sessionRes.ok) {
-            let errorMsg = "";
+            let errorMsg = '';
             try {
                 const parsed: unknown = await sessionRes.json();
                 if (
-                    typeof parsed === "object" &&
+                    typeof parsed === 'object' &&
                     parsed !== null &&
-                    "error" in parsed &&
-                    typeof (parsed as any).error === "string"
+                    'error' in parsed &&
+                    typeof (parsed as any).error === 'string'
                 ) {
                     errorMsg = (parsed as any).error;
                 }
@@ -61,19 +68,39 @@ export async function runNonInteractive(args: string[]): Promise<void> {
                     // Ignore text read failures
                 }
             }
-            console.error(`Failed to create session: ${errorMsg || sessionRes.status}`);
+            console.error(
+                `Failed to create session: ${errorMsg || sessionRes.status}`,
+            );
             process.exit(1);
         }
 
         const session = await sessionRes.json();
 
         // Send message via chat endpoint using raw fetch to handle streaming
-        const chatUrl = `${process.env.API_URL ?? "http://localhost:3000"}/chat`;
+        const chatUrl = `${process.env.API_URL ?? 'http://localhost:3000'}/chat`;
         const userMessage = {
             id: crypto.randomUUID(),
-            role: "user" as const,
-            parts: [{ type: "text" as const, text: input }],
+            role: 'user' as const,
+            parts: [{ type: 'text' as const, text: input }],
         };
+
+        // Resolve provider API key to send with the request
+        const providerKey = await (async () => {
+            try {
+                const provider = resolveProviderForModel(DEFAULT_CHAT_MODEL_ID);
+                return await getApiKeyForProvider(provider);
+            } catch {
+                return null;
+            }
+        })();
+
+        const chatHeaders: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${auth.token}`,
+        };
+        if (providerKey) {
+            chatHeaders['x-provider-key'] = providerKey;
+        }
 
         const controller = new AbortController();
         const timeoutId = setTimeout(
@@ -82,11 +109,8 @@ export async function runNonInteractive(args: string[]): Promise<void> {
         );
 
         const res = await fetch(chatUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${auth.token}`,
-            },
+            method: 'POST',
+            headers: chatHeaders,
             body: JSON.stringify({
                 id: session.id,
                 messages: [userMessage],
@@ -105,16 +129,16 @@ export async function runNonInteractive(args: string[]): Promise<void> {
         }
 
         if (!res.body) {
-            console.error("No response body");
+            console.error('No response body');
             process.exit(1);
         }
 
         // Parse the AI SDK streaming response
         const text = await parseStreamResponse(res.body);
-        process.stdout.write(text + "\n");
+        process.stdout.write(text + '\n');
     } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") {
-            console.error("Request timed out.");
+        if (err instanceof Error && err.name === 'AbortError') {
+            console.error('Request timed out.');
             process.exit(1);
         }
         console.error(err instanceof Error ? err.message : String(err));
@@ -129,26 +153,28 @@ export async function runNonInteractive(args: string[]): Promise<void> {
  *   e:{...}   - finish metadata
  *   d:{...}   - done
  */
-async function parseStreamResponse(body: ReadableStream<Uint8Array>): Promise<string> {
+async function parseStreamResponse(
+    body: ReadableStream<Uint8Array>,
+): Promise<string> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     const chunks: string[] = [];
-    let buffer = "";
+    let buffer = '';
 
     while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-            if (line.startsWith("0:")) {
+            if (line.startsWith('0:')) {
                 // Text delta - JSON-encoded string
                 try {
                     const text = JSON.parse(line.slice(2));
-                    if (typeof text === "string") {
+                    if (typeof text === 'string') {
                         chunks.push(text);
                     }
                 } catch {
@@ -159,10 +185,10 @@ async function parseStreamResponse(body: ReadableStream<Uint8Array>): Promise<st
     }
 
     // Process remaining buffer
-    if (buffer.startsWith("0:")) {
+    if (buffer.startsWith('0:')) {
         try {
             const text = JSON.parse(buffer.slice(2));
-            if (typeof text === "string") {
+            if (typeof text === 'string') {
                 chunks.push(text);
             }
         } catch {
@@ -170,25 +196,25 @@ async function parseStreamResponse(body: ReadableStream<Uint8Array>): Promise<st
         }
     }
 
-    return chunks.join("");
+    return chunks.join('');
 }
 
 function parseArgs(args: string[]): NonInteractiveOptions {
     const options: NonInteractiveOptions = {};
 
-    const promptIdx = args.indexOf("--prompt");
+    const promptIdx = args.indexOf('--prompt');
     if (promptIdx !== -1) {
         const val = args[promptIdx + 1];
         if (val) options.prompt = val;
     }
 
-    const fileIdx = args.indexOf("--file");
+    const fileIdx = args.indexOf('--file');
     if (fileIdx !== -1) {
         const val = args[fileIdx + 1];
         if (val) options.file = val;
     }
 
-    const timeoutIdx = args.indexOf("--timeout");
+    const timeoutIdx = args.indexOf('--timeout');
     if (timeoutIdx !== -1) {
         const val = args[timeoutIdx + 1];
         if (val) {
@@ -210,18 +236,18 @@ function readStdin(): Promise<string> {
 
             const lines: string[] = [];
 
-            rl.on("line", (line) => {
+            rl.on('line', (line) => {
                 lines.push(line);
             });
 
-            rl.on("close", () => {
-                resolve(lines.join("\n"));
+            rl.on('close', () => {
+                resolve(lines.join('\n'));
             });
 
-            rl.on("error", reject);
+            rl.on('error', reject);
         });
     }
 
     // Stdin is a TTY - no piped input and no --prompt/--file
-    return Promise.resolve("");
+    return Promise.resolve('');
 }

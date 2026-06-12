@@ -1,5 +1,5 @@
-import { randomUUID } from "crypto";
-import { debug } from "./debug";
+import { randomUUID } from 'crypto';
+import { debug } from './debug';
 
 interface QueuedRequest {
     id: string;
@@ -60,12 +60,15 @@ class RequestQueue {
             };
 
             if (this.queue.length >= this.config.maxQueueSize) {
-                reject(new Error("Request queue is full"));
+                reject(new Error('Request queue is full'));
                 return;
             }
 
             if (this.rateLimited && Date.now() < this.rateLimitReset) {
-                debug.log("queue", `Request queued (rate limited until ${new Date(this.rateLimitReset).toISOString()})`);
+                debug.log(
+                    'queue',
+                    `Request queued (rate limited until ${new Date(this.rateLimitReset).toISOString()})`,
+                );
             }
 
             this.insertAtPriority(request);
@@ -80,10 +83,13 @@ class RequestQueue {
     }
 
     private async processQueue(): Promise<void> {
-        while (this.running.size < this.config.maxConcurrent && this.queue.length > 0) {
+        while (
+            this.running.size < this.config.maxConcurrent &&
+            this.queue.length > 0
+        ) {
             if (this.rateLimited && Date.now() < this.rateLimitReset) {
                 const delay = this.rateLimitReset - Date.now();
-                debug.log("queue", `Waiting ${delay}ms for rate limit reset`);
+                debug.log('queue', `Waiting ${delay}ms for rate limit reset`);
                 await this.sleep(delay);
                 this.rateLimited = false;
             }
@@ -92,7 +98,10 @@ class RequestQueue {
             if (!request) break;
 
             this.executeRequest(request).catch((err) => {
-                debug.log("queue", `Unexpected error in request execution: ${(err as Error).message}`);
+                debug.log(
+                    'queue',
+                    `Unexpected error in request execution: ${(err as Error).message}`,
+                );
             });
         }
 
@@ -110,15 +119,19 @@ class RequestQueue {
             ]);
 
             request.resolve(result);
-            debug.log("queue", `Request ${request.id} completed`);
+            debug.log('queue', `Request ${request.id} completed`);
         } catch (error) {
             const err = error as Error;
 
             if (this.isRateLimitError(err)) {
-                const backoff = this.config.retryDelay * Math.pow(2, request.retries);
+                const backoff =
+                    this.config.retryDelay * Math.pow(2, request.retries);
                 this.rateLimited = true;
                 this.rateLimitReset = Date.now() + backoff;
-                debug.log("queue", `Rate limited, queueing retry (backoff: ${backoff}ms)`);
+                debug.log(
+                    'queue',
+                    `Rate limited, queueing retry (backoff: ${backoff}ms)`,
+                );
 
                 if (request.retries < request.maxRetries) {
                     request.retries++;
@@ -130,10 +143,17 @@ class RequestQueue {
                 } else {
                     request.reject(err);
                 }
-            } else if (request.retries < request.maxRetries && this.isRetryableError(err)) {
+            } else if (
+                request.retries < request.maxRetries &&
+                this.isRetryableError(err)
+            ) {
                 request.retries++;
-                const delay = this.config.retryDelay * Math.pow(2, request.retries - 1);
-                debug.log("queue", `Retryable error, retrying (${request.retries}/${request.maxRetries})`);
+                const delay =
+                    this.config.retryDelay * Math.pow(2, request.retries - 1);
+                debug.log(
+                    'queue',
+                    `Retryable error, retrying (${request.retries}/${request.maxRetries})`,
+                );
 
                 setTimeout(() => {
                     this.insertAtPriority(request);
@@ -151,25 +171,25 @@ class RequestQueue {
     private isRateLimitError(error: Error): boolean {
         const message = error.message.toLowerCase();
         return (
-            message.includes("rate limit") ||
-            message.includes("too many requests") ||
-            message.includes("429")
+            message.includes('rate limit') ||
+            message.includes('too many requests') ||
+            message.includes('429')
         );
     }
 
     private isRetryableError(error: Error): boolean {
         const message = error.message.toLowerCase();
         return (
-            message.includes("timeout") ||
-            message.includes("network") ||
-            message.includes("econnreset") ||
-            message.includes("econnrefused")
+            message.includes('timeout') ||
+            message.includes('network') ||
+            message.includes('econnreset') ||
+            message.includes('econnrefused')
         );
     }
 
     private timeoutPromise(ms: number): Promise<never> {
         return new Promise((_, reject) => {
-            setTimeout(() => reject(new Error("Request timeout")), ms);
+            setTimeout(() => reject(new Error('Request timeout')), ms);
         });
     }
 
@@ -196,13 +216,15 @@ class RequestQueue {
     onStatsChange(listener: (stats: QueueStats) => void): () => void {
         this.statsListeners.push(listener);
         return () => {
-            this.statsListeners = this.statsListeners.filter((l) => l !== listener);
+            this.statsListeners = this.statsListeners.filter(
+                (l) => l !== listener,
+            );
         };
     }
 
     updateConfig(config: Partial<QueueConfig>): void {
         this.config = { ...this.config, ...config };
-        debug.log("queue", "Config updated", this.config);
+        debug.log('queue', 'Config updated', this.config);
     }
 
     clear(): number {

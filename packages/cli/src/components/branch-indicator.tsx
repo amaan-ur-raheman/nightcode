@@ -1,6 +1,6 @@
-import { TextAttributes } from "@opentui/core";
-import type { ConversationBranch } from "@nightcode/shared";
-import { useTheme } from "@/providers/theme";
+import { TextAttributes } from '@opentui/core';
+import type { ConversationBranch } from '@nightcode/shared';
+import { useTheme } from '@/providers/theme';
 
 type BranchIndicatorProps = {
     branches: ConversationBranch[];
@@ -15,7 +15,7 @@ export function BranchIndicator({
 }: BranchIndicatorProps) {
     const { colors } = useTheme();
     const activeBranch = branches.find((b) => b.id === activeBranchId);
-    const isMain = activeBranchId === "main";
+    const isMain = activeBranchId === 'main';
 
     return (
         <box flexDirection="row" alignItems="center" gap={1}>
@@ -23,7 +23,7 @@ export function BranchIndicator({
                 attributes={TextAttributes.DIM}
                 fg={isMain ? colors.dimSeparator : colors.primary}
             >
-                {isMain ? "main" : activeBranch?.name ?? "branch"}
+                {isMain ? 'main' : (activeBranch?.name ?? 'branch')}
             </text>
             <text
                 attributes={TextAttributes.DIM}
@@ -33,10 +33,7 @@ export function BranchIndicator({
                 [+branch]
             </text>
             {branches.length > 0 && (
-                <text
-                    attributes={TextAttributes.DIM}
-                    fg={colors.dimSeparator}
-                >
+                <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
                     {`(${branches.length})`}
                 </text>
             )}

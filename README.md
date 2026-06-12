@@ -10,10 +10,10 @@ NightCode is a **terminal-based AI coding assistant** that combines the power of
 
 The project operates in two distinct modes:
 
-| Mode | Description |
-|------|-------------|
-| **PLAN** | Read-only analysis and planning. The AI can analyze your codebase but cannot modify files. |
-| **BUILD** | Full implementation mode. The AI can read, write, and edit files to implement changes. |
+| Mode      | Description                                                                                |
+| --------- | ------------------------------------------------------------------------------------------ |
+| **PLAN**  | Read-only analysis and planning. The AI can analyze your codebase but cannot modify files. |
+| **BUILD** | Full implementation mode. The AI can read, write, and edit files to implement changes.     |
 
 ---
 
@@ -46,12 +46,12 @@ night-code/
 
 ### Package Details
 
-| Package | Description |
-|---------|-------------|
-| **`@nightcode/cli`** | Terminal-native UI built with `@opentui/core` and `@opentui/react`. Uses `react-router` for navigation. Screens include Home, Session, and NewSession views with interactive menus and dialogs. |
-| **`@nightcode/server`** | Backend server built with **Hono.js**. Handles AI streaming, tool execution, API routes (`/sessions`, `/chat`), and integrates with multiple AI providers. |
-| **`@nightcode/database`** | Prisma ORM layer with PostgreSQL. Stores `Session`, `Message`, and related metadata with full relationship support. |
-| **`@nightcode/shared`** | Shared Zod schemas, type definitions, model configurations, and utility functions used across all packages. |
+| Package                   | Description                                                                                                                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`@nightcode/cli`**      | Terminal-native UI built with `@opentui/core` and `@opentui/react`. Uses `react-router` for navigation. Screens include Home, Session, and NewSession views with interactive menus and dialogs. |
+| **`@nightcode/server`**   | Backend server built with **Hono.js**. Handles AI streaming, tool execution, API routes (`/sessions`, `/chat`), and integrates with multiple AI providers.                                      |
+| **`@nightcode/database`** | Prisma ORM layer with PostgreSQL. Stores `Session`, `Message`, and related metadata with full relationship support.                                                                             |
+| **`@nightcode/shared`**   | Shared Zod schemas, type definitions, model configurations, and utility functions used across all packages.                                                                                     |
 
 ---
 
@@ -86,14 +86,14 @@ bun run dev
 
 ### Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `bun run dev` | Start the development server |
-| `bun run build` | Build all packages |
-| `bun run db:push` | Push Prisma schema to database |
-| `bun run db:studio` | Open Prisma Studio |
-| `bun run lint` | Run ESLint |
-| `bun run format` | Format code with Prettier |
+| Command             | Description                    |
+| ------------------- | ------------------------------ |
+| `bun run dev`       | Start the development server   |
+| `bun run build`     | Build all packages             |
+| `bun run db:push`   | Push Prisma schema to database |
+| `bun run db:studio` | Open Prisma Studio             |
+| `bun run lint`      | Run ESLint                     |
+| `bun run format`    | Format code with Prettier      |
 
 ---
 
@@ -150,24 +150,24 @@ DATABASE_URL="postgresql://user:password@localhost:5432/nightcode?schema=public"
 
 ### Supported Models
 
-See [`packages/shared/src/Ai.ts`](packages/shared/src/Ai.ts) for the full list of supported models across providers.
+See [`packages/shared/src/models.ts`](packages/shared/src/models.ts) for the full list of supported models across providers.
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Technology | Purpose |
-|------------|---------|
-| **TypeScript** | Strongly typed codebase |
-| **Bun** | JavaScript runtime and package manager |
-| **Hono.js** | Lightweight web framework for the server |
-| **@opentui/core + @opentui/react** | Terminal-native UI rendering |
-| **Prisma** | ORM for database interactions |
-| **PostgreSQL** | Persistent database |
-| **AI SDK** | Streaming AI responses and tool calls |
-| **Zod** | Runtime schema validation |
-| **Sentry** | Error monitoring and tracking |
-| **React Router** | Navigation in the terminal UI |
+| Technology                         | Purpose                                  |
+| ---------------------------------- | ---------------------------------------- |
+| **TypeScript**                     | Strongly typed codebase                  |
+| **Bun**                            | JavaScript runtime and package manager   |
+| **Hono.js**                        | Lightweight web framework for the server |
+| **@opentui/core + @opentui/react** | Terminal-native UI rendering             |
+| **Prisma**                         | ORM for database interactions            |
+| **PostgreSQL**                     | Persistent database                      |
+| **AI SDK**                         | Streaming AI responses and tool calls    |
+| **Zod**                            | Runtime schema validation                |
+| **Sentry**                         | Error monitoring and tracking            |
+| **React Router**                   | Navigation in the terminal UI            |
 
 ---
 

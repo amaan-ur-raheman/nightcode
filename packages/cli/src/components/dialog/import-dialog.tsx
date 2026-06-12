@@ -1,12 +1,16 @@
-import { useCallback, useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useCallback, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 
-import { useToast } from "@/providers/toast";
-import { useDialog } from "@/providers/dialog";
-import { TextAttributes } from "@opentui/core";
+import { useToast } from '@/providers/toast';
+import { useDialog } from '@/providers/dialog';
+import { TextAttributes } from '@opentui/core';
 
-import { DialogSearchList } from "@/components/dialog-search-list";
-import { listExportFiles, importSession, type ExportFile } from "@/lib/session-utils";
+import { DialogSearchList } from '@/components/dialog-search-list';
+import {
+    listExportFiles,
+    importSession,
+    type ExportFile,
+} from '@/lib/session-utils';
 
 export function ImportDialogContent() {
     const [files, setFiles] = useState<ExportFile[]>([]);
@@ -21,8 +25,11 @@ export function ImportDialogContent() {
             setFiles(exportFiles);
         } catch (error) {
             show({
-                variant: "error",
-                message: error instanceof Error ? error.message : "Failed to list exports",
+                variant: 'error',
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : 'Failed to list exports',
             });
         } finally {
             setLoading(false);
@@ -34,17 +41,23 @@ export function ImportDialogContent() {
             try {
                 show({ message: `Importing ${file.title}...` });
                 const imported = await importSession(file.path);
-                show({ message: `Imported "${imported.title}"`, variant: "success" });
+                show({
+                    message: `Imported "${imported.title}"`,
+                    variant: 'success',
+                });
                 navigate(`/sessions/${imported.id}`);
                 close();
             } catch (error) {
                 show({
-                    variant: "error",
-                    message: error instanceof Error ? error.message : "Import failed",
+                    variant: 'error',
+                    message:
+                        error instanceof Error
+                            ? error.message
+                            : 'Import failed',
                 });
             }
         },
-        [close, show, navigate]
+        [close, show, navigate],
     );
 
     if (loading) {
@@ -65,24 +78,27 @@ export function ImportDialogContent() {
             }
             renderItem={(file, isSelected) => (
                 <>
-                    <text selectable={false} fg={isSelected ? "black" : "white"}>
+                    <text
+                        selectable={false}
+                        fg={isSelected ? 'black' : 'white'}
+                    >
                         {file.title}
                     </text>
                     <box flexGrow={1} />
                     <text
                         selectable={false}
-                        fg={isSelected ? "black" : undefined}
+                        fg={isSelected ? 'black' : undefined}
                         attributes={TextAttributes.DIM}
                     >
                         {file.exportedAt
-                            ? new Intl.DateTimeFormat("en", {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "numeric",
-                                  minute: "2-digit",
+                            ? new Intl.DateTimeFormat('en', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
                                   hour12: true,
                               }).format(new Date(file.exportedAt))
-                            : ""}
+                            : ''}
                     </text>
                 </>
             )}

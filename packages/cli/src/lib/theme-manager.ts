@@ -1,12 +1,12 @@
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { homedir } from "os";
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { homedir } from 'os';
 
-import { THEMES, DEFAULT_THEME } from "@/theme";
-import type { Theme, ThemeColors, CustomTheme } from "@/theme";
-import { debug } from "@/lib/debug";
+import { THEMES, DEFAULT_THEME } from '@/theme';
+import type { Theme, ThemeColors, CustomTheme } from '@/theme';
+import { debug } from '@/lib/debug';
 
-const CUSTOM_THEMES_PATH = join(homedir(), ".nightcode", "custom-themes.json");
+const CUSTOM_THEMES_PATH = join(homedir(), '.nightcode', 'custom-themes.json');
 
 type CustomThemeStore = {
     themes: CustomTheme[];
@@ -23,14 +23,14 @@ class ThemeManager {
 
         this.loadingPromise = (async () => {
             try {
-                const content = await readFile(CUSTOM_THEMES_PATH, "utf-8");
+                const content = await readFile(CUSTOM_THEMES_PATH, 'utf-8');
                 const store: CustomThemeStore = JSON.parse(content);
                 this.customThemes = store.themes || [];
                 this.loaded = true;
             } catch (err) {
                 this.loadingPromise = null;
                 // File not found on first run — fall back to empty themes
-                if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+                if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
                     this.customThemes = [];
                     this.loaded = true;
                     return;
@@ -45,11 +45,18 @@ class ThemeManager {
 
     private async save(): Promise<void> {
         const store: CustomThemeStore = { themes: this.customThemes };
-        await mkdir(join(homedir(), ".nightcode"), { recursive: true });
-        await writeFile(CUSTOM_THEMES_PATH, JSON.stringify(store, null, 2), "utf-8");
+        await mkdir(join(homedir(), '.nightcode'), { recursive: true });
+        await writeFile(
+            CUSTOM_THEMES_PATH,
+            JSON.stringify(store, null, 2),
+            'utf-8',
+        );
     }
 
-    async createTheme(name: string, baseColors: Partial<ThemeColors>): Promise<CustomTheme> {
+    async createTheme(
+        name: string,
+        baseColors: Partial<ThemeColors>,
+    ): Promise<CustomTheme> {
         await this.load();
 
         if (this.customThemes.some((t) => t.name === name)) {
@@ -70,11 +77,14 @@ class ThemeManager {
         this.customThemes.push(theme);
         await this.save();
 
-        debug.log("theme", `Created custom theme: ${name}`);
+        debug.log('theme', `Created custom theme: ${name}`);
         return theme;
     }
 
-    async updateTheme(name: string, colors: Partial<ThemeColors>): Promise<boolean> {
+    async updateTheme(
+        name: string,
+        colors: Partial<ThemeColors>,
+    ): Promise<boolean> {
         await this.load();
 
         const theme = this.customThemes.find((t) => t.name === name);
@@ -83,7 +93,7 @@ class ThemeManager {
         theme.colors = { ...theme.colors, ...colors };
         await this.save();
 
-        debug.log("theme", `Updated custom theme: ${name}`);
+        debug.log('theme', `Updated custom theme: ${name}`);
         return true;
     }
 
@@ -96,7 +106,7 @@ class ThemeManager {
         this.customThemes.splice(index, 1);
         await this.save();
 
-        debug.log("theme", `Deleted custom theme: ${name}`);
+        debug.log('theme', `Deleted custom theme: ${name}`);
         return true;
     }
 
@@ -114,17 +124,19 @@ class ThemeManager {
         return [...THEMES, ...customAsTheme];
     }
 
-    async listThemes(): Promise<{ name: string; type: "builtin" | "custom" }[]> {
+    async listThemes(): Promise<
+        { name: string; type: 'builtin' | 'custom' }[]
+    > {
         await this.load();
 
         const builtin = THEMES.map((t) => ({
             name: t.name,
-            type: "builtin" as const,
+            type: 'builtin' as const,
         }));
 
         const custom = this.customThemes.map((t) => ({
             name: t.name,
-            type: "custom" as const,
+            type: 'custom' as const,
         }));
 
         return [...builtin, ...custom];
@@ -148,7 +160,10 @@ class ThemeManager {
 
     async isThemeNameTaken(name: string): Promise<boolean> {
         await this.load();
-        return THEMES.some((t) => t.name === name) || this.customThemes.some((t) => t.name === name);
+        return (
+            THEMES.some((t) => t.name === name) ||
+            this.customThemes.some((t) => t.name === name)
+        );
     }
 }
 

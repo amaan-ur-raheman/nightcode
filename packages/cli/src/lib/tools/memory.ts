@@ -1,4 +1,4 @@
-import { toolInputSchemas } from "@nightcode/shared";
+import { toolInputSchemas } from '@nightcode/shared';
 import { memory } from '../memory';
 
 export async function memorySetTool(input: unknown) {
@@ -26,15 +26,26 @@ export async function memoryListTool(input: unknown) {
     const entries = await memory.list(tag ? { tag } : undefined);
     if (entries.length === 0) return { output: 'No memories stored' };
     return {
-        output: entries.map(e => `${e.key}: ${e.value.substring(0, 80)}${e.value.length > 80 ? '...' : ''}`).join('\n'),
+        output: entries
+            .map(
+                (e) =>
+                    `${e.key}: ${e.value.substring(0, 80)}${e.value.length > 80 ? '...' : ''}`,
+            )
+            .join('\n'),
     };
 }
 
 export async function memorySearchTool(input: unknown) {
     const { query } = toolInputSchemas.memorySearch.parse(input);
     const entries = await memory.search(query);
-    if (entries.length === 0) return { output: `No memories matching "${query}"` };
+    if (entries.length === 0)
+        return { output: `No memories matching "${query}"` };
     return {
-        output: entries.map(e => `${e.key}: ${e.value.substring(0, 80)}${e.value.length > 80 ? '...' : ''}`).join('\n'),
+        output: entries
+            .map(
+                (e) =>
+                    `${e.key}: ${e.value.substring(0, 80)}${e.value.length > 80 ? '...' : ''}`,
+            )
+            .join('\n'),
     };
 }

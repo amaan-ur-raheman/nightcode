@@ -1,12 +1,17 @@
-import { lstat, readdir } from "fs/promises";
-import { join, relative } from "path";
-import { toolInputSchemas } from "@nightcode/shared";
-import { IGNORE, MAX_TREE_LINES, resolveInsideCwd } from "./utils";
+import { lstat, readdir } from 'fs/promises';
+import { join, relative } from 'path';
+import { toolInputSchemas } from '@nightcode/shared';
+import { IGNORE, MAX_TREE_LINES, resolveInsideCwd } from './utils';
 
-async function buildTree(dir: string, prefix: string, depth: number, maxDepth: number): Promise<string[]> {
+async function buildTree(
+    dir: string,
+    prefix: string,
+    depth: number,
+    maxDepth: number,
+): Promise<string[]> {
     if (depth > maxDepth) return [];
     const entries = (await readdir(dir, { withFileTypes: true }))
-        .filter((e) => !e.name.startsWith(".") && !IGNORE.has(e.name))
+        .filter((e) => !e.name.startsWith('.') && !IGNORE.has(e.name))
         .sort((a, b) => a.name.localeCompare(b.name));
     const lines: string[] = [];
 
@@ -14,7 +19,10 @@ async function buildTree(dir: string, prefix: string, depth: number, maxDepth: n
     const lstatPromises = entries.map(async (entry) => {
         try {
             const info = await lstat(join(dir, entry.name));
-            return { name: entry.name, isDir: entry.isDirectory() && !info.isSymbolicLink() };
+            return {
+                name: entry.name,
+                isDir: entry.isDirectory() && !info.isSymbolicLink(),
+            };
         } catch {
             return null;
         }
@@ -29,10 +37,20 @@ async function buildTree(dir: string, prefix: string, depth: number, maxDepth: n
         if (!item) continue;
         validIndices.push(i);
         const isLast = i === resolvedInfos.length - 1;
-        lines.push(prefix + (isLast ? "└── " : "├── ") + item.name + (item.isDir ? "/" : ""));
+        lines.push(
+            prefix +
+                (isLast ? '└── ' : '├── ') +
+                item.name +
+                (item.isDir ? '/' : ''),
+        );
         if (item.isDir) {
             childTreePromises.push(
-                buildTree(join(dir, item.name), prefix + (isLast ? "    " : "│   "), depth + 1, maxDepth)
+                buildTree(
+                    join(dir, item.name),
+                    prefix + (isLast ? '    ' : '│   '),
+                    depth + 1,
+                    maxDepth,
+                ),
             );
         } else {
             childTreePromises.push(Promise.resolve([]));
@@ -51,11 +69,11 @@ async function buildTree(dir: string, prefix: string, depth: number, maxDepth: n
 export async function treeTool(input: unknown) {
     const { path, depth } = toolInputSchemas.tree.parse(input);
     const { cwd, resolved } = resolveInsideCwd(path);
-    const root = relative(cwd, resolved) || ".";
-    const lines = [root + "/", ...await buildTree(resolved, "", 0, depth)];
+    const root = relative(cwd, resolved) || '.';
+    const lines = [root + '/', ...(await buildTree(resolved, '', 0, depth))];
     const truncated = lines.length > MAX_TREE_LINES;
     return {
-        tree: (truncated ? lines.slice(0, MAX_TREE_LINES) : lines).join("\n"),
+        tree: (truncated ? lines.slice(0, MAX_TREE_LINES) : lines).join('\n'),
         ...(truncated ? { truncated: true, totalLines: lines.length } : {}),
     };
 }

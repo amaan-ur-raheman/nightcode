@@ -1,14 +1,14 @@
-import { readFile } from "fs/promises";
-import { basename } from "path";
+import { readFile } from 'fs/promises';
+import { basename } from 'path';
 
 const MIME_MAP: Record<string, string> = {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    svg: "image/svg+xml",
-    bmp: "image/bmp",
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    bmp: 'image/bmp',
 };
 
 const SUPPORTED_EXTENSIONS = new Set(Object.keys(MIME_MAP));
@@ -19,11 +19,13 @@ const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
 class ImageHandler {
     /** Convert a file path to a base64 data URL */
-    async fileToDataUrl(filePath: string): Promise<{ dataUrl: string; mimeType: string }> {
+    async fileToDataUrl(
+        filePath: string,
+    ): Promise<{ dataUrl: string; mimeType: string }> {
         const buffer = await readFile(filePath);
-        const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
-        const mimeType = MIME_MAP[ext] || "image/png";
-        const base64 = buffer.toString("base64");
+        const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+        const mimeType = MIME_MAP[ext] || 'image/png';
+        const base64 = buffer.toString('base64');
         return {
             dataUrl: `data:${mimeType};base64,${base64}`,
             mimeType,
@@ -32,7 +34,7 @@ class ImageHandler {
 
     /** Check if a file path is a supported image */
     isSupportedImage(filePath: string): boolean {
-        const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+        const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
         return SUPPORTED_EXTENSIONS.has(ext);
     }
 

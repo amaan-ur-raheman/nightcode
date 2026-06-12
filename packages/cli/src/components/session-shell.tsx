@@ -1,19 +1,17 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
+import { useState, useEffect } from 'react';
 
-import { TextAttributes } from "@opentui/core";
-import { usePromptConfig } from "@/providers/prompt-config";
+import { TextAttributes } from '@opentui/core';
+import { usePromptConfig } from '@/providers/prompt-config';
 
-import { Spinner } from "@/components/spinner";
-import { InputBar } from "@/components/input-bar";
-import { KeyHint } from "@/components/key-hint";
-import type { ImageAttachment } from "@/hooks/use-chat";
-
-type TokenUsage = {
-    inputTokens: number;
-    outputTokens: number;
-    totalCost: number;
-    hasActivity: boolean;
-};
+import { Spinner } from '@/components/spinner';
+import { InputBar } from '@/components/input-bar';
+import { KeyHint } from '@/components/key-hint';
+import { ToolConfirmationOverlay } from '@/components/tool-confirmation-overlay';
+import { QuestionOverlay } from '@/components/question-overlay';
+import type { ImageAttachment } from '@/hooks/use-chat';
+import type { ConfirmationManager } from '@/lib/tools/dangerous-ops';
+import type { QuestionManager } from '@/lib/tools/question-manager';
 
 type SessionShellProps = {
     children?: ReactNode;
@@ -26,7 +24,6 @@ type SessionShellProps = {
     runningToolName?: string | null;
     messageCount?: number;
     sessionTitle?: string;
-    tokenUsage?: TokenUsage;
     branchIndicator?: ReactNode;
     onCreateBranch?: () => void;
     onSwitchBranch?: (branchId: string) => void;
@@ -34,6 +31,8 @@ type SessionShellProps = {
     onAddImage?: (attachment: ImageAttachment) => void;
     onRemoveImage?: (index: number) => void;
     sessionId?: string;
+    confirmationManager?: ConfirmationManager;
+    questionManager?: QuestionManager;
 };
 
 export function SessionShell({
@@ -47,7 +46,6 @@ export function SessionShell({
     runningToolName,
     messageCount,
     sessionTitle,
-    tokenUsage,
     branchIndicator,
     onCreateBranch,
     onSwitchBranch,
@@ -55,8 +53,28 @@ export function SessionShell({
     onAddImage,
     onRemoveImage,
     sessionId,
+    confirmationManager,
+    questionManager,
 }: SessionShellProps) {
     const { mode } = usePromptConfig();
+    const [hasPendingConfirmation, setHasPendingConfirmation] = useState(false);
+    const [hasPendingQuestion, setHasPendingQuestion] = useState(false);
+
+    useEffect(() => {
+        if (!confirmationManager) return;
+        const update = () =>
+            setHasPendingConfirmation(confirmationManager.pending.size > 0);
+        update();
+        return confirmationManager.onChange(update);
+    }, [confirmationManager]);
+
+    useEffect(() => {
+        if (!questionManager) return;
+        const update = () =>
+            setHasPendingQuestion(questionManager.pending.size > 0);
+        update();
+        return questionManager.subscribe(update);
+    }, [questionManager]);
 
     return (
         <box
@@ -68,11 +86,36 @@ export function SessionShell({
             paddingX={2}
             gap={1}
         >
-            <scrollbox flexGrow={1} width="100%" stickyScroll stickyStart="bottom">
-                <box width="100%" flexDirection="column">{children}</box>
+            <scrollbox
+                flexGrow={1}
+                width="100%"
+                stickyScroll
+                stickyStart="bottom"
+            >
+                <box width="100%" flexDirection="column">
+                    {children}
+                </box>
             </scrollbox>
             <box flexShrink={0}>
-                <InputBar onSubmit={onSubmit} disabled={inputDisabled} onClear={onClear} messageCount={messageCount} sessionTitle={sessionTitle} tokenUsage={tokenUsage} onCreateBranch={onCreateBranch} onSwitchBranch={onSwitchBranch} imageAttachments={imageAttachments} onAddImage={onAddImage} onRemoveImage={onRemoveImage} sessionId={sessionId} />
+                {hasPendingQuestion && questionManager ? (
+                    <QuestionOverlay manager={questionManager} />
+                ) : hasPendingConfirmation && confirmationManager ? (
+                    <ToolConfirmationOverlay manager={confirmationManager} />
+                ) : (
+                    <InputBar
+                        onSubmit={onSubmit}
+                        disabled={inputDisabled}
+                        onClear={onClear}
+                        messageCount={messageCount}
+                        sessionTitle={sessionTitle}
+                        onCreateBranch={onCreateBranch}
+                        onSwitchBranch={onSwitchBranch}
+                        imageAttachments={imageAttachments}
+                        onAddImage={onAddImage}
+                        onRemoveImage={onRemoveImage}
+                        sessionId={sessionId}
+                    />
+                )}
             </box>
             <box
                 flexShrink={0}
@@ -87,19 +130,29 @@ export function SessionShell({
                     {loading ? (
                         <>
                             <Spinner mode={mode} />
-                            {runningToolName
-                                ? <text attributes={TextAttributes.DIM}>{`running ${runningToolName}...`}</text>
-                                : interruptible
-                                    ? <text attributes={TextAttributes.DIM}>esc to interrupt</text>
-                                    : null
-                            }
+                            {runningToolName ? (
+                                <text
+                                    attributes={TextAttributes.DIM}
+                                >{`running ${runningToolName}...`}</text>
+                            ) : interruptible ? (
+                                <text attributes={TextAttributes.DIM}>
+                                    esc to interrupt
+                                </text>
+                            ) : null}
                         </>
                     ) : null}
                     {branchIndicator}
                 </box>
 
-                <box flexDirection="row" gap={1} flexShrink={0} marginLeft="auto">
-                    {canRetry ? <KeyHint keyName="ctrl+r" label="retry" /> : null}
+                <box
+                    flexDirection="row"
+                    gap={1}
+                    flexShrink={0}
+                    marginLeft="auto"
+                >
+                    {canRetry ? (
+                        <KeyHint keyName="ctrl+r" label="retry" />
+                    ) : null}
                     <KeyHint keyName="ctrl+b" label="branch" />
                     <KeyHint keyName="ctrl+t" label="files" />
                     <KeyHint keyName="tab" label="agents" />

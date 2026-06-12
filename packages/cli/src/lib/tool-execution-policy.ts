@@ -10,46 +10,88 @@ const COMMAND_TIMEOUT_GRACE_MS = 2_000;
 const LONG_RUNNING_TIMEOUT_MS = 10 * 60_000;
 
 const SHORT_TOOLS = new Set([
-    "readFile", "listDirectory", "glob", "grep", "tree", "fileInfo",
-    "gitStatus", "gitDiff", "gitLog", "gitBlame", "gitStatusExtended",
-    "codeSearch", "getOutline", "diffFiles", "tokenCount",
-    "memoryGet", "memoryList", "memorySearch", "keychainGet",
-    "getTaskStatus",
+    'readFile',
+    'listDirectory',
+    'glob',
+    'grep',
+    'tree',
+    'fileInfo',
+    'gitStatus',
+    'gitDiff',
+    'gitLog',
+    'gitBlame',
+    'gitStatusExtended',
+    'codeSearch',
+    'getOutline',
+    'diffFiles',
+    'tokenCount',
+    'memoryGet',
+    'memoryList',
+    'memorySearch',
+    'keychainGet',
+    'getTaskStatus',
 ]);
 
 const MUTATION_TOOLS = new Set([
-    "writeFile", "editFile", "patch", "searchReplace",
-    "deleteFile", "moveFile", "createDirectory", "createFile",
-    "gitCommit", "gitBranch", "renameSymbol",
-    "memorySet", "memoryDelete", "keychainSet", "keychainDelete",
-    "envManage", "secretScan", "cancelTask",
+    'writeFile',
+    'editFile',
+    'patch',
+    'searchReplace',
+    'deleteFile',
+    'moveFile',
+    'createDirectory',
+    'createFile',
+    'gitCommit',
+    'gitBranch',
+    'renameSymbol',
+    'memorySet',
+    'memoryDelete',
+    'keychainSet',
+    'keychainDelete',
+    'envManage',
+    'secretScan',
+    'cancelTask',
 ]);
 
 const LONG_RUNNING_TOOLS = new Set([
-    "spawnAgent", "spawnCodeReviewer", "spawnTestWriter",
-    "spawnDebugger", "spawnRefactor", "spawnResearcher",
-    "orchestrator",
+    'spawnAgent',
+    'spawnCodeReviewer',
+    'spawnTestWriter',
+    'spawnDebugger',
+    'spawnRefactor',
+    'spawnResearcher',
+    'orchestrator',
 ]);
 
-function getNumericInputField(input: unknown, field: string): number | undefined {
-    if (!input || typeof input !== "object") return undefined;
+function getNumericInputField(
+    input: unknown,
+    field: string,
+): number | undefined {
+    if (!input || typeof input !== 'object') return undefined;
     const value = (input as Record<string, unknown>)[field];
-    return typeof value === "number" && Number.isFinite(value) && value > 0
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
         ? value
         : undefined;
 }
 
-export function getToolExecutionPolicy(toolName: string, input?: unknown): ToolExecutionPolicy {
-    if (toolName === "bash") {
+export function getToolExecutionPolicy(
+    toolName: string,
+    input?: unknown,
+): ToolExecutionPolicy {
+    if (toolName === 'bash') {
         return {
-            timeoutMs: (getNumericInputField(input, "timeout") ?? 30_000) + COMMAND_TIMEOUT_GRACE_MS,
+            timeoutMs:
+                (getNumericInputField(input, 'timeout') ?? 30_000) +
+                COMMAND_TIMEOUT_GRACE_MS,
             longRunning: true,
         };
     }
 
-    if (toolName === "runTests") {
+    if (toolName === 'runTests') {
         return {
-            timeoutMs: (getNumericInputField(input, "timeout") ?? 60_000) + COMMAND_TIMEOUT_GRACE_MS,
+            timeoutMs:
+                (getNumericInputField(input, 'timeout') ?? 60_000) +
+                COMMAND_TIMEOUT_GRACE_MS,
             longRunning: true,
         };
     }
@@ -66,11 +108,11 @@ export function getToolExecutionPolicy(toolName: string, input?: unknown): ToolE
         return { timeoutMs: MUTATION_TIMEOUT_MS, longRunning: false };
     }
 
-    if (toolName === "webFetch" || toolName === "httpRequest") {
+    if (toolName === 'webFetch' || toolName === 'httpRequest') {
         return { timeoutMs: MUTATION_TIMEOUT_MS, longRunning: false };
     }
 
-    if (toolName === "processManage") {
+    if (toolName === 'processManage') {
         return { timeoutMs: SHORT_TIMEOUT_MS, longRunning: false };
     }
 
@@ -80,13 +122,13 @@ export function getToolExecutionPolicy(toolName: string, input?: unknown): ToolE
 export class ToolExecutionTimeoutError extends Error {
     constructor(toolName: string, timeoutMs: number) {
         super(`Tool ${toolName} timed out after ${timeoutMs}ms`);
-        this.name = "ToolExecutionTimeoutError";
+        this.name = 'ToolExecutionTimeoutError';
     }
 }
 
 export function createAbortError(toolName: string): Error {
     const error = new Error(`Tool ${toolName} was aborted`);
-    error.name = "AbortError";
+    error.name = 'AbortError';
     return error;
 }
 
@@ -107,8 +149,11 @@ export async function runWithToolExecutionPolicy<T>(
         if (parentSignal.aborted) {
             controller.abort(parentSignal.reason);
         } else {
-            parentSignal.addEventListener("abort", abortFromParent, { once: true });
-            cleanupAbort = () => parentSignal.removeEventListener("abort", abortFromParent);
+            parentSignal.addEventListener('abort', abortFromParent, {
+                once: true,
+            });
+            cleanupAbort = () =>
+                parentSignal.removeEventListener('abort', abortFromParent);
         }
     }
 
@@ -116,17 +161,25 @@ export async function runWithToolExecutionPolicy<T>(
         const timeoutPromise = new Promise<never>((_, reject) => {
             timeout = setTimeout(() => {
                 settledByTimeout = true;
-                controller.abort(new ToolExecutionTimeoutError(toolName, policy.timeoutMs));
-                reject(new ToolExecutionTimeoutError(toolName, policy.timeoutMs));
+                controller.abort(
+                    new ToolExecutionTimeoutError(toolName, policy.timeoutMs),
+                );
+                reject(
+                    new ToolExecutionTimeoutError(toolName, policy.timeoutMs),
+                );
             }, policy.timeoutMs);
         });
 
         const abortPromise = new Promise<never>((_, reject) => {
-            controller.signal.addEventListener("abort", () => {
-                if (!settledByTimeout) {
-                    reject(createAbortError(toolName));
-                }
-            }, { once: true });
+            controller.signal.addEventListener(
+                'abort',
+                () => {
+                    if (!settledByTimeout) {
+                        reject(createAbortError(toolName));
+                    }
+                },
+                { once: true },
+            );
         });
 
         return await Promise.race([

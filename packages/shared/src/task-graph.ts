@@ -1,5 +1,16 @@
-export type TaskStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
-export type AgentRole = "orchestrator" | "coder" | "reviewer" | "tester" | "researcher" | "debugger";
+export type TaskStatus =
+    | 'pending'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
+export type AgentRole =
+    | 'orchestrator'
+    | 'coder'
+    | 'reviewer'
+    | 'tester'
+    | 'researcher'
+    | 'debugger';
 
 export interface TaskNode {
     id: string;
@@ -11,7 +22,7 @@ export interface TaskNode {
     result?: string;
     error?: string;
     files: string[];
-    mode: "BUILD" | "PLAN";
+    mode: 'BUILD' | 'PLAN';
     model?: string;
     createdAt: number;
     startedAt?: number;
@@ -34,7 +45,7 @@ export interface TaskGraph {
     name: string;
     nodes: Record<string, TaskNode>;
     edges: Record<string, string[]>;
-    status: "running" | "completed" | "failed" | "cancelled";
+    status: 'running' | 'completed' | 'failed' | 'cancelled';
     createdAt: number;
     completedAt?: number;
     /** Monotonically increasing counter — incremented on every mutation so React can detect changes. */
@@ -43,14 +54,18 @@ export interface TaskGraph {
 
 export function createTaskGraph(
     name: string,
-    tasks: Array<Omit<TaskNode, "status" | "createdAt" | "retryCount" | "maxRetries"> & { maxRetries?: number }>,
+    tasks: Array<
+        Omit<TaskNode, 'status' | 'createdAt' | 'retryCount' | 'maxRetries'> & {
+            maxRetries?: number;
+        }
+    >,
     edges?: Record<string, string[]>,
 ): TaskGraph {
     const nodes: Record<string, TaskNode> = {};
     for (const task of tasks) {
         nodes[task.id] = {
             ...task,
-            status: "pending",
+            status: 'pending',
             createdAt: Date.now(),
             retryCount: 0,
             maxRetries: task.maxRetries ?? 2,
@@ -62,13 +77,15 @@ export function createTaskGraph(
         name,
         nodes,
         edges: edges ?? buildEdgesFromDependencies(nodes),
-        status: "running",
+        status: 'running',
         createdAt: Date.now(),
         version: 0,
     };
 }
 
-function buildEdgesFromDependencies(nodes: Record<string, TaskNode>): Record<string, string[]> {
+function buildEdgesFromDependencies(
+    nodes: Record<string, TaskNode>,
+): Record<string, string[]> {
     const edges: Record<string, string[]> = {};
     for (const [id, node] of Object.entries(nodes)) {
         edges[id] = node.dependencies;
@@ -79,30 +96,38 @@ function buildEdgesFromDependencies(nodes: Record<string, TaskNode>): Record<str
 export function getReadyTasks(graph: TaskGraph): TaskNode[] {
     const now = Date.now();
     return Object.values(graph.nodes).filter((node) => {
-        if (node.status !== "pending") return false;
+        if (node.status !== 'pending') return false;
         // Respect exponential backoff: skip tasks still in cooldown
         if (node.retryAfter && node.retryAfter > now) return false;
         return node.dependencies.every((depId) => {
             const dep = graph.nodes[depId];
-            return dep?.status === "completed";
+            return dep?.status === 'completed';
         });
     });
 }
 
-export function markTaskRunning(graph: TaskGraph, taskId: string, agentId?: string): void {
+export function markTaskRunning(
+    graph: TaskGraph,
+    taskId: string,
+    agentId?: string,
+): void {
     const node = graph.nodes[taskId];
     if (node) {
-        node.status = "running";
+        node.status = 'running';
         node.startedAt = Date.now();
         node.assignedAgent = agentId;
         graph.version++;
     }
 }
 
-export function markTaskCompleted(graph: TaskGraph, taskId: string, result: string): void {
+export function markTaskCompleted(
+    graph: TaskGraph,
+    taskId: string,
+    result: string,
+): void {
     const node = graph.nodes[taskId];
     if (node) {
-        node.status = "completed";
+        node.status = 'completed';
         node.result = result;
         node.completedAt = Date.now();
         graph.version++;
@@ -110,19 +135,23 @@ export function markTaskCompleted(graph: TaskGraph, taskId: string, result: stri
     checkGraphCompletion(graph);
 }
 
-export function markTaskFailed(graph: TaskGraph, taskId: string, error: string): void {
+export function markTaskFailed(
+    graph: TaskGraph,
+    taskId: string,
+    error: string,
+): void {
     const node = graph.nodes[taskId];
     if (node) {
         if (node.retryCount < node.maxRetries) {
             node.retryCount++;
-            node.status = "pending";
+            node.status = 'pending';
             node.error = error;
             node.assignedAgent = undefined;
             node.startedAt = undefined;
             // Exponential backoff: 2s, 4s, 8s, ...
             node.retryAfter = Date.now() + 1000 * Math.pow(2, node.retryCount);
         } else {
-            node.status = "failed";
+            node.status = 'failed';
             node.error = error;
             node.completedAt = Date.now();
             cancelDownstream(graph, taskId);
@@ -134,8 +163,8 @@ export function markTaskFailed(graph: TaskGraph, taskId: string, error: string):
 
 export function cancelTask(graph: TaskGraph, taskId: string): void {
     const node = graph.nodes[taskId];
-    if (node && (node.status === "pending" || node.status === "running")) {
-        node.status = "cancelled";
+    if (node && (node.status === 'pending' || node.status === 'running')) {
+        node.status = 'cancelled';
         node.completedAt = Date.now();
         cancelDownstream(graph, taskId);
         checkGraphCompletion(graph);
@@ -146,12 +175,12 @@ export function cancelTask(graph: TaskGraph, taskId: string): void {
 function cancelDownstream(graph: TaskGraph, failedTaskId: string): void {
     for (const [id, node] of Object.entries(graph.nodes)) {
         if (
-            node.status !== "completed" &&
-            node.status !== "failed" &&
-            node.status !== "cancelled" &&
+            node.status !== 'completed' &&
+            node.status !== 'failed' &&
+            node.status !== 'cancelled' &&
             node.dependencies.includes(failedTaskId)
         ) {
-            node.status = "cancelled";
+            node.status = 'cancelled';
             node.completedAt = Date.now();
             cancelDownstream(graph, id);
         }
@@ -160,18 +189,22 @@ function cancelDownstream(graph: TaskGraph, failedTaskId: string): void {
 
 function checkGraphCompletion(graph: TaskGraph): void {
     // L1: Skip if already in a terminal state (prevents redundant calls during batch cancel)
-    if (graph.status !== "running") return;
+    if (graph.status !== 'running') return;
 
     const statuses = Object.values(graph.nodes).map((n) => n.status);
-    if (statuses.every((s) => s === "completed")) {
-        graph.status = "completed";
+    if (statuses.every((s) => s === 'completed')) {
+        graph.status = 'completed';
         graph.completedAt = Date.now();
         graph.version++;
-    } else if (statuses.every((s) => s === "completed" || s === "failed" || s === "cancelled")) {
+    } else if (
+        statuses.every(
+            (s) => s === 'completed' || s === 'failed' || s === 'cancelled',
+        )
+    ) {
         // Graph is done — mark "completed" if at least one task succeeded,
         // otherwise "failed"
-        const hasCompleted = statuses.some((s) => s === "completed");
-        graph.status = hasCompleted ? "completed" : "failed";
+        const hasCompleted = statuses.some((s) => s === 'completed');
+        graph.status = hasCompleted ? 'completed' : 'failed';
         graph.completedAt = Date.now();
         graph.version++;
     }
@@ -207,9 +240,10 @@ export function getCriticalPath(graph: TaskGraph): string[] {
     for (const id of order) {
         const node = graph.nodes[id];
         if (!node) continue;
-        const duration = node.completedAt && node.startedAt
-            ? node.completedAt - node.startedAt
-            : 0;
+        const duration =
+            node.completedAt && node.startedAt
+                ? node.completedAt - node.startedAt
+                : 0;
 
         let maxDist = 0;
         let bestPrev: string | null = null;
@@ -229,7 +263,11 @@ export function getCriticalPath(graph: TaskGraph): string[] {
     let endId: string | null = null;
     for (const [id, d] of dist) {
         const node = graph.nodes[id];
-        if (node && (node.status === "completed" || node.status === "running") && d > maxDist) {
+        if (
+            node &&
+            (node.status === 'completed' || node.status === 'running') &&
+            d > maxDist
+        ) {
             maxDist = d;
             endId = id;
         }
@@ -248,14 +286,19 @@ export function getGraphStats(graph: TaskGraph) {
     const nodes = Object.values(graph.nodes);
     return {
         total: nodes.length,
-        completed: nodes.filter((n) => n.status === "completed").length,
-        running: nodes.filter((n) => n.status === "running").length,
-        pending: nodes.filter((n) => n.status === "pending").length,
-        failed: nodes.filter((n) => n.status === "failed").length,
-        cancelled: nodes.filter((n) => n.status === "cancelled").length,
-        progress: nodes.length > 0
-            ? Math.round((nodes.filter((n) => n.status === "completed").length / nodes.length) * 100)
-            : 0,
+        completed: nodes.filter((n) => n.status === 'completed').length,
+        running: nodes.filter((n) => n.status === 'running').length,
+        pending: nodes.filter((n) => n.status === 'pending').length,
+        failed: nodes.filter((n) => n.status === 'failed').length,
+        cancelled: nodes.filter((n) => n.status === 'cancelled').length,
+        progress:
+            nodes.length > 0
+                ? Math.round(
+                      (nodes.filter((n) => n.status === 'completed').length /
+                          nodes.length) *
+                          100,
+                  )
+                : 0,
         duration: graph.completedAt
             ? graph.completedAt - graph.createdAt
             : Date.now() - graph.createdAt,
@@ -269,7 +312,9 @@ export function validateGraph(graph: TaskGraph): string[] {
     for (const [id, node] of Object.entries(graph.nodes)) {
         for (const depId of node.dependencies) {
             if (!ids.has(depId)) {
-                errors.push(`Task "${id}" depends on non-existent task "${depId}"`);
+                errors.push(
+                    `Task "${id}" depends on non-existent task "${depId}"`,
+                );
             }
         }
     }

@@ -1,15 +1,15 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { createContext, useContext, useState, useCallback } from "react";
-import type { ReactNode } from "react";
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createContext, useContext, useState, useCallback } from 'react';
+import type { ReactNode } from 'react';
 
-import { DEFAULT_THEME, THEMES } from "@/theme";
-import type { Theme, ThemeColors, CustomTheme } from "@/theme";
+import { DEFAULT_THEME, THEMES } from '@/theme';
+import type { Theme, ThemeColors, CustomTheme } from '@/theme';
 
-const CONFIG_DIR = join(homedir(), ".nightcode");
-const THEME_PREFERENCE_PATH = join(CONFIG_DIR, "preferences.json");
-const CUSTOM_THEMES_PATH = join(CONFIG_DIR, "custom-themes.json");
+const CONFIG_DIR = join(homedir(), '.nightcode');
+const THEME_PREFERENCE_PATH = join(CONFIG_DIR, 'preferences.json');
+const CUSTOM_THEMES_PATH = join(CONFIG_DIR, 'custom-themes.json');
 
 type ThemePreference = {
     themeName: string;
@@ -18,7 +18,7 @@ type ThemePreference = {
 function loadCustomThemes(): CustomTheme[] {
     try {
         if (!existsSync(CUSTOM_THEMES_PATH)) return [];
-        const content = readFileSync(CUSTOM_THEMES_PATH, "utf-8");
+        const content = readFileSync(CUSTOM_THEMES_PATH, 'utf-8');
         const store = JSON.parse(content);
         return store.themes || [];
     } catch {
@@ -42,7 +42,7 @@ function resolveTheme(name: string): Theme {
 function getInitialTheme(): Theme {
     try {
         const preferences = JSON.parse(
-            readFileSync(THEME_PREFERENCE_PATH, "utf-8")
+            readFileSync(THEME_PREFERENCE_PATH, 'utf-8'),
         ) as Partial<ThemePreference>;
 
         if (preferences.themeName) {
@@ -59,8 +59,12 @@ function persistTheme(theme: Theme) {
         mkdirSync(CONFIG_DIR, { recursive: true });
         writeFileSync(
             THEME_PREFERENCE_PATH,
-            JSON.stringify({ themeName: theme.name } satisfies ThemePreference, null, 2),
-            "utf-8"
+            JSON.stringify(
+                { themeName: theme.name } satisfies ThemePreference,
+                null,
+                2,
+            ),
+            'utf-8',
         );
     } catch {
         // Ignore preference write failures so theme switching still works for this session.
@@ -78,7 +82,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export function useTheme(): ThemeContextValue {
     const value = useContext(ThemeContext);
     if (!value) {
-        throw new Error("useTheme must be used within a ThemeProvider");
+        throw new Error('useTheme must be used within a ThemeProvider');
     }
 
     return value;
@@ -102,5 +106,5 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         >
             {children}
         </ThemeContext.Provider>
-    )
+    );
 }

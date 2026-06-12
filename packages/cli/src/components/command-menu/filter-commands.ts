@@ -1,7 +1,7 @@
-import type { ModeType } from "@nightcode/shared";
+import type { ModeType } from '@nightcode/shared';
 
-import type { Command } from "@/components/command-menu/types";
-import { COMMANDS } from "@/components/command-menu/commands";
+import type { Command } from '@/components/command-menu/types';
+import { COMMANDS } from '@/components/command-menu/commands';
 
 export type FilteredCommand = Command & { _score: number };
 
@@ -16,7 +16,11 @@ function fuzzyMatch(query: string, text: string): number {
         // Bonus for prefix match
         if (exactIdx === 0) score += 50;
         // Bonus for word boundary
-        if (exactIdx === 0 || textLower[exactIdx - 1] === " " || textLower[exactIdx - 1] === "-") {
+        if (
+            exactIdx === 0 ||
+            textLower[exactIdx - 1] === ' ' ||
+            textLower[exactIdx - 1] === '-'
+        ) {
             score += 20;
         }
         return score;
@@ -38,7 +42,12 @@ function fuzzyMatch(query: string, text: string): number {
             }
 
             // Bonus for word boundary
-            if (i === 0 || textLower[i - 1] === " " || textLower[i - 1] === "-" || textLower[i - 1] === "_") {
+            if (
+                i === 0 ||
+                textLower[i - 1] === ' ' ||
+                textLower[i - 1] === '-' ||
+                textLower[i - 1] === '_'
+            ) {
                 score += 5;
             }
 
@@ -50,40 +59,50 @@ function fuzzyMatch(query: string, text: string): number {
     return queryIdx === queryLower.length ? score : 0;
 }
 
-function sortByRelevance(commands: Command[], query: string): FilteredCommand[] {
+function sortByRelevance(
+    commands: Command[],
+    query: string,
+): FilteredCommand[] {
     if (!query) {
-        return commands.map(cmd => ({ ...cmd, _score: 0 }));
+        return commands.map((cmd) => ({ ...cmd, _score: 0 }));
     }
 
     return commands
-        .map(cmd => ({
+        .map((cmd) => ({
             ...cmd,
             _score: Math.max(
                 fuzzyMatch(query, cmd.name),
                 fuzzyMatch(query, cmd.description) * 0.8,
-                fuzzyMatch(query, cmd.value) * 0.6
+                fuzzyMatch(query, cmd.value) * 0.6,
             ),
         }))
-        .filter(item => item._score > 0)
+        .filter((item) => item._score > 0)
         .sort((a, b) => b._score - a._score);
 }
 
 export const getFilteredCommands = (
     query: string,
-    mode: ModeType = "BUILD",
-    sessionId?: string
+    mode: ModeType = 'BUILD',
+    sessionId?: string,
 ): FilteredCommand[] => {
-    const commands = COMMANDS.filter(cmd => {
-        if (mode !== "BUILD" && cmd.requiresBuildMode) return false;
+    const commands = COMMANDS.filter((cmd) => {
+        if (mode !== 'BUILD' && cmd.requiresBuildMode) return false;
         // If not in a session, hide session-only commands that don't make sense on the home page
-        if (!sessionId && (cmd.name === "files" || cmd.name === "clear" || cmd.name === "undo" || cmd.name === "branch" || cmd.name === "export")) {
+        if (
+            !sessionId &&
+            (cmd.name === 'files' ||
+                cmd.name === 'diff' ||
+                cmd.name === 'clear' ||
+                cmd.name === 'undo' ||
+                cmd.name === 'branch' ||
+                cmd.name === 'export')
+        ) {
             return false;
         }
         return true;
     });
     if (query.length === 0) {
-        return commands.map(cmd => ({ ...cmd, _score: 0 }));
+        return commands.map((cmd) => ({ ...cmd, _score: 0 }));
     }
     return sortByRelevance(commands, query);
 };
-

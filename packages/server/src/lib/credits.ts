@@ -1,14 +1,14 @@
-import type { LanguageModelUsage } from "ai";
+import type { LanguageModelUsage } from 'ai';
 import {
     SUPPORTED_CHAT_MODELS,
     findSupportedChatModel,
-    type ModelPricing
-} from "@nightcode/shared";
+    type ModelPricing,
+} from '@nightcode/shared';
 
 type CalculateCreditsForUsageParams = {
     provider: string;
     model: string;
-    usage: LanguageModelUsage
+    usage: LanguageModelUsage;
 };
 
 type BillableUsage = {
@@ -37,7 +37,9 @@ function getTokenCounts(usage: LanguageModelUsage): TokenCounts {
         inputTokens < 0 ||
         outputTokens < 0
     ) {
-        throw new Error("Credits conversion requires input and output token counts");
+        throw new Error(
+            'Credits conversion requires input and output token counts',
+        );
     }
 
     return {
@@ -49,18 +51,21 @@ function getTokenCounts(usage: LanguageModelUsage): TokenCounts {
 function getModelPricing(provider: string, model: string): ModelPricing {
     const supportedModel = findSupportedChatModel(model);
 
-    if (!supportedModel || supportedModel.provider !== provider) {
-        if (!SUPPORTED_CHAT_MODELS.some((supportedModel) => supportedModel.provider === provider)) {
-            throw new Error(`Unsupported billing provider: ${provider}`);
-        }
-
-        throw new Error(`Unsupported billing model: ${model}`)
+    if (supportedModel && supportedModel.provider === provider) {
+        return supportedModel.pricing;
     }
 
-    return supportedModel.pricing;
+    // Default pricing for dynamic models (0 cost until we have pricing data)
+    return {
+        inputUsdPerMillionTokens: 0,
+        outputUsdPerMillionTokens: 0,
+    };
 }
 
-function estimateCostsUsd({ inputTokens, outputTokens }: TokenCounts, pricing: ModelPricing) {
+function estimateCostsUsd(
+    { inputTokens, outputTokens }: TokenCounts,
+    pricing: ModelPricing,
+) {
     return (
         (inputTokens * pricing.inputUsdPerMillionTokens +
             outputTokens * pricing.outputUsdPerMillionTokens) /
@@ -79,7 +84,7 @@ function convertUsdToCredits(estimatedCostUsd: number) {
 export function calculateCreditsForUsage({
     provider,
     model,
-    usage
+    usage,
 }: CalculateCreditsForUsageParams): BillableUsage {
     const tokenCounts = getTokenCounts(usage);
     const pricing = getModelPricing(provider, model);

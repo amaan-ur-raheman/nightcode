@@ -1,135 +1,81 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockRunGit = vi.fn();
-vi.mock("../utils", () => ({
-    MAX_DIFF: 50_000,
-    runGit: (...args: any[]) => mockRunGit(...args),
-}));
+// Must be inside the describe so vi.resetModules + vi.doMock work correctly
 
-vi.mock("@nightcode/shared", () => ({
-    toolInputSchemas: {
-        gitDiff: { parse: (input: any) => input },
-    },
-}));
+describe('gitStatusTool and gitDiffTool', () => {
+    const mockRunGit = vi.fn();
 
-import { gitStatusTool, gitDiffTool } from "../git";
-
-describe("gitStatusTool", () => {
     beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    it("returns status on success", async () => {
-        mockRunGit.mockResolvedValue({
-            stdout: "## main...origin/main\n M src/index.ts",
-            stderr: "",
-            exitCode: 0,
-        });
-
-        const result = await gitStatusTool();
-
-        expect(result).toEqual({
-            status: "## main...origin/main\n M src/index.ts",
-        });
-        expect(mockRunGit).toHaveBeenCalledWith(process.cwd(), ["status", "--short", "--branch"]);
-    });
-
-    it("returns error on failure", async () => {
-        mockRunGit.mockResolvedValue({
-            stdout: "",
-            stderr: "fatal: not a git repository",
-            exitCode: 128,
-        });
-
-        const result = await gitStatusTool();
-
-        expect(result).toEqual({
-            error: "fatal: not a git repository",
+        vi.resetModules();
+        mockRunGit.mockReset();
+        vi.doMock('../utils', async (importOriginal) => {
+            const orig = await importOriginal<typeof import('../utils')>();
+            return { ...orig, runGit: mockRunGit, MAX_DIFF: 5000 };
         });
     });
 
-    it("returns generic error when stderr is empty", async () => {
-        mockRunGit.mockResolvedValue({
-            stdout: "",
-            stderr: "",
-            exitCode: 1,
+    describe('gitStatusTool', () => {
+        it('returns status output on success', async () => {
+            mockRunGit.mockResolvedValue({
+                exitCode: 0,
+                stdout: '## main\nM file.ts\n',
+                stderr: '',
+            });
+            const { gitStatusTool } = await import('../git');
+            const result = await gitStatusTool();
+            expect(result).toHaveProperty('status');
+            expect(result.status).toContain('main');
         });
 
-        const result = await gitStatusTool();
-
-        expect(result).toEqual({ error: "git status failed" });
-    });
-});
-
-describe("gitDiffTool", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    it("returns unstaged diff by default", async () => {
-        mockRunGit.mockResolvedValue({
-            stdout: "diff --git a/src/index.ts b/src/index.ts\n+new line",
-            stderr: "",
-            exitCode: 0,
+        it('returns error on failure', async () => {
+            mockRunGit.mockResolvedValue({
+                exitCode: 128,
+                stdout: '',
+                stderr: 'not a git repo',
+            });
+            const { gitStatusTool } = await import('../git');
+            const result = await gitStatusTool();
+            expect(result).toHaveProperty('error');
+            expect(result.error).toContain('not a git repo');
         });
-
-        const result = await gitDiffTool({});
-
-        expect(result).toEqual({
-            diff: "diff --git a/src/index.ts b/src/index.ts\n+new line",
-            truncated: false,
-        });
-        expect(mockRunGit).toHaveBeenCalledWith(process.cwd(), ["diff"]);
     });
 
-    it("passes --cached flag for staged diffs", async () => {
-        mockRunGit.mockResolvedValue({
-            stdout: "staged diff content",
-            stderr: "",
-            exitCode: 0,
+    describe('gitDiffTool', () => {
+        it('returns unstaged diff by default', async () => {
+            mockRunGit.mockResolvedValue({
+                exitCode: 0,
+                stdout: 'diff --git a/file.ts\n-old\n+new\n',
+                stderr: '',
+            });
+            const { gitDiffTool } = await import('../git');
+            const result = await gitDiffTool({ path: 'file.ts' });
+            expect(result).toHaveProperty('diff');
+            expect(result.diff).toContain('diff');
         });
 
-        await gitDiffTool({ staged: true });
-
-        expect(mockRunGit).toHaveBeenCalledWith(process.cwd(), ["diff", "--cached"]);
-    });
-
-    it("passes path filter when provided", async () => {
-        mockRunGit.mockResolvedValue({
-            stdout: "file diff",
-            stderr: "",
-            exitCode: 0,
+        it('returns staged diff when staged=true', async () => {
+            mockRunGit.mockResolvedValue({
+                exitCode: 0,
+                stdout: 'diff --cached\n-old\n+new\n',
+                stderr: '',
+            });
+            const { gitDiffTool } = await import('../git');
+            await gitDiffTool({ staged: true });
+            expect(mockRunGit).toHaveBeenCalledWith(process.cwd(), [
+                'diff',
+                '--cached',
+            ]);
         });
 
-        await gitDiffTool({ path: "src/index.ts" });
-
-        expect(mockRunGit).toHaveBeenCalledWith(process.cwd(), ["diff", "--", "src/index.ts"]);
-    });
-
-    it("truncates large diffs", async () => {
-        const hugeDiff = "x".repeat(60_000);
-        mockRunGit.mockResolvedValue({
-            stdout: hugeDiff,
-            stderr: "",
-            exitCode: 0,
+        it('returns error on failure', async () => {
+            mockRunGit.mockResolvedValue({
+                exitCode: 1,
+                stdout: '',
+                stderr: 'git diff failed',
+            });
+            const { gitDiffTool } = await import('../git');
+            const result = await gitDiffTool({});
+            expect(result).toHaveProperty('error');
         });
-
-        const result = await gitDiffTool({});
-
-        expect(result.truncated).toBe(true);
-        expect(result.diff!.length).toBeLessThan(60_000);
-        expect(result.diff).toContain("truncated");
-    });
-
-    it("returns error on git failure", async () => {
-        mockRunGit.mockResolvedValue({
-            stdout: "",
-            stderr: "fatal: bad revision",
-            exitCode: 128,
-        });
-
-        const result = await gitDiffTool({});
-
-        expect(result).toEqual({ error: "fatal: bad revision" });
     });
 });

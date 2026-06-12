@@ -1,10 +1,14 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 
-import { useKeyboard } from "@opentui/react";
-import { TextAttributes, type InputRenderable, type ScrollBoxRenderable } from "@opentui/core";
+import { useKeyboard } from '@opentui/react';
+import {
+    TextAttributes,
+    type InputRenderable,
+    type ScrollBoxRenderable,
+} from '@opentui/core';
 
-import { useTheme } from "@/providers/theme";
-import { useKeyboardLayer } from "@/providers/keyboard-layer";
+import { useTheme } from '@/providers/theme';
+import { useKeyboardLayer } from '@/providers/keyboard-layer';
 
 const MAX_VISIBLE_ITEMS = 6;
 
@@ -26,18 +30,18 @@ export function DialogSearchList<T>({
     filterFn,
     renderItem,
     getKey,
-    placeholder = "Search",
-    emptyText = "No results",
+    placeholder = 'Search',
+    emptyText = 'No results',
 }: DialogSearchListProps<T>) {
     const [selectedIndex, setSelectedIndex] = useState(0);
-    const [searchValue, setSearchValue] = useState("");
+    const [searchValue, setSearchValue] = useState('');
     const inputRef = useRef<InputRenderable>(null);
     const scrollRef = useRef<ScrollBoxRenderable>(null);
     const { isTopLayer } = useKeyboardLayer();
     const { colors } = useTheme();
 
     const handleContentChange = useCallback(() => {
-        const text = inputRef.current?.value ?? "";
+        const text = inputRef.current?.value ?? '';
         setSearchValue(text);
         setSelectedIndex(0);
 
@@ -54,15 +58,15 @@ export function DialogSearchList<T>({
     const visibleHeight = Math.min(filtered.length, MAX_VISIBLE_ITEMS);
 
     useKeyboard((key) => {
-        if (!isTopLayer("dialog")) return;
+        if (!isTopLayer('dialog')) return;
         if (filtered.length === 0) return;
 
-        if (key.name === "return" || key.name === "enter") {
+        if (key.name === 'return' || key.name === 'enter') {
             const item = filtered[selectedIndex];
             if (item) {
                 onSelect(item);
             }
-        } else if (key.name === "up") {
+        } else if (key.name === 'up') {
             setSelectedIndex((i) => {
                 const newIndex = Math.max(0, i - 1);
 
@@ -78,7 +82,7 @@ export function DialogSearchList<T>({
 
                 return newIndex;
             });
-        } else if (key.name === "down") {
+        } else if (key.name === 'down') {
             setSelectedIndex((i) => {
                 const newIndex = Math.min(i + 1, filtered.length - 1);
 
@@ -110,9 +114,7 @@ export function DialogSearchList<T>({
                 onContentChange={handleContentChange}
             />
             {filtered.length === 0 ? (
-                <text attributes={TextAttributes.DIM}>
-                    {emptyText}
-                </text>
+                <text attributes={TextAttributes.DIM}>{emptyText}</text>
             ) : (
                 <scrollbox ref={scrollRef} height={visibleHeight}>
                     {filtered.map((item, i) => {
@@ -123,7 +125,9 @@ export function DialogSearchList<T>({
                                 flexDirection="row"
                                 height={1}
                                 overflow="hidden"
-                                backgroundColor={isSelected ? colors.selection : undefined}
+                                backgroundColor={
+                                    isSelected ? colors.selection : undefined
+                                }
                                 onMouseMove={() => {
                                     setSelectedIndex(i);
                                     if (onHighlight) onHighlight(item);

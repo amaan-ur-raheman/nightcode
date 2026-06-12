@@ -41,12 +41,12 @@ const metrics: Record<string, ProviderMetrics> = {};
 
 function getMetrics(provider: string): ProviderMetrics {
     if (!metrics[provider]) {
-        metrics[provider] = { 
-            recentLatencies: [], 
-            recentSuccesses: 0, 
+        metrics[provider] = {
+            recentLatencies: [],
+            recentSuccesses: 0,
             recentFailures: 0,
             taskTypes: {},
-            lastAdjustment: 0
+            lastAdjustment: 0,
         };
     }
     return metrics[provider];
@@ -60,7 +60,12 @@ let lastAdjustment = 0;
  * Record the latency and success/failure of a completed operation.
  * Triggers dynamic adjustment after enough samples.
  */
-export function recordProviderLatency(provider: string, latencyMs: number, success: boolean, taskType?: string): void {
+export function recordProviderLatency(
+    provider: string,
+    latencyMs: number,
+    success: boolean,
+    taskType?: string,
+): void {
     const m = getMetrics(provider);
     m.recentLatencies.push(latencyMs);
     if (m.recentLatencies.length > MAX_RECENT_SAMPLES) {
@@ -71,7 +76,7 @@ export function recordProviderLatency(provider: string, latencyMs: number, succe
     } else {
         m.recentFailures++;
     }
-    
+
     // Track task type distribution for adaptive optimization
     if (taskType) {
         m.taskTypes[taskType] = (m.taskTypes[taskType] || 0) + 1;
@@ -91,19 +96,21 @@ function adjustConcurrency(provider: string): void {
     if (total < 3) return; // Reduced from 5 for faster adaptation
 
     const successRate = m.recentSuccesses / total;
-    const avgLatency = m.recentLatencies.length > 0
-        ? m.recentLatencies.reduce((a, b) => a + b, 0) / m.recentLatencies.length
-        : 0;
+    const avgLatency =
+        m.recentLatencies.length > 0
+            ? m.recentLatencies.reduce((a, b) => a + b, 0) /
+              m.recentLatencies.length
+            : 0;
 
     const base = PROVIDER_CONCURRENCY[provider] ?? 5;
-    
+
     // Adaptive concurrency based on task type distribution
     const taskDiversity = Object.keys(m.taskTypes).length;
     const diversityFactor = Math.min(taskDiversity / 3, 1); // Cap diversity impact
 
     // Enhanced decision logic with diversity consideration
     let newConcurrency = maxConcurrent;
-    
+
     if (successRate > 0.95 && avgLatency < 5000) {
         // Excellent performance — increase concurrency more aggressively
         newConcurrency = Math.min(maxConcurrent + 2, Math.ceil(base * 1.8));
@@ -195,7 +202,7 @@ export async function waitForSlot(timeoutMs = 30_000): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (acquireSlot()) return true;
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 200));
     }
     return false;
 }

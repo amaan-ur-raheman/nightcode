@@ -1,12 +1,16 @@
-import { toolInputSchemas, type ModeType } from "@nightcode/shared";
-import { spawnAgentTool } from "./spawn-agent";
-import { resolveProviderFallback, type AgentRole } from "@/lib/model-utils";
+import { toolInputSchemas, type ModeType } from '@nightcode/shared';
+import { spawnAgentTool } from './spawn-agent';
+import { resolveProviderFallback, type AgentRole } from '@/lib/model-utils';
 
 /**
  * Resolve the model for a preset agent.
  * Priority: AI choice → user's selected model → provider-matched fallback.
  */
-function resolveModel(explicitModel: string | undefined, parentModel: string | undefined, role: AgentRole): string {
+function resolveModel(
+    explicitModel: string | undefined,
+    parentModel: string | undefined,
+    role: AgentRole,
+): string {
     if (explicitModel) return explicitModel;
     if (parentModel) return parentModel;
     return resolveProviderFallback(parentModel, role);
@@ -19,12 +23,13 @@ export async function spawnCodeReviewerTool(
     signal?: AbortSignal,
     execId?: string,
 ) {
-    const { files, focus, model } = toolInputSchemas.spawnCodeReviewer.parse(input);
-    const focusNote = focus ? ` Focus especially on: ${focus}.` : "";
+    const { files, focus, model } =
+        toolInputSchemas.spawnCodeReviewer.parse(input);
+    const focusNote = focus ? ` Focus especially on: ${focus}.` : '';
     const task = `You are an expert code reviewer. Review the following files for bugs, logic errors, security vulnerabilities, and best practices.${focusNote}
 
 Files to review:
-${files.map(f => `- ${f}`).join("\n")}
+${files.map((f) => `- ${f}`).join('\n')}
 
 For each file, read it and provide a structured review covering:
 1. Bugs or logic errors
@@ -47,7 +52,17 @@ Focus on actionable findings. Skip issues that are already handled well.
 
 IMPORTANT: You MUST write your review as text. Do not stop after tool calls.`;
 
-    return spawnAgentTool({ task, model: resolveModel(model, parentModel, "codeReviewer"), mode: "PLAN" }, parentMode, parentModel, signal, execId);
+    return spawnAgentTool(
+        {
+            task,
+            model: resolveModel(model, parentModel, 'codeReviewer'),
+            mode: 'PLAN',
+        },
+        parentMode,
+        parentModel,
+        signal,
+        execId,
+    );
 }
 
 export async function spawnTestWriterTool(
@@ -57,12 +72,15 @@ export async function spawnTestWriterTool(
     signal?: AbortSignal,
     execId?: string,
 ) {
-    const { files, testFramework, model } = toolInputSchemas.spawnTestWriter.parse(input);
-    const frameworkNote = testFramework ? ` Use ${testFramework} as the test framework.` : "";
+    const { files, testFramework, model } =
+        toolInputSchemas.spawnTestWriter.parse(input);
+    const frameworkNote = testFramework
+        ? ` Use ${testFramework} as the test framework.`
+        : '';
     const task = `You are an expert test engineer. Write comprehensive tests for the following files.${frameworkNote}
 
 Files to write tests for:
-${files.map(f => `- ${f}`).join("\n")}
+${files.map((f) => `- ${f}`).join('\n')}
 
 For each file:
 1. Read the file to understand what it does
@@ -80,7 +98,17 @@ When writing tests, prefer:
 
 IMPORTANT: After writing tests, summarise what you wrote as text. Do not stop after tool calls.`;
 
-    return spawnAgentTool({ task, model: resolveModel(model, parentModel, "testWriter"), mode: "BUILD" }, parentMode, parentModel, signal, execId);
+    return spawnAgentTool(
+        {
+            task,
+            model: resolveModel(model, parentModel, 'testWriter'),
+            mode: 'BUILD',
+        },
+        parentMode,
+        parentModel,
+        signal,
+        execId,
+    );
 }
 
 export async function spawnDebuggerTool(
@@ -90,10 +118,12 @@ export async function spawnDebuggerTool(
     signal?: AbortSignal,
     execId?: string,
 ) {
-    const { description, files, model } = toolInputSchemas.spawnDebugger.parse(input);
-    const filesNote = files && files.length > 0
-        ? `\n\nRelevant files to start from:\n${files.map(f => `- ${f}`).join("\n")}`
-        : "";
+    const { description, files, model } =
+        toolInputSchemas.spawnDebugger.parse(input);
+    const filesNote =
+        files && files.length > 0
+            ? `\n\nRelevant files to start from:\n${files.map((f) => `- ${f}`).join('\n')}`
+            : '';
     const task = `You are an expert debugger. Investigate and fix the following bug.
 
 Bug description: ${description}${filesNote}
@@ -114,7 +144,17 @@ Report back with:
 
 IMPORTANT: You MUST write your summary as text. Do not stop after tool calls.`;
 
-    return spawnAgentTool({ task, model: resolveModel(model, parentModel, "debugger"), mode: "BUILD" }, parentMode, parentModel, signal, execId);
+    return spawnAgentTool(
+        {
+            task,
+            model: resolveModel(model, parentModel, 'debugger'),
+            mode: 'BUILD',
+        },
+        parentMode,
+        parentModel,
+        signal,
+        execId,
+    );
 }
 
 export async function spawnRefactorTool(
@@ -124,11 +164,12 @@ export async function spawnRefactorTool(
     signal?: AbortSignal,
     execId?: string,
 ) {
-    const { files, instructions, model } = toolInputSchemas.spawnRefactor.parse(input);
+    const { files, instructions, model } =
+        toolInputSchemas.spawnRefactor.parse(input);
     const task = `You are an expert software engineer specialising in refactoring. Refactor the following files without changing their external behaviour.
 
 Files to refactor:
-${files.map(f => `- ${f}`).join("\n")}
+${files.map((f) => `- ${f}`).join('\n')}
 
 Refactoring instructions: ${instructions}
 
@@ -148,7 +189,17 @@ Report back with:
 
 IMPORTANT: You MUST write your summary as text. Do not stop after tool calls.`;
 
-    return spawnAgentTool({ task, model: resolveModel(model, parentModel, "refactor"), mode: "BUILD" }, parentMode, parentModel, signal, execId);
+    return spawnAgentTool(
+        {
+            task,
+            model: resolveModel(model, parentModel, 'refactor'),
+            mode: 'BUILD',
+        },
+        parentMode,
+        parentModel,
+        signal,
+        execId,
+    );
 }
 
 export async function spawnResearcherTool(
@@ -175,5 +226,15 @@ Steps:
 
 IMPORTANT: You MUST end your response with a written summary. Do not stop after tool calls.`;
 
-    return spawnAgentTool({ task, model: resolveModel(model, parentModel, "researcher"), mode: "PLAN" }, parentMode, parentModel, signal, execId);
+    return spawnAgentTool(
+        {
+            task,
+            model: resolveModel(model, parentModel, 'researcher'),
+            mode: 'PLAN',
+        },
+        parentMode,
+        parentModel,
+        signal,
+        execId,
+    );
 }

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { apiClient } from "@/lib/api-client";
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 export type CreditBalance = {
     balance: number | null;

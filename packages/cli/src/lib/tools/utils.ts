@@ -1,18 +1,49 @@
-import { isAbsolute, relative, resolve } from "path";
-import { stat, readFile, writeFile } from "fs/promises";
-import { undoManager } from "../undo-manager";
-import { globCache } from "../glob-cache";
+import { isAbsolute, relative, resolve } from 'path';
+import { stat, readFile, writeFile } from 'fs/promises';
+import { undoManager } from '../undo-manager';
+import { globCache } from '../glob-cache';
 
-export const IGNORE = new Set(["node_modules", ".git", "dist", "build", ".next", ".turbo", "coverage"]);
+export const IGNORE = new Set([
+    'node_modules',
+    '.git',
+    'dist',
+    'build',
+    '.next',
+    '.turbo',
+    'coverage',
+]);
 
 export const PRIVATE_IPS = [
-    "localhost", "127.", "0.0.0.0", "10.", "192.168.", "169.254.", "::1", ".local",
-    "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.",
-    "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+    'localhost',
+    '127.',
+    '0.0.0.0',
+    '10.',
+    '192.168.',
+    '169.254.',
+    '::1',
+    '.local',
+    '172.16.',
+    '172.17.',
+    '172.18.',
+    '172.19.',
+    '172.20.',
+    '172.21.',
+    '172.22.',
+    '172.23.',
+    '172.24.',
+    '172.25.',
+    '172.26.',
+    '172.27.',
+    '172.28.',
+    '172.29.',
+    '172.30.',
+    '172.31.',
 ];
 
 export function isPrivateHost(hostname: string): boolean {
-    return PRIVATE_IPS.some((p) => hostname === p || hostname.startsWith(p) || hostname.endsWith(p));
+    return PRIVATE_IPS.some(
+        (p) => hostname === p || hostname.startsWith(p) || hostname.endsWith(p),
+    );
 }
 
 export const MAX_FILE_SIZE = 100_000;
@@ -28,8 +59,8 @@ export function resolveInsideCwd(path: string) {
     const cwd = process.cwd();
     const resolved = resolve(cwd, path);
     const rel = relative(cwd, resolved);
-    if (rel.startsWith("..") || isAbsolute(rel)) {
-        throw new Error("Path is outside the project directory");
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+        throw new Error('Path is outside the project directory');
     }
     return { cwd, resolved };
 }
@@ -41,12 +72,20 @@ export function truncate(value: string, limit: number) {
 }
 
 export async function runGit(cwd: string, args: string[]) {
-    const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawn(['git', ...args], {
+        cwd,
+        stdout: 'pipe',
+        stderr: 'pipe',
+    });
     const [stdout, stderr] = await Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
     ]);
-    return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode: await proc.exited };
+    return {
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: await proc.exited,
+    };
 }
 
 interface CacheEntry {
@@ -99,7 +138,7 @@ export async function readCachedFile(resolvedPath: string): Promise<string> {
     if (cached && cached.mtime === mtime) {
         return cached.content;
     }
-    const content = await readFile(resolvedPath, "utf-8");
+    const content = await readFile(resolvedPath, 'utf-8');
     fileContentCache.set(resolvedPath, { content, mtime });
     return content;
 }
@@ -120,21 +159,25 @@ export async function globReplace(
     for (const file of allMatches) {
         const resolved = resolve(cwd, file);
         const rel = relative(cwd, resolved);
-        if (rel.startsWith("..") || isAbsolute(rel)) continue;
+        if (rel.startsWith('..') || isAbsolute(rel)) continue;
         files.push(resolved);
     }
 
     const results = await Promise.all(
         files.map(async (resolved) => {
-            const content = await readFile(resolved, "utf-8");
+            const content = await readFile(resolved, 'utf-8');
             const { updated, count } = replaceFn(content);
             if (count > 0) {
-                await undoManager.backup(resolved, "searchReplace", `Edit ${relative(cwd, resolved)}`);
-                await writeFile(resolved, updated, "utf-8");
+                await undoManager.backup(
+                    resolved,
+                    'searchReplace',
+                    `Edit ${relative(cwd, resolved)}`,
+                );
+                await writeFile(resolved, updated, 'utf-8');
                 return { path: relative(cwd, resolved), replacements: count };
             }
             return null;
-        })
+        }),
     );
 
     const changes = results.filter((r): r is ReplaceResult => r !== null);

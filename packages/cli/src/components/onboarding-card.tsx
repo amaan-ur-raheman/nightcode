@@ -1,13 +1,15 @@
-import React from "react";
+import React from 'react';
 
-import { TextAttributes } from "@opentui/core";
-import { useTheme } from "@/providers/theme";
+import { TextAttributes } from '@opentui/core';
+import { useTheme } from '@/providers/theme';
 
 type OnboardingCardProps = {
     onDismiss: () => void;
 };
 
-export const OnboardingCard = React.memo(function OnboardingCard({ onDismiss }: OnboardingCardProps) {
+export const OnboardingCard = React.memo(function OnboardingCard({
+    onDismiss,
+}: OnboardingCardProps) {
     const { colors } = useTheme();
 
     return (
@@ -16,7 +18,7 @@ export const OnboardingCard = React.memo(function OnboardingCard({ onDismiss }: 
             gap={1}
             paddingX={2}
             paddingY={1}
-            border={["top", "bottom", "left", "right"]}
+            border={['top', 'bottom', 'left', 'right']}
             borderColor={colors.primary}
             width="100%"
         >
@@ -28,25 +30,25 @@ export const OnboardingCard = React.memo(function OnboardingCard({ onDismiss }: 
             </text>
             <box flexDirection="column" gap={0} paddingX={1}>
                 <text>
-                    <em fg={colors.info}>Tab</em> — Switch between Plan and Build mode
+                    <em fg={colors.info}>Tab</em> — Switch between Plan and
+                    Build mode
                 </text>
                 <text>
                     <em fg={colors.info}>/help</em> — See all available commands
                 </text>
                 <text>
-                    <em fg={colors.info}>@filename</em> — Mention files in your prompt
+                    <em fg={colors.info}>@filename</em> — Mention files in your
+                    prompt
                 </text>
                 <text>
-                    <em fg={colors.info}>Ctrl+R</em> — Retry last message on error
+                    <em fg={colors.info}>Ctrl+R</em> — Retry last message on
+                    error
                 </text>
                 <text>
                     <em fg={colors.info}>Esc</em> — Interrupt running generation
                 </text>
             </box>
-            <text
-                attributes={TextAttributes.DIM}
-                fg={colors.dimSeparator}
-            >
+            <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
                 Press any key to dismiss
             </text>
         </box>

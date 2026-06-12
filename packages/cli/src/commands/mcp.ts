@@ -1,4 +1,4 @@
-import { loadSettings, saveSettings } from "@/lib/settings";
+import { loadSettings, saveSettings } from '@/lib/settings';
 
 interface McpAddOptions {
     name: string;
@@ -9,7 +9,7 @@ interface McpAddOptions {
 }
 
 export function sanitizeConfig(obj: any, maskAll: boolean = false): any {
-    if (obj === null || typeof obj !== "object") {
+    if (obj === null || typeof obj !== 'object') {
         return obj;
     }
 
@@ -19,23 +19,23 @@ export function sanitizeConfig(obj: any, maskAll: boolean = false): any {
 
     const sanitized: Record<string, any> = {};
     const secretKeys = new Set([
-        "authorization",
-        "token",
-        "apikey",
-        "api_key",
-        "password",
-        "secret",
-        "accesstoken",
+        'authorization',
+        'token',
+        'apikey',
+        'api_key',
+        'password',
+        'secret',
+        'accesstoken',
     ]);
 
     for (const [key, value] of Object.entries(obj)) {
         const isSecretKey = secretKeys.has(key.toLowerCase());
         const shouldMaskCurrent = maskAll || isSecretKey;
 
-        if (key === "headers" || key === "env") {
+        if (key === 'headers' || key === 'env') {
             sanitized[key] = sanitizeConfig(value, true);
-        } else if (shouldMaskCurrent && typeof value !== "object") {
-            sanitized[key] = "[MASKED]";
+        } else if (shouldMaskCurrent && typeof value !== 'object') {
+            sanitized[key] = '[MASKED]';
         } else {
             sanitized[key] = sanitizeConfig(value, shouldMaskCurrent);
         }
@@ -52,7 +52,7 @@ export async function mcpAddCommand(options: McpAddOptions): Promise<void> {
 
     if (settings.mcp.servers[options.name]) {
         console.error(`MCP server "${options.name}" already exists.`);
-        console.log("Use `nightcode mcp remove` to remove it first.");
+        console.log('Use `nightcode mcp remove` to remove it first.');
         process.exit(1);
     }
 
@@ -75,7 +75,7 @@ export async function mcpAddCommand(options: McpAddOptions): Promise<void> {
             serverConfig.env = options.env;
         }
     } else {
-        console.error("Either --command or --url must be specified.");
+        console.error('Either --command or --url must be specified.');
         process.exit(1);
     }
 
@@ -83,9 +83,9 @@ export async function mcpAddCommand(options: McpAddOptions): Promise<void> {
     saveSettings(settings);
 
     console.log(`\n✅ Added MCP server "${options.name}"\n`);
-    console.log("Configuration:");
+    console.log('Configuration:');
     console.log(JSON.stringify(sanitizeConfig(serverConfig), null, 2));
-    console.log("\nRestart NightCode to use the new server.\n");
+    console.log('\nRestart NightCode to use the new server.\n');
 }
 
 export async function mcpRemoveCommand(name: string): Promise<void> {
@@ -108,33 +108,35 @@ export async function mcpListCommand(): Promise<void> {
     const names = Object.keys(servers);
 
     if (names.length === 0) {
-        console.log("\nNo MCP servers configured.\n");
-        console.log("Add one with: nightcode mcp add <name> --command <cmd>\n");
+        console.log('\nNo MCP servers configured.\n');
+        console.log('Add one with: nightcode mcp add <name> --command <cmd>\n');
         return;
     }
 
-    console.log("\nConfigured MCP servers:\n");
+    console.log('\nConfigured MCP servers:\n');
 
     for (const name of names) {
         const server = servers[name];
-        if (!server || typeof server !== "object") continue;
+        if (!server || typeof server !== 'object') continue;
 
-        let type = "<unknown>";
-        let details = "<missing configuration>";
+        let type = '<unknown>';
+        let details = '<missing configuration>';
 
         if (server.url) {
-            type = "HTTP";
+            type = 'HTTP';
             details = String(server.url);
         } else if (server.command) {
-            type = "Stdio";
+            type = 'Stdio';
             const args = Array.isArray(server.args) ? server.args : [];
-            const cleanArgs = args.filter((arg: any) => arg !== undefined && arg !== null).map(String);
-            details = `${String(server.command)}${cleanArgs.length > 0 ? " " + cleanArgs.join(" ") : ""}`;
+            const cleanArgs = args
+                .filter((arg: any) => arg !== undefined && arg !== null)
+                .map(String);
+            details = `${String(server.command)}${cleanArgs.length > 0 ? ' ' + cleanArgs.join(' ') : ''}`;
         }
 
         console.log(`  ${name} (${type})`);
         console.log(`    ${details}`);
     }
 
-    console.log("\n");
+    console.log('\n');
 }
