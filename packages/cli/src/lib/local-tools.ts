@@ -34,6 +34,8 @@ const PLAN_TOOLS = new Set([
     'cancelTask',
     'orchestrator', // Tool checks BUILD mode internally and throws with a descriptive error
     'askQuestion',
+    'useSkill',
+    'listSkills',
 ]);
 
 async function directExecute(

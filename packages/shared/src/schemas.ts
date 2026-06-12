@@ -570,6 +570,14 @@ export const toolInputSchemas = {
             .max(10)
             .describe('Array of questions to ask the user (1-10 questions)'),
     }),
+    useSkill: z.object({
+        name: z
+            .string()
+            .describe(
+                'Name of the skill to load (e.g., "graphql", "docker-expert")',
+            ),
+    }),
+    listSkills: z.object({}),
 } as const;
 
 export const readOnlyToolContracts = {
@@ -609,6 +617,30 @@ export const readOnlyToolContracts = {
     gitDiff: tool({
         description: 'Show git diff for the working tree or a specific file.',
         inputSchema: toolInputSchemas.gitDiff,
+    }),
+    gitCommit: tool({
+        description:
+            'Stage and commit changes with a message. Optionally auto-stage specific files before committing.',
+        inputSchema: toolInputSchemas.gitCommit,
+    }),
+    gitBranch: tool({
+        description: 'Create, list, delete, or checkout git branches.',
+        inputSchema: toolInputSchemas.gitBranch,
+    }),
+    gitLog: tool({
+        description:
+            'Show recent commit history with optional author filter and oneline format.',
+        inputSchema: toolInputSchemas.gitLog,
+    }),
+    gitBlame: tool({
+        description:
+            'Show who last modified each line of a file (git blame). Optionally filter to a line range.',
+        inputSchema: toolInputSchemas.gitBlame,
+    }),
+    gitStatusExtended: tool({
+        description:
+            'Show extended git status including branch tracking info, ahead/behind counts, and stash details.',
+        inputSchema: toolInputSchemas.gitStatusExtended,
     }),
     webFetch: tool({
         description: 'Fetch a remote URL and return its body as text.',
@@ -669,6 +701,16 @@ export const readOnlyToolContracts = {
         description:
             'Ask the user a question with predefined choices or free-text input. Returns the user answers as a string array.',
         inputSchema: toolInputSchemas.askQuestion,
+    }),
+    useSkill: tool({
+        description:
+            'Load a skill by name and return its instructions. Skills are specialized guides for common tasks (e.g., "graphql" for GraphQL patterns, "docker-expert" for containerization). Call this when your task matches a known skill domain. The returned content contains step-by-step instructions to follow.',
+        inputSchema: toolInputSchemas.useSkill,
+    }),
+    listSkills: tool({
+        description:
+            'List all available skills with their names and descriptions. Call this first to discover what skills exist before using useSkill.',
+        inputSchema: toolInputSchemas.listSkills,
     }),
 } as const;
 
