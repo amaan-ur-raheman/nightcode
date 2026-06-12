@@ -3,7 +3,7 @@
  * spawnAgentTool updates this; the status bar and UI can poll it.
  */
 
-export type SubagentStatus = "running" | "completed" | "failed" | "cancelled";
+export type SubagentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type SubagentInfo = {
     id: string;
@@ -94,7 +94,7 @@ function scheduleNotify() {
             try {
                 fn();
             } catch (error) {
-                console.error("[subagent-progress] Listener error:", error);
+                console.error('[subagent-progress] Listener error:', error);
             }
         }
     });
@@ -102,10 +102,17 @@ function scheduleNotify() {
 
 export function onSubagentChange(fn: () => void): () => void {
     listeners.add(fn);
-    return () => { listeners.delete(fn); };
+    return () => {
+        listeners.delete(fn);
+    };
 }
 
-export function registerSubagent(id: string, task: string, maxSteps: number, toolCallId?: string) {
+export function registerSubagent(
+    id: string,
+    task: string,
+    maxSteps: number,
+    toolCallId?: string,
+) {
     activeSubagents.set(id, {
         id,
         task,
@@ -116,7 +123,7 @@ export function registerSubagent(id: string, task: string, maxSteps: number, too
         startedAt: Date.now(),
         toolCallCount: 0,
         toolsUsed: {},
-        status: "running",
+        status: 'running',
     });
     // Map toolCallId → subagentId so we can filter completions per tool call
     if (toolCallId) {
@@ -127,7 +134,11 @@ export function registerSubagent(id: string, task: string, maxSteps: number, too
     scheduleNotify();
 }
 
-export function updateSubagentStep(id: string, step: number, toolName: string | null) {
+export function updateSubagentStep(
+    id: string,
+    step: number,
+    toolName: string | null,
+) {
     const info = activeSubagents.get(id);
     if (info) {
         info.step = step;
@@ -137,7 +148,11 @@ export function updateSubagentStep(id: string, step: number, toolName: string | 
     }
 }
 
-export function completeSubagent(id: string, status: "completed" | "failed" | "cancelled" = "completed", error?: string) {
+export function completeSubagent(
+    id: string,
+    status: 'completed' | 'failed' | 'cancelled' = 'completed',
+    error?: string,
+) {
     const info = activeSubagents.get(id);
     if (info) {
         info.status = status;
@@ -152,7 +167,11 @@ export function removeSubagent(id: string) {
     scheduleNotify();
 }
 
-export function incrementToolCall(id: string, toolName?: string, toolInput?: string) {
+export function incrementToolCall(
+    id: string,
+    toolName?: string,
+    toolInput?: string,
+) {
     const info = activeSubagents.get(id);
     if (info) {
         info.toolCallCount++;

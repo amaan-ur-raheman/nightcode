@@ -1,5 +1,5 @@
-import { readFile } from "fs/promises";
-import { MAX_DIFF } from "./utils";
+import { readFile } from 'fs/promises';
+import { MAX_DIFF } from './utils';
 
 /**
  * Generate a simple unified diff preview showing what changed in a file.
@@ -10,15 +10,15 @@ export async function generateDiffPreview(
     newContent: string,
 ): Promise<string> {
     try {
-        const oldContent = await readFile(resolvedPath, "utf-8");
-        if (oldContent === newContent) return "(no changes)";
+        const oldContent = await readFile(resolvedPath, 'utf-8');
+        if (oldContent === newContent) return '(no changes)';
 
-        const oldLines = oldContent.split("\n");
-        const newLines = newContent.split("\n");
+        const oldLines = oldContent.split('\n');
+        const newLines = newContent.split('\n');
         const diff = unifiedDiff(oldLines, newLines, resolvedPath);
         return truncateDiff(diff);
     } catch {
-        return "(new file)";
+        return '(new file)';
     }
 }
 
@@ -68,7 +68,7 @@ function unifiedDiff(
         i = Math.max(oldEnd, newEnd);
     }
 
-    return result.join("\n");
+    return result.join('\n');
 }
 
 function truncateDiff(diff: string): string {

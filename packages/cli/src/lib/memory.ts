@@ -16,9 +16,11 @@ async function acquireLock(retries = 10, delay = 50): Promise<void> {
         } catch (err: any) {
             if (err.code === 'EEXIST') {
                 if (i === retries - 1) {
-                    throw new Error(`Failed to acquire lock on memory file: ${err.message}`);
+                    throw new Error(
+                        `Failed to acquire lock on memory file: ${err.message}`,
+                    );
                 }
-                await new Promise(resolve => setTimeout(resolve, delay));
+                await new Promise((resolve) => setTimeout(resolve, delay));
                 continue;
             }
             throw err;
@@ -68,7 +70,11 @@ class MemoryManager {
         await acquireLock();
         try {
             const data = Array.from(this.entries.values());
-            await writeFile(MEMORY_FILE, JSON.stringify(data, null, 2), 'utf-8');
+            await writeFile(
+                MEMORY_FILE,
+                JSON.stringify(data, null, 2),
+                'utf-8',
+            );
         } finally {
             await releaseLock();
         }
@@ -124,22 +130,24 @@ class MemoryManager {
 
         const tag = filter?.tag;
         if (tag) {
-            entries = entries.filter(e => e.tags.includes(tag));
+            entries = entries.filter((e) => e.tags.includes(tag));
         }
 
-        return entries.sort((a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        return entries.sort(
+            (a, b) =>
+                new Date(b.updatedAt).getTime() -
+                new Date(a.updatedAt).getTime(),
         );
     }
 
     async search(query: string): Promise<MemoryEntry[]> {
         await this.load();
         const lower = query.toLowerCase();
-        return Array.from(this.entries.values())
-            .filter(e =>
+        return Array.from(this.entries.values()).filter(
+            (e) =>
                 e.key.toLowerCase().includes(lower) ||
-                e.value.toLowerCase().includes(lower)
-            );
+                e.value.toLowerCase().includes(lower),
+        );
     }
 }
 

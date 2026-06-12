@@ -1,4 +1,4 @@
-import { toolInputSchemas } from "@nightcode/shared";
+import { toolInputSchemas } from '@nightcode/shared';
 import { keychain } from '@nightcode/shared';
 
 export async function keychainSetTool(input: unknown) {

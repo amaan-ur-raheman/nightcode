@@ -18,11 +18,14 @@ const SENSITIVE_PATTERNS = [
     /credential/i,
 ];
 
-function redactSensitive(value: unknown, seen = new WeakSet<object>()): unknown {
+function redactSensitive(
+    value: unknown,
+    seen = new WeakSet<object>(),
+): unknown {
     if (value == null) return value;
     if (typeof value === 'string') {
         // Redact strings that look like they contain secrets
-        if (SENSITIVE_PATTERNS.some(p => p.test(value)) && value.length > 8) {
+        if (SENSITIVE_PATTERNS.some((p) => p.test(value)) && value.length > 8) {
             return '[REDACTED]';
         }
         return value;
@@ -37,7 +40,7 @@ function redactSensitive(value: unknown, seen = new WeakSet<object>()): unknown 
         seen.add(value);
         const result: Record<string, unknown> = {};
         for (const [key, val] of Object.entries(value)) {
-            if (SENSITIVE_PATTERNS.some(p => p.test(key))) {
+            if (SENSITIVE_PATTERNS.some((p) => p.test(key))) {
                 result[key] = '[REDACTED]';
             } else {
                 result[key] = redactSensitive(val, seen);
@@ -50,7 +53,9 @@ function redactSensitive(value: unknown, seen = new WeakSet<object>()): unknown 
 
 function truncateString(str: string, maxLen: number): string {
     if (str.length <= maxLen) return str;
-    return str.slice(0, maxLen) + `... [truncated ${str.length - maxLen} chars]`;
+    return (
+        str.slice(0, maxLen) + `... [truncated ${str.length - maxLen} chars]`
+    );
 }
 
 export interface AuditEntry {
@@ -91,7 +96,9 @@ class AuditLogger {
             ...entry,
             timestamp: new Date().toISOString(),
             input: redactSensitive(entry.input),
-            output: entry.output ? truncateString(entry.output, this.MAX_OUTPUT_LEN) : undefined,
+            output: entry.output
+                ? truncateString(entry.output, this.MAX_OUTPUT_LEN)
+                : undefined,
         };
 
         this.buffer.push(fullEntry);
@@ -110,7 +117,8 @@ class AuditLogger {
 
         try {
             await mkdir(AUDIT_DIR, { recursive: true });
-            const lines = toFlush.map(e => JSON.stringify(e)).join('\n') + '\n';
+            const lines =
+                toFlush.map((e) => JSON.stringify(e)).join('\n') + '\n';
             await appendFile(AUDIT_FILE, lines, 'utf-8');
         } catch (error) {
             // Put entries back on failure so they aren't lost
@@ -132,7 +140,7 @@ class AuditLogger {
             if (!existsSync(AUDIT_FILE)) return [];
             const content = await readFile(AUDIT_FILE, 'utf-8');
             const lines = content.trim().split('\n').filter(Boolean);
-            return lines.slice(-count).map(l => JSON.parse(l) as AuditEntry);
+            return lines.slice(-count).map((l) => JSON.parse(l) as AuditEntry);
         } catch {
             return [];
         }
@@ -141,10 +149,11 @@ class AuditLogger {
     async search(query: string): Promise<AuditEntry[]> {
         const entries = await this.getRecent(1000);
         const lower = query.toLowerCase();
-        return entries.filter(e =>
-            e.tool.toLowerCase().includes(lower) ||
-            safeStringify(e.input).toLowerCase().includes(lower) ||
-            (e.error && e.error.toLowerCase().includes(lower))
+        return entries.filter(
+            (e) =>
+                e.tool.toLowerCase().includes(lower) ||
+                safeStringify(e.input).toLowerCase().includes(lower) ||
+                (e.error && e.error.toLowerCase().includes(lower)),
         );
     }
 
@@ -154,9 +163,11 @@ class AuditLogger {
 
             const content = await readFile(AUDIT_FILE, 'utf-8');
             const lines = content.trim().split('\n').filter(Boolean);
-            const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+            const cutoff = new Date(
+                Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+            );
 
-            const filtered = lines.filter(l => {
+            const filtered = lines.filter((l) => {
                 try {
                     const entry = JSON.parse(l) as AuditEntry;
                     return new Date(entry.timestamp) > cutoff;
@@ -166,9 +177,8 @@ class AuditLogger {
             });
 
             await mkdir(AUDIT_DIR, { recursive: true });
-            const output = filtered.length > 0
-                ? filtered.join('\n') + '\n'
-                : '';
+            const output =
+                filtered.length > 0 ? filtered.join('\n') + '\n' : '';
             await writeFile(AUDIT_FILE, output, 'utf-8');
         } catch {
             // Rotation is best-effort
@@ -181,7 +191,9 @@ class AuditLogger {
             this.flushTimer = null;
         }
         // Flush remaining entries
-        await this.flush().catch(err => this.logger.error('Final audit flush failed', err));
+        await this.flush().catch((err) =>
+            this.logger.error('Final audit flush failed', err),
+        );
     }
 }
 

@@ -1,6 +1,6 @@
-import { randomUUID } from "crypto";
-import { type ModeType } from "@nightcode/shared";
-import { debug } from "./debug";
+import { randomUUID } from 'crypto';
+import { type ModeType } from '@nightcode/shared';
+import { debug } from './debug';
 
 interface BatchedRequest {
     id: string;
@@ -35,18 +35,54 @@ export interface ParallelToolResult {
     error?: Error;
 }
 
-const DEFAULT_BATCH_TOOLS = ["readFile", "listDirectory", "glob", "grep", "codeSearch", "tree", "fileInfo"];
+const DEFAULT_BATCH_TOOLS = [
+    'readFile',
+    'listDirectory',
+    'glob',
+    'grep',
+    'codeSearch',
+    'tree',
+    'fileInfo',
+];
 
 const ALL_PARALLEL_TOOLS = [
     ...DEFAULT_BATCH_TOOLS,
-    "writeFile", "editFile", "bash", "patch", "searchReplace",
-    "deleteFile", "moveFile", "createDirectory", "createFile",
-    "gitStatus", "gitDiff", "gitCommit", "gitBranch", "gitLog", "gitBlame", "gitStatusExtended",
-    "webFetch", "httpRequest", "codeSearch", "getOutline", "diffFiles",
-    "runTests", "processManage", "envManage", "secretScan",
-    "memorySet", "memoryGet", "memoryDelete", "memoryList", "memorySearch",
-    "keychainSet", "keychainGet", "keychainDelete",
-    "tokenCount", "undo", "renameSymbol",
+    'writeFile',
+    'editFile',
+    'bash',
+    'patch',
+    'searchReplace',
+    'deleteFile',
+    'moveFile',
+    'createDirectory',
+    'createFile',
+    'gitStatus',
+    'gitDiff',
+    'gitCommit',
+    'gitBranch',
+    'gitLog',
+    'gitBlame',
+    'gitStatusExtended',
+    'webFetch',
+    'httpRequest',
+    'codeSearch',
+    'getOutline',
+    'diffFiles',
+    'runTests',
+    'processManage',
+    'envManage',
+    'secretScan',
+    'memorySet',
+    'memoryGet',
+    'memoryDelete',
+    'memoryList',
+    'memorySearch',
+    'keychainSet',
+    'keychainGet',
+    'keychainDelete',
+    'tokenCount',
+    'undo',
+    'renameSymbol',
 ];
 
 const DEFAULT_CONFIG: BatchConfig = {
@@ -66,7 +102,14 @@ class BatchManager {
     async addRequest(
         tool: string,
         input: unknown,
-        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, execId?: string) => Promise<unknown>,
+        executor: (
+            tool: string,
+            input: unknown,
+            mode: ModeType,
+            model?: string,
+            signal?: AbortSignal,
+            execId?: string,
+        ) => Promise<unknown>,
         mode: ModeType,
         model?: string,
         signal?: AbortSignal,
@@ -92,7 +135,10 @@ class BatchManager {
             this.queue.push(request);
             this.pendingFlush++;
 
-            debug.log("batch", `Queued ${tool} (queue size: ${this.queue.length})`);
+            debug.log(
+                'batch',
+                `Queued ${tool} (queue size: ${this.queue.length})`,
+            );
 
             if (!this.timer) {
                 this.timer = setTimeout(() => {
@@ -112,14 +158,21 @@ class BatchManager {
     }
 
     private async flush(
-        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, execId?: string) => Promise<unknown>,
+        executor: (
+            tool: string,
+            input: unknown,
+            mode: ModeType,
+            model?: string,
+            signal?: AbortSignal,
+            execId?: string,
+        ) => Promise<unknown>,
     ): Promise<void> {
         if (this.queue.length === 0) return;
 
         const batch = [...this.queue];
         this.queue = [];
 
-        debug.log("batch", `Flushing ${batch.length} batched requests`);
+        debug.log('batch', `Flushing ${batch.length} batched requests`);
 
         const grouped = new Map<string, BatchedRequest[]>();
         for (const req of batch) {
@@ -143,12 +196,31 @@ class BatchManager {
     private async executeGroup(
         tool: string,
         requests: BatchedRequest[],
-        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, execId?: string) => Promise<unknown>,
+        executor: (
+            tool: string,
+            input: unknown,
+            mode: ModeType,
+            model?: string,
+            signal?: AbortSignal,
+            execId?: string,
+        ) => Promise<unknown>,
     ): Promise<void> {
-        debug.log("batch", `Executing ${requests.length} ${tool} requests in parallel`);
+        debug.log(
+            'batch',
+            `Executing ${requests.length} ${tool} requests in parallel`,
+        );
 
         const results = await Promise.allSettled(
-            requests.map((req) => executor(tool, req.input, req.mode, req.model, req.signal, req.execId)),
+            requests.map((req) =>
+                executor(
+                    tool,
+                    req.input,
+                    req.mode,
+                    req.model,
+                    req.signal,
+                    req.execId,
+                ),
+            ),
         );
 
         for (let i = 0; i < requests.length; i++) {
@@ -156,10 +228,14 @@ class BatchManager {
             const req = requests[i];
             if (!result || !req) continue;
 
-            if (result.status === "fulfilled") {
+            if (result.status === 'fulfilled') {
                 req.resolve(result.value);
             } else {
-                req.reject(result.reason instanceof Error ? result.reason : new Error(String(result.reason)));
+                req.reject(
+                    result.reason instanceof Error
+                        ? result.reason
+                        : new Error(String(result.reason)),
+                );
             }
         }
     }
@@ -170,7 +246,14 @@ class BatchManager {
      */
     async executeParallel(
         toolCalls: ParallelToolCall[],
-        executor: (tool: string, input: unknown, mode: ModeType, model?: string, signal?: AbortSignal, toolCallId?: string) => Promise<unknown>,
+        executor: (
+            tool: string,
+            input: unknown,
+            mode: ModeType,
+            model?: string,
+            signal?: AbortSignal,
+            toolCallId?: string,
+        ) => Promise<unknown>,
         mode: ModeType,
         model?: string,
         signal?: AbortSignal,
@@ -180,22 +263,38 @@ class BatchManager {
 
         const capped = toolCalls.slice(0, this.config.maxParallelTools);
         if (toolCalls.length > this.config.maxParallelTools) {
-            debug.log("batch", `Capping parallel execution from ${toolCalls.length} to ${this.config.maxParallelTools}`);
+            debug.log(
+                'batch',
+                `Capping parallel execution from ${toolCalls.length} to ${this.config.maxParallelTools}`,
+            );
         }
 
-        debug.log("batch", `Executing ${capped.length} tools in parallel: ${capped.map(t => t.toolName).join(", ")}`);
+        debug.log(
+            'batch',
+            `Executing ${capped.length} tools in parallel: ${capped.map((t) => t.toolName).join(', ')}`,
+        );
 
         const notifySettled = (result: ParallelToolResult) => {
             try {
                 onSettled?.(result);
             } catch (error) {
-                debug.log("batch", `Parallel settle callback failed: ${error instanceof Error ? error.message : String(error)}`);
+                debug.log(
+                    'batch',
+                    `Parallel settle callback failed: ${error instanceof Error ? error.message : String(error)}`,
+                );
             }
         };
 
         const promises = capped.map(async (tc): Promise<ParallelToolResult> => {
             try {
-                const result = await executor(tc.toolName, tc.input, mode, model, tc.signal ?? signal, tc.toolCallId);
+                const result = await executor(
+                    tc.toolName,
+                    tc.input,
+                    mode,
+                    model,
+                    tc.signal ?? signal,
+                    tc.toolCallId,
+                );
                 const settled = { toolCallId: tc.toolCallId, result };
                 notifySettled(settled);
                 return settled;
@@ -203,7 +302,10 @@ class BatchManager {
                 const settled = {
                     toolCallId: tc.toolCallId,
                     result: undefined,
-                    error: reason instanceof Error ? reason : new Error(String(reason)),
+                    error:
+                        reason instanceof Error
+                            ? reason
+                            : new Error(String(reason)),
                 };
                 notifySettled(settled);
                 return settled;
@@ -219,7 +321,7 @@ class BatchManager {
 
     updateConfig(config: Partial<BatchConfig>): void {
         this.config = { ...this.config, ...config };
-        debug.log("batch", "Config updated", this.config);
+        debug.log('batch', 'Config updated', this.config);
     }
 
     toggle(): boolean {
@@ -228,7 +330,10 @@ class BatchManager {
         } else {
             this.config = { ...this.config, enabledTools: DEFAULT_BATCH_TOOLS };
         }
-        debug.log("batch", `Batching ${this.config.enabledTools.length > 0 ? "enabled" : "disabled"}`);
+        debug.log(
+            'batch',
+            `Batching ${this.config.enabledTools.length > 0 ? 'enabled' : 'disabled'}`,
+        );
         return this.config.enabledTools.length > 0;
     }
 

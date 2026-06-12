@@ -1,8 +1,8 @@
-import { readFile, writeFile, mkdir, unlink } from "fs/promises";
-import { join, dirname } from "path";
-import { homedir } from "os";
+import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
+import { join, dirname } from 'path';
+import { homedir } from 'os';
 
-const UNDO_DIR = join(homedir(), ".nightcode", "undo");
+const UNDO_DIR = join(homedir(), '.nightcode', 'undo');
 
 interface UndoEntry {
     id: string;
@@ -17,21 +17,32 @@ class UndoManager {
     private stack: UndoEntry[] = [];
     private maxEntries = 50;
 
-    async backup(filePath: string, tool: string, description: string): Promise<string> {
+    async backup(
+        filePath: string,
+        tool: string,
+        description: string,
+    ): Promise<string> {
         const id = `undo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const backupPath = join(UNDO_DIR, `${id}.bak`);
 
         await mkdir(dirname(backupPath), { recursive: true });
 
         try {
-            const content = await readFile(filePath, "utf-8");
-            await writeFile(backupPath, content, "utf-8");
+            const content = await readFile(filePath, 'utf-8');
+            await writeFile(backupPath, content, 'utf-8');
         } catch {
             // File doesn't exist yet — this is a new file creation
-            await writeFile(backupPath, "", "utf-8");
+            await writeFile(backupPath, '', 'utf-8');
         }
 
-        const entry: UndoEntry = { id, filePath, backupPath, timestamp: Date.now(), tool, description };
+        const entry: UndoEntry = {
+            id,
+            filePath,
+            backupPath,
+            timestamp: Date.now(),
+            tool,
+            description,
+        };
         this.stack.push(entry);
 
         if (this.stack.length > this.maxEntries) {
@@ -51,8 +62,8 @@ class UndoManager {
         if (!entry) return null;
 
         try {
-            const backup = await readFile(entry.backupPath, "utf-8");
-            await writeFile(entry.filePath, backup, "utf-8");
+            const backup = await readFile(entry.backupPath, 'utf-8');
+            await writeFile(entry.filePath, backup, 'utf-8');
             try {
                 await unlink(entry.backupPath);
             } catch {
@@ -75,6 +86,10 @@ class UndoManager {
             if (result?.restored) count++;
         }
         return count;
+    }
+
+    reset(): void {
+        this.stack = [];
     }
 }
 

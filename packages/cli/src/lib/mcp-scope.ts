@@ -28,15 +28,21 @@ class MCPScopeManager {
             settings.session = {};
         }
 
-        settings.session.activeMcpServers = servers.length > 0 ? servers : undefined;
+        settings.session.activeMcpServers =
+            servers.length > 0 ? servers : undefined;
         saveSettings(settings);
 
         this.activeServers = servers.length > 0 ? new Set(servers) : null;
-        debug.log('mcp', `Session scope updated: ${servers.join(', ') || 'all'}`);
+        debug.log(
+            'mcp',
+            `Session scope updated: ${servers.join(', ') || 'all'}`,
+        );
     }
 
     isServerActive(serverName: string): boolean {
-        return this.activeServers === null || this.activeServers.has(serverName);
+        return (
+            this.activeServers === null || this.activeServers.has(serverName)
+        );
     }
 
     getActiveServers(): string[] | null {

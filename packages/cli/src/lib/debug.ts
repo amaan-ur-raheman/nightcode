@@ -1,9 +1,9 @@
-import { appendFile, mkdir, readFile, writeFile } from "fs/promises";
-import { join } from "path";
-import { homedir } from "os";
+import { appendFile, mkdir, readFile, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { homedir } from 'os';
 
-const DEBUG_DIR = join(homedir(), ".nightcode", "logs");
-const DEBUG_FILE = join(DEBUG_DIR, "debug.log");
+const DEBUG_DIR = join(homedir(), '.nightcode', 'logs');
+const DEBUG_FILE = join(DEBUG_DIR, 'debug.log');
 const DEFAULT_RETENTION_DAYS = 7;
 
 class DebugLogger {
@@ -39,7 +39,7 @@ class DebugLogger {
         const timestamp = new Date().toISOString();
         const entry = {
             timestamp,
-            level: "LOG",
+            level: 'LOG',
             category,
             message,
             data: this.verbose ? data : undefined,
@@ -55,7 +55,7 @@ class DebugLogger {
         const timestamp = new Date().toISOString();
         const entry = {
             timestamp,
-            level: "WARN",
+            level: 'WARN',
             category,
             message,
             data: this.verbose ? data : undefined,
@@ -71,7 +71,7 @@ class DebugLogger {
         const timestamp = new Date().toISOString();
         const entry = {
             timestamp,
-            level: "ERROR",
+            level: 'ERROR',
             category,
             message,
             error: error?.message,
@@ -98,7 +98,11 @@ class DebugLogger {
 
                 try {
                     await mkdir(DEBUG_DIR, { recursive: true });
-                    await appendFile(DEBUG_FILE, JSON.stringify(entry) + "\n", "utf-8");
+                    await appendFile(
+                        DEBUG_FILE,
+                        JSON.stringify(entry) + '\n',
+                        'utf-8',
+                    );
                 } catch {
                     // File write failure should never crash the app
                 }
@@ -110,8 +114,8 @@ class DebugLogger {
 
     async getLogs(count: number = 100): Promise<Record<string, unknown>[]> {
         try {
-            const content = await readFile(DEBUG_FILE, "utf-8");
-            const lines = content.trim().split("\n").filter(Boolean);
+            const content = await readFile(DEBUG_FILE, 'utf-8');
+            const lines = content.trim().split('\n').filter(Boolean);
             return lines.slice(-count).map((l) => JSON.parse(l));
         } catch {
             return [];
@@ -120,22 +124,26 @@ class DebugLogger {
 
     async clearLogs(): Promise<void> {
         try {
-            await writeFile(DEBUG_FILE, "", "utf-8");
+            await writeFile(DEBUG_FILE, '', 'utf-8');
         } catch {
             // ignore
         }
     }
 
-    async rotateLogs(retentionDays: number = DEFAULT_RETENTION_DAYS): Promise<void> {
+    async rotateLogs(
+        retentionDays: number = DEFAULT_RETENTION_DAYS,
+    ): Promise<void> {
         try {
             const logs = await this.getLogs(10000);
-            const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+            const cutoff = new Date(
+                Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+            );
             const filtered = logs.filter((l) => {
                 const ts = l.timestamp;
-                if (typeof ts !== "string" && typeof ts !== "number") {
+                if (typeof ts !== 'string' && typeof ts !== 'number') {
                     return false;
                 }
-                const parsed = typeof ts === "number" ? ts : Date.parse(ts);
+                const parsed = typeof ts === 'number' ? ts : Date.parse(ts);
                 if (Number.isNaN(parsed)) {
                     return false;
                 }
@@ -144,8 +152,8 @@ class DebugLogger {
 
             await mkdir(DEBUG_DIR, { recursive: true });
             const content =
-                filtered.map((l) => JSON.stringify(l)).join("\n") + "\n";
-            await writeFile(DEBUG_FILE, content, "utf-8");
+                filtered.map((l) => JSON.stringify(l)).join('\n') + '\n';
+            await writeFile(DEBUG_FILE, content, 'utf-8');
         } catch {
             // ignore
         }
@@ -153,19 +161,19 @@ class DebugLogger {
 
     async getRecentLogs(count: number = 50): Promise<string> {
         const logs = await this.getLogs(count);
-        if (logs.length === 0) return "No debug logs available.";
+        if (logs.length === 0) return 'No debug logs available.';
 
         return logs
             .map((entry) => {
                 const ts = entry.timestamp as string;
-                const level = (entry.level as string) ?? "LOG";
+                const level = (entry.level as string) ?? 'LOG';
                 const cat = entry.category as string;
                 const msg = entry.message as string;
-                const data = entry.data ? ` ${JSON.stringify(entry.data)}` : "";
-                const errMsg = entry.error ? ` error=${entry.error}` : "";
+                const data = entry.data ? ` ${JSON.stringify(entry.data)}` : '';
+                const errMsg = entry.error ? ` error=${entry.error}` : '';
                 return `[${ts}] [${level}] [${cat}] ${msg}${errMsg}${data}`;
             })
-            .join("\n");
+            .join('\n');
     }
 }
 

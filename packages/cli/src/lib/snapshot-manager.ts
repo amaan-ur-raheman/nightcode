@@ -6,7 +6,7 @@ import { debug } from './debug';
 
 const SNAPSHOTS_DIR = join(homedir(), '.nightcode', 'snapshots');
 
-interface SnapshotEntry {
+export interface SnapshotEntry {
     name: string;
     hash: string;
     value: string;
@@ -21,9 +21,12 @@ class SnapshotManager {
         if (this.loaded) return;
 
         try {
-            const content = await readFile(join(SNAPSHOTS_DIR, 'snapshots.json'), 'utf-8');
+            const content = await readFile(
+                join(SNAPSHOTS_DIR, 'snapshots.json'),
+                'utf-8',
+            );
             const entries: SnapshotEntry[] = JSON.parse(content);
-            entries.forEach(entry => {
+            entries.forEach((entry) => {
                 this.snapshots.set(entry.name, entry);
             });
         } catch {
@@ -39,11 +42,14 @@ class SnapshotManager {
         await writeFile(
             join(SNAPSHOTS_DIR, 'snapshots.json'),
             JSON.stringify(entries, null, 2),
-            'utf-8'
+            'utf-8',
         );
     }
 
-    async match(name: string, value: string): Promise<{ match: boolean; stored?: string }> {
+    async match(
+        name: string,
+        value: string,
+    ): Promise<{ match: boolean; stored?: string }> {
         await this.load();
 
         const stored = this.snapshots.get(name);
@@ -58,8 +64,14 @@ class SnapshotManager {
 
         if (!match) {
             debug.log('snapshot', `Snapshot mismatch for ${name}`);
-            debug.log('snapshot', `Expected: length=${stored.value.length}, hash=${stored.hash.substring(0, 8)}...`);
-            debug.log('snapshot', `Got: length=${value.length}, hash=${hash.substring(0, 8)}...`);
+            debug.log(
+                'snapshot',
+                `Expected: length=${stored.value.length}, hash=${stored.hash.substring(0, 8)}...`,
+            );
+            debug.log(
+                'snapshot',
+                `Got: length=${value.length}, hash=${hash.substring(0, 8)}...`,
+            );
         }
 
         return { match, stored: stored.value };
@@ -101,6 +113,11 @@ class SnapshotManager {
         this.snapshots.clear();
         await this.save();
         debug.log('snapshot', 'Cleared all snapshots');
+    }
+
+    reset(): void {
+        this.snapshots.clear();
+        this.loaded = false;
     }
 
     private hash(value: string): string {

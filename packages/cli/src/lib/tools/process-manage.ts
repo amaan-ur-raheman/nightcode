@@ -1,16 +1,22 @@
-import { toolInputSchemas } from "@nightcode/shared";
-import { truncate, MAX_OUTPUT } from "./utils";
+import { toolInputSchemas } from '@nightcode/shared';
+import { truncate, MAX_OUTPUT } from './utils';
 
-const execAsync = async (cmd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
-    const proc = Bun.spawn(["bash", "-c", cmd], {
-        stdout: "pipe",
-        stderr: "pipe",
+const execAsync = async (
+    cmd: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
+    const proc = Bun.spawn(['bash', '-c', cmd], {
+        stdout: 'pipe',
+        stderr: 'pipe',
     });
     const [stdout, stderr] = await Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
     ]);
-    return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode: await proc.exited };
+    return {
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: await proc.exited,
+    };
 };
 
 interface ProcessInfo {
@@ -161,25 +167,25 @@ function isProtectedProcess(name: string): boolean {
 
 function extractProcessName(command: string): string {
     // Get the base name from the command path
-    const parts = command.split("/");
-    const base = parts[parts.length - 1] ?? "";
+    const parts = command.split('/');
+    const base = parts[parts.length - 1] ?? '';
     // Strip common wrappers
     return base
-        .replace(/^\(/, "")
-        .replace(/\)$/, "")
-        .replace(/\.js$/, "")
-        .replace(/\.ts$/, "");
+        .replace(/^\(/, '')
+        .replace(/\)$/, '')
+        .replace(/\.js$/, '')
+        .replace(/\.ts$/, '');
 }
 
 async function listProcesses(name?: string): Promise<string> {
     try {
-        let cmd = "ps aux";
+        let cmd = 'ps aux';
 
         if (name) {
             // Sanitize: only allow alphanumeric, dots, hyphens, underscores
-            const safeName = name.replace(/[^a-zA-Z0-9._-]/g, "");
+            const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '');
             if (!safeName) {
-                return "Invalid process name filter.";
+                return 'Invalid process name filter.';
             }
             cmd += ` | grep -i "${safeName}" | grep -v grep`;
         } else {
@@ -191,17 +197,17 @@ async function listProcesses(name?: string): Promise<string> {
         const { stdout, exitCode } = await execAsync(cmd);
 
         if (exitCode !== 0 || !stdout.trim()) {
-            return "No matching processes found.";
+            return 'No matching processes found.';
         }
 
-        const lines = stdout.trim().split("\n");
+        const lines = stdout.trim().split('\n');
         const processes: ProcessInfo[] = lines.map((line) => {
             const parts = line.trim().split(/\s+/);
             return {
-                pid: parseInt(parts[1] ?? "0"),
-                cpu: parts[2] ?? "0",
-                memory: parts[3] ?? "0",
-                command: parts.slice(10).join(" "),
+                pid: parseInt(parts[1] ?? '0'),
+                cpu: parts[2] ?? '0',
+                memory: parts[3] ?? '0',
+                command: parts.slice(10).join(' '),
             };
         });
 
@@ -209,9 +215,9 @@ async function listProcesses(name?: string): Promise<string> {
             .map((p) => {
                 const name = extractProcessName(p.command);
                 const protected_ = isProtectedProcess(name);
-                return `PID: ${p.pid} | CPU: ${p.cpu}% | MEM: ${p.memory}% | ${name}${protected_ ? " [PROTECTED]" : ""}\n  CMD: ${p.command}`;
+                return `PID: ${p.pid} | CPU: ${p.cpu}% | MEM: ${p.memory}% | ${name}${protected_ ? ' [PROTECTED]' : ''}\n  CMD: ${p.command}`;
             })
-            .join("\n");
+            .join('\n');
 
         return output;
     } catch (error: any) {
@@ -219,9 +225,12 @@ async function listProcesses(name?: string): Promise<string> {
     }
 }
 
-async function killProcess(pid: number, force: boolean = false): Promise<string> {
+async function killProcess(
+    pid: number,
+    force: boolean = false,
+): Promise<string> {
     if (!pid || pid <= 0) {
-        return "A valid PID is required for kill action.";
+        return 'A valid PID is required for kill action.';
     }
 
     // Check if process exists and get its name
@@ -269,25 +278,27 @@ async function listPorts(port?: number): Promise<string> {
         if (port) {
             cmd = `lsof -i :${port} -P -n 2>/dev/null`;
         } else {
-            cmd = "lsof -i -P -n 2>/dev/null | grep LISTEN | head -30";
+            cmd = 'lsof -i -P -n 2>/dev/null | grep LISTEN | head -30';
         }
 
         const { stdout, exitCode } = await execAsync(cmd);
 
         if (exitCode !== 0 || !stdout.trim()) {
-            return port ? `No process listening on port ${port}` : "No listening ports found.";
+            return port
+                ? `No process listening on port ${port}`
+                : 'No listening ports found.';
         }
 
-        const lines = stdout.trim().split("\n");
+        const lines = stdout.trim().split('\n');
         const firstLine = lines[0];
 
         if (port && firstLine) {
             const parts = firstLine.trim().split(/\s+/);
-            const name = parts[0] ?? "unknown";
-            const pid = parts[1] ?? "?";
-            const user = parts[2] ?? "?";
-            const device = parts[7] ?? "?";
-            const listening = parts[8] ?? "?";
+            const name = parts[0] ?? 'unknown';
+            const pid = parts[1] ?? '?';
+            const user = parts[2] ?? '?';
+            const device = parts[7] ?? '?';
+            const listening = parts[8] ?? '?';
             return `Port ${port} is in use:\n  Process: ${name} (PID: ${pid}, User: ${user})\n  Address: ${listening}`;
         }
 
@@ -295,12 +306,12 @@ async function listPorts(port?: number): Promise<string> {
         const output = lines
             .map((line) => {
                 const parts = line.trim().split(/\s+/);
-                const name = parts[0] ?? "unknown";
-                const pid = parts[1] ?? "?";
-                const addr = parts[8] ?? "?";
+                const name = parts[0] ?? 'unknown';
+                const pid = parts[1] ?? '?';
+                const addr = parts[8] ?? '?';
                 return `${name} (PID: ${pid}) → ${addr}`;
             })
-            .join("\n");
+            .join('\n');
 
         return output;
     } catch (error: any) {
@@ -309,27 +320,33 @@ async function listPorts(port?: number): Promise<string> {
 }
 
 export async function processManageTool(input: unknown) {
-    const { action, port, pid, name, force } = toolInputSchemas.processManage.parse(input);
+    const { action, port, pid, name, force } =
+        toolInputSchemas.processManage.parse(input);
 
     let result: string;
 
     switch (action) {
-        case "list":
+        case 'list':
             result = await listProcesses(name);
             break;
-        case "kill":
+        case 'kill':
             if (!pid) {
-                result = "A valid PID is required for the kill action.";
+                result = 'A valid PID is required for the kill action.';
                 break;
             }
             result = await killProcess(pid, force);
             break;
-        case "list-ports":
+        case 'list-ports':
             result = await listPorts(port);
             break;
         default:
             result = `Unknown action: ${action}`;
     }
 
-    return { stdout: truncate(result, MAX_OUTPUT), stderr: "", exitCode: 0, timedOut: false };
+    return {
+        stdout: truncate(result, MAX_OUTPUT),
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+    };
 }

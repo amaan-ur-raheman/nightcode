@@ -1,11 +1,11 @@
-import { relative } from "path";
-import { toolInputSchemas } from "@nightcode/shared";
-import { IGNORE, MAX_MATCHES, resolveInsideCwd } from "./utils";
+import { relative } from 'path';
+import { toolInputSchemas } from '@nightcode/shared';
+import { IGNORE, MAX_MATCHES, resolveInsideCwd } from './utils';
 
 export async function codeSearchTool(input: unknown) {
     const { symbol, path, include } = toolInputSchemas.codeSearch.parse(input);
     const { cwd, resolved } = resolveInsideCwd(path);
-    const s = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const s = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const patterns = [
         `(function|async function)\\s+${s}\\s*\\(`,
         `(const|let|var)\\s+${s}\\s*=\\s*(async\\s+)?\\(`,
@@ -17,29 +17,45 @@ export async function codeSearchTool(input: unknown) {
         `func\\s+${s}\\s*\\(`,
         `fn\\s+${s}\\s*\\(`,
     ];
-    const args = ["-rn", "--color=never", "--binary-files=without-match", "-E"];
+    const args = ['-rn', '--color=never', '--binary-files=without-match', '-E'];
     for (const dir of IGNORE) {
         args.push(`--exclude-dir=${dir}`);
     }
-    args.push(patterns.join("|"));
+    args.push(patterns.join('|'));
     if (include) args.push(`--include=${include}`);
     args.push(resolved);
 
-    const proc = Bun.spawn(["grep", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
-    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    const proc = Bun.spawn(['grep', ...args], {
+        cwd,
+        stdout: 'pipe',
+        stderr: 'pipe',
+    });
+    const [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+    ]);
     const exitCode = await proc.exited;
 
-    if (exitCode !== 0 && exitCode !== 1) return { error: `Search failed: ${stderr.trim()}` };
-    if (!stdout.trim()) return { matches: [], message: "No definitions found" };
+    if (exitCode !== 0 && exitCode !== 1)
+        return { error: `Search failed: ${stderr.trim()}` };
+    if (!stdout.trim()) return { matches: [], message: 'No definitions found' };
 
-    const lines = stdout.trim().split("\n");
+    const lines = stdout.trim().split('\n');
     const matches: { file: string; line: number; content: string }[] = [];
     let truncated = false;
 
     for (const line of lines) {
-        if (matches.length >= MAX_MATCHES) { truncated = true; break; }
+        if (matches.length >= MAX_MATCHES) {
+            truncated = true;
+            break;
+        }
         const match = line.match(/^(.+?):(\d+):(.*)$/);
-        if (match) matches.push({ file: relative(cwd, match[1]!), line: Number(match[2]), content: match[3]!.trim() });
+        if (match)
+            matches.push({
+                file: relative(cwd, match[1]!),
+                line: Number(match[2]),
+                content: match[3]!.trim(),
+            });
     }
 
     return { matches, ...(truncated ? { truncated: true } : {}) };

@@ -1,4 +1,4 @@
-import { toolInputSchemas } from "@nightcode/shared";
+import { toolInputSchemas } from '@nightcode/shared';
 
 /**
  * Rough token/cost estimates based on NIM pricing.
@@ -36,8 +36,12 @@ export async function tokenCountTool(input: unknown) {
         tokenCount,
         wordCount,
         estimatedCost: {
-            input: Number(((tokenCount / 1000) * COST_PER_1K_INPUT_TOKENS).toFixed(6)),
-            output: Number(((tokenCount / 1000) * COST_PER_1K_OUTPUT_TOKENS).toFixed(6)),
+            input: Number(
+                ((tokenCount / 1000) * COST_PER_1K_INPUT_TOKENS).toFixed(6),
+            ),
+            output: Number(
+                ((tokenCount / 1000) * COST_PER_1K_OUTPUT_TOKENS).toFixed(6),
+            ),
         },
     };
 }

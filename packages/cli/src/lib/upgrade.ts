@@ -1,7 +1,7 @@
-import open from "open";
+import open from 'open';
 
-import { apiClient } from "./api-client";
-import { getErrorMessage } from "./http-errors";
+import { apiClient } from './api-client';
+import { getErrorMessage } from './http-errors';
 
 export async function openUpgradeCheckout() {
     const response = await apiClient.billing.checkout.$post();
@@ -26,4 +26,3 @@ export async function openBillingPortal() {
 
     throw new Error(await getErrorMessage(response));
 }
-

@@ -1,9 +1,9 @@
-import { existsSync } from "fs";
-import { readFile } from "fs/promises";
-import { resolve } from "path";
-import { toolInputSchemas } from "@nightcode/shared";
-import { MAX_TEST_OUTPUT } from "./utils";
-import { snapshotManager } from "../snapshot-manager";
+import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
+import { resolve } from 'path';
+import { toolInputSchemas } from '@nightcode/shared';
+import { MAX_TEST_OUTPUT } from './utils';
+import { snapshotManager } from '../snapshot-manager';
 
 export interface TestRunnerOptions {
     snapshots?: boolean;
@@ -11,31 +11,41 @@ export interface TestRunnerOptions {
 }
 
 async function detectRunner(cwd: string): Promise<string> {
-    if (existsSync(resolve(cwd, "bun.lockb")) || existsSync(resolve(cwd, "bun.lock"))) {
-        return "bun test";
+    if (
+        existsSync(resolve(cwd, 'bun.lockb')) ||
+        existsSync(resolve(cwd, 'bun.lock'))
+    ) {
+        return 'bun test';
     }
 
-    if (existsSync(resolve(cwd, "package.json"))) {
+    if (existsSync(resolve(cwd, 'package.json'))) {
         try {
-            const pkg = JSON.parse(await readFile(resolve(cwd, "package.json"), "utf-8"));
+            const pkg = JSON.parse(
+                await readFile(resolve(cwd, 'package.json'), 'utf-8'),
+            );
             const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-            if ("vitest" in deps) return "npx vitest run";
-            if ("jest" in deps) return "npx jest";
-        } catch { /* ignore malformed package.json */ }
+            if ('vitest' in deps) return 'npx vitest run';
+            if ('jest' in deps) return 'npx jest';
+        } catch {
+            /* ignore malformed package.json */
+        }
     }
 
-    if (existsSync(resolve(cwd, "pytest.ini")) || existsSync(resolve(cwd, "pyproject.toml"))) {
-        return "pytest";
+    if (
+        existsSync(resolve(cwd, 'pytest.ini')) ||
+        existsSync(resolve(cwd, 'pyproject.toml'))
+    ) {
+        return 'pytest';
     }
 
-    if (existsSync(resolve(cwd, "Cargo.toml"))) return "cargo test";
-    if (existsSync(resolve(cwd, "go.mod"))) return "go test ./...";
+    if (existsSync(resolve(cwd, 'Cargo.toml'))) return 'cargo test';
+    if (existsSync(resolve(cwd, 'go.mod'))) return 'go test ./...';
 
-    return "bun test";
+    return 'bun test';
 }
 
 function parseTestOutput(raw: string): { passed: number; failed: number } {
-    const clean = raw.replace(/\u001b\[[0-9;]*m/g, "");
+    const clean = raw.replace(/\u001b\[[0-9;]*m/g, '');
 
     // bun test: "X pass(Y)" or "X fail(Y)"
     const bunPass = clean.match(/(\d+)\s+pass/);
@@ -87,17 +97,22 @@ function parseTestOutput(raw: string): { passed: number; failed: number } {
     return { passed: 0, failed: 0 };
 }
 
-function killProcessGroup(proc: { pid?: number | null; kill: (signal?: any) => void }) {
+function killProcessGroup(proc: {
+    pid?: number | null;
+    kill: (signal?: any) => void;
+}) {
     try {
         if (proc.pid) {
-            process.kill(-proc.pid, "SIGKILL");
+            process.kill(-proc.pid, 'SIGKILL');
             return;
         }
     } catch {
         // Fall back to killing the immediate process below.
     }
 
-    try { proc.kill("SIGKILL"); } catch {}
+    try {
+        proc.kill('SIGKILL');
+    } catch {}
 }
 
 export interface TestResult {
@@ -112,8 +127,8 @@ export interface TestResult {
 }
 
 function generateDiff(expected: string, actual: string): string {
-    const expectedLines = expected.split("\n");
-    const actualLines = actual.split("\n");
+    const expectedLines = expected.split('\n');
+    const actualLines = actual.split('\n');
     const diff: string[] = [];
 
     const maxLen = Math.max(expectedLines.length, actualLines.length);
@@ -129,33 +144,42 @@ function generateDiff(expected: string, actual: string): string {
         }
     }
 
-    return diff.join("\n");
+    return diff.join('\n');
 }
 
-export async function runTestsTool(input: unknown, _parentMode?: string, _parentModel?: string, signal?: AbortSignal) {
-    const { filter, runner: userRunner, timeout } = toolInputSchemas.runTests.parse(input);
+export async function runTestsTool(
+    input: unknown,
+    _parentMode?: string,
+    _parentModel?: string,
+    signal?: AbortSignal,
+) {
+    const {
+        filter,
+        runner: userRunner,
+        timeout,
+    } = toolInputSchemas.runTests.parse(input);
     const cwd = process.cwd();
 
-    const runner = userRunner || await detectRunner(cwd);
+    const runner = userRunner || (await detectRunner(cwd));
     const parts = runner.split(/\s+/);
-    const cmd = parts[0] ?? "bun";
+    const cmd = parts[0] ?? 'bun';
     const baseArgs = parts.slice(1);
     if (filter) baseArgs.push(filter);
 
     const proc = Bun.spawn([cmd, ...baseArgs], {
         cwd,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, FORCE_COLOR: "0", TERM: "dumb" },
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, FORCE_COLOR: '0', TERM: 'dumb' },
         detached: true,
     });
     const timer = setTimeout(() => killProcessGroup(proc), timeout);
 
     const onAbort = () => killProcessGroup(proc);
-    signal?.addEventListener("abort", onAbort);
+    signal?.addEventListener('abort', onAbort);
 
-    let stdout = "";
-    let stderr = "";
+    let stdout = '';
+    let stderr = '';
     let exitCode = 1;
     try {
         [stdout, stderr] = await Promise.all([
@@ -165,7 +189,7 @@ export async function runTestsTool(input: unknown, _parentMode?: string, _parent
         exitCode = await proc.exited;
     } finally {
         clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
+        signal?.removeEventListener('abort', onAbort);
     }
 
     const output = (stdout + stderr).slice(0, MAX_TEST_OUTPUT);
@@ -190,14 +214,17 @@ export async function runTestsWithSnapshots(
     const result = await runTestsTool(input, _parentMode, _parentModel, signal);
 
     const parsed = toolInputSchemas.runTests.parse(input);
-    const snapshotName = `${parsed.runner || "default"}:${parsed.filter || "all"}:output`;
+    const snapshotName = `${parsed.runner || 'default'}:${parsed.filter || 'all'}:output`;
 
     if (options.updateSnapshots) {
         await snapshotManager.set(snapshotName, result.output);
         return { ...result, snapshotUpdated: true };
     }
 
-    const { match, stored } = await snapshotManager.match(snapshotName, result.output);
+    const { match, stored } = await snapshotManager.match(
+        snapshotName,
+        result.output,
+    );
 
     if (match && !stored) {
         return { ...result, snapshotMatch: true };
@@ -207,7 +234,7 @@ export async function runTestsWithSnapshots(
         return {
             ...result,
             snapshotMatch: false,
-            snapshotDiff: generateDiff(stored || "", result.output),
+            snapshotDiff: generateDiff(stored || '', result.output),
         };
     }
 

@@ -1,32 +1,42 @@
-import { toolInputSchemas } from "@nightcode/shared";
-import { checkCommandSafety } from "./bash-safety";
-import { MAX_OUTPUT, truncate } from "./utils";
+import { toolInputSchemas } from '@nightcode/shared';
+import { checkCommandSafety } from './bash-safety';
+import { MAX_OUTPUT, truncate } from './utils';
 
 export function spawnCommand(command: string, options: Record<string, any>) {
-    return Bun.spawn(["bash", "-c", command], options);
+    return Bun.spawn(['bash', '-c', command], options);
 }
 
-function killProcessGroup(proc: { pid?: number | null; kill: (signal?: any) => void }) {
+function killProcessGroup(proc: {
+    pid?: number | null;
+    kill: (signal?: any) => void;
+}) {
     try {
         if (proc.pid) {
-            process.kill(-proc.pid, "SIGKILL");
+            process.kill(-proc.pid, 'SIGKILL');
             return;
         }
     } catch {
         // Fall back to killing the immediate process below.
     }
 
-    try { proc.kill("SIGKILL"); } catch {}
+    try {
+        proc.kill('SIGKILL');
+    } catch {}
 }
 
-export async function bashTool(input: unknown, _parentMode?: string, _parentModel?: string, signal?: AbortSignal) {
+export async function bashTool(
+    input: unknown,
+    _parentMode?: string,
+    _parentModel?: string,
+    signal?: AbortSignal,
+) {
     const { command, timeout } = toolInputSchemas.bash.parse(input);
 
     const safety = checkCommandSafety(command);
     if (safety.blocked) {
         return {
-            stdout: "",
-            stderr: safety.warning ?? "Command blocked by safety policy",
+            stdout: '',
+            stderr: safety.warning ?? 'Command blocked by safety policy',
             exitCode: 1,
             timedOut: false,
             warning: safety.warning,
@@ -36,9 +46,9 @@ export async function bashTool(input: unknown, _parentMode?: string, _parentMode
     let timedOut = false;
     const proc = spawnCommand(command, {
         cwd: process.cwd(),
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, TERM: "dumb" },
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, TERM: 'dumb' },
         detached: true,
     });
     const timer = setTimeout(() => {
@@ -49,10 +59,10 @@ export async function bashTool(input: unknown, _parentMode?: string, _parentMode
     const onAbort = () => {
         killProcessGroup(proc);
     };
-    signal?.addEventListener("abort", onAbort);
+    signal?.addEventListener('abort', onAbort);
 
-    let stdout = "";
-    let stderr = "";
+    let stdout = '';
+    let stderr = '';
     let exitCode = 1;
     try {
         [stdout, stderr] = await Promise.all([
@@ -62,7 +72,7 @@ export async function bashTool(input: unknown, _parentMode?: string, _parentMode
         exitCode = await proc.exited;
     } finally {
         clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
+        signal?.removeEventListener('abort', onAbort);
     }
 
     const result: {

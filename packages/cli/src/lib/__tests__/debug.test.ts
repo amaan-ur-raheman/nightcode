@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { debug } from "../debug";
-import * as fsPromises from "fs/promises";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { debug } from '../debug';
+import * as fsPromises from 'fs/promises';
 
-vi.mock("fs/promises", () => ({
+vi.mock('fs/promises', () => ({
     mkdir: vi.fn().mockResolvedValue(undefined),
     appendFile: vi.fn().mockResolvedValue(undefined),
     readFile: vi.fn(),
     writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
-describe("DebugLogger rotateLogs", () => {
+describe('DebugLogger rotateLogs', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -18,22 +18,47 @@ describe("DebugLogger rotateLogs", () => {
         vi.restoreAllMocks();
     });
 
-    it("keeps only logs with valid timestamps within the retention period", async () => {
+    it('keeps only logs with valid timestamps within the retention period', async () => {
         const now = Date.now();
         const oneDayMs = 24 * 60 * 60 * 1000;
-        const validRecent = { timestamp: new Date(now - oneDayMs).toISOString(), level: "LOG", category: "test", message: "recent" };
-        const validOld = { timestamp: new Date(now - 10 * oneDayMs).toISOString(), level: "LOG", category: "test", message: "old" };
-        const invalidTimestampType = { timestamp: {} as any, level: "LOG", category: "test", message: "invalid type" };
-        const invalidTimestampString = { timestamp: "not-a-date", level: "LOG", category: "test", message: "invalid string" };
-        const missingTimestamp = { level: "LOG", category: "test", message: "missing ts" };
+        const validRecent = {
+            timestamp: new Date(now - oneDayMs).toISOString(),
+            level: 'LOG',
+            category: 'test',
+            message: 'recent',
+        };
+        const validOld = {
+            timestamp: new Date(now - 10 * oneDayMs).toISOString(),
+            level: 'LOG',
+            category: 'test',
+            message: 'old',
+        };
+        const invalidTimestampType = {
+            timestamp: {} as any,
+            level: 'LOG',
+            category: 'test',
+            message: 'invalid type',
+        };
+        const invalidTimestampString = {
+            timestamp: 'not-a-date',
+            level: 'LOG',
+            category: 'test',
+            message: 'invalid string',
+        };
+        const missingTimestamp = {
+            level: 'LOG',
+            category: 'test',
+            message: 'missing ts',
+        };
 
-        const fileContent = [
-            JSON.stringify(validRecent),
-            JSON.stringify(validOld),
-            JSON.stringify(invalidTimestampType),
-            JSON.stringify(invalidTimestampString),
-            JSON.stringify(missingTimestamp),
-        ].join("\n") + "\n";
+        const fileContent =
+            [
+                JSON.stringify(validRecent),
+                JSON.stringify(validOld),
+                JSON.stringify(invalidTimestampType),
+                JSON.stringify(invalidTimestampString),
+                JSON.stringify(missingTimestamp),
+            ].join('\n') + '\n';
 
         vi.mocked(fsPromises.readFile).mockResolvedValue(fileContent);
 
@@ -44,7 +69,11 @@ describe("DebugLogger rotateLogs", () => {
 
         expect(writeSpy).toHaveBeenCalled();
         const writtenContent = writeSpy.mock.calls[0]![1] as string;
-        const writtenLines = writtenContent.trim().split("\n").filter(Boolean).map(l => JSON.parse(l));
+        const writtenLines = writtenContent
+            .trim()
+            .split('\n')
+            .filter(Boolean)
+            .map((l) => JSON.parse(l));
 
         // Should only contain validRecent because:
         // - validRecent is within 7 days

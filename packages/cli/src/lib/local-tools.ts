@@ -1,19 +1,39 @@
-import { Mode, type ModeType } from "@nightcode/shared";
-import { batchManager } from "./batch-manager";
-import { toolAnalytics } from "./tool-analytics";
-import { runWithToolExecutionPolicy } from "./tool-execution-policy";
+import { Mode, type ModeType } from '@nightcode/shared';
+import { batchManager } from './batch-manager';
+import { toolAnalytics } from './tool-analytics';
+import { runWithToolExecutionPolicy } from './tool-execution-policy';
 
 const PLAN_TOOLS = new Set([
-    "readFile", "listDirectory", "glob", "grep",
-    "tree", "fileInfo", "gitStatus", "gitDiff", "webFetch",
-    "codeSearch", "getOutline", "diffFiles",
-    "spawnAgent", "spawnResearcher",
-    "gitLog", "gitBlame", "gitStatusExtended",
-    "tokenCount",
-    "memorySet", "memoryGet", "memoryDelete", "memoryList", "memorySearch",
-    "keychainSet", "keychainGet", "keychainDelete",
-    "getTaskStatus", "cancelTask",
-    "orchestrator", // Tool checks BUILD mode internally and throws with a descriptive error
+    'readFile',
+    'listDirectory',
+    'glob',
+    'grep',
+    'tree',
+    'fileInfo',
+    'gitStatus',
+    'gitDiff',
+    'webFetch',
+    'codeSearch',
+    'getOutline',
+    'diffFiles',
+    'spawnAgent',
+    'spawnResearcher',
+    'gitLog',
+    'gitBlame',
+    'gitStatusExtended',
+    'tokenCount',
+    'memorySet',
+    'memoryGet',
+    'memoryDelete',
+    'memoryList',
+    'memorySearch',
+    'keychainSet',
+    'keychainGet',
+    'keychainDelete',
+    'getTaskStatus',
+    'cancelTask',
+    'orchestrator', // Tool checks BUILD mode internally and throws with a descriptive error
+    'askQuestion',
 ]);
 
 async function directExecute(
@@ -28,7 +48,7 @@ async function directExecute(
     let success = true;
 
     try {
-        const { loadTool } = await import("./tools/index");
+        const { loadTool } = await import('./tools/index');
         const tool = await loadTool(toolName);
         const result = await runWithToolExecutionPolicy(
             toolName,
@@ -42,7 +62,9 @@ async function directExecute(
         throw error;
     } finally {
         const duration = Date.now() - startTime;
-        toolAnalytics.recordToolCall(toolName, duration, success).catch(() => {});
+        toolAnalytics
+            .recordToolCall(toolName, duration, success)
+            .catch(() => {});
     }
 }
 

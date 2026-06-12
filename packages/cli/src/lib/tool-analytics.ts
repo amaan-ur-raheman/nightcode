@@ -1,10 +1,10 @@
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { homedir } from "os";
-import { debug } from "./debug";
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { homedir } from 'os';
+import { debug } from './debug';
 
-const ANALYTICS_DIR = join(homedir(), ".nightcode", "analytics");
-const ANALYTICS_FILE = join(ANALYTICS_DIR, "tool-usage.json");
+const ANALYTICS_DIR = join(homedir(), '.nightcode', 'analytics');
+const ANALYTICS_FILE = join(ANALYTICS_DIR, 'tool-usage.json');
 
 interface ToolUsageEntry {
     tool: string;
@@ -39,7 +39,7 @@ class ToolAnalytics {
         if (this.loaded) return;
 
         try {
-            const content = await readFile(ANALYTICS_FILE, "utf-8");
+            const content = await readFile(ANALYTICS_FILE, 'utf-8');
             this.data = JSON.parse(content);
         } catch {
             // No analytics yet
@@ -55,14 +55,22 @@ class ToolAnalytics {
 
         try {
             await mkdir(ANALYTICS_DIR, { recursive: true });
-            await writeFile(ANALYTICS_FILE, JSON.stringify(this.data, null, 2), "utf-8");
+            await writeFile(
+                ANALYTICS_FILE,
+                JSON.stringify(this.data, null, 2),
+                'utf-8',
+            );
             this.dirty = false;
         } catch {
             // Save failure should never crash the app
         }
     }
 
-    async recordToolCall(tool: string, duration: number, success: boolean): Promise<void> {
+    async recordToolCall(
+        tool: string,
+        duration: number,
+        success: boolean,
+    ): Promise<void> {
         await this.load();
 
         if (!this.data.tools[tool]) {
@@ -86,7 +94,7 @@ class ToolAnalytics {
 
         this.data.totalToolCalls++;
 
-        const today = new Date().toISOString().split("T")[0] ?? "";
+        const today = new Date().toISOString().split('T')[0] ?? '';
         this.data.dailyUsage[today] = (this.data.dailyUsage[today] || 0) + 1;
 
         this.dirty = true;
@@ -105,7 +113,12 @@ class ToolAnalytics {
 
     async getStats(): Promise<{
         totalCalls: number;
-        topTools: Array<{ tool: string; count: number; avgTime: number; errorRate: number }>;
+        topTools: Array<{
+            tool: string;
+            count: number;
+            avgTime: number;
+            errorRate: number;
+        }>;
         dailyAverage: number;
         sessions: number;
         parallelExecutions: number;
@@ -120,13 +133,19 @@ class ToolAnalytics {
                 tool: entry.tool,
                 count: entry.count,
                 avgTime: Math.round(entry.totalTime / entry.count),
-                errorRate: entry.count > 0 ? Math.round((entry.errors / entry.count) * 100) : 0,
+                errorRate:
+                    entry.count > 0
+                        ? Math.round((entry.errors / entry.count) * 100)
+                        : 0,
             }));
 
         const dailyValues = Object.values(this.data.dailyUsage);
         const dailyAverage =
             dailyValues.length > 0
-                ? Math.round(dailyValues.reduce((a, b) => a + b, 0) / dailyValues.length)
+                ? Math.round(
+                      dailyValues.reduce((a, b) => a + b, 0) /
+                          dailyValues.length,
+                  )
                 : 0;
 
         return {
@@ -135,9 +154,13 @@ class ToolAnalytics {
             dailyAverage,
             sessions: this.data.sessions,
             parallelExecutions: this.data.parallelExecutions,
-            avgParallelTools: this.data.parallelExecutions > 0
-                ? Math.round(this.data.totalParallelTools / this.data.parallelExecutions)
-                : 0,
+            avgParallelTools:
+                this.data.parallelExecutions > 0
+                    ? Math.round(
+                          this.data.totalParallelTools /
+                              this.data.parallelExecutions,
+                      )
+                    : 0,
         };
     }
 
@@ -152,7 +175,20 @@ class ToolAnalytics {
         };
         this.dirty = true;
         await this.save();
-        debug.log("analytics", "Cleared tool analytics");
+        debug.log('analytics', 'Cleared tool analytics');
+    }
+
+    reset(): void {
+        this.data = {
+            sessions: 0,
+            totalToolCalls: 0,
+            tools: {},
+            dailyUsage: {},
+            parallelExecutions: 0,
+            totalParallelTools: 0,
+        };
+        this.loaded = false;
+        this.dirty = false;
     }
 }
 

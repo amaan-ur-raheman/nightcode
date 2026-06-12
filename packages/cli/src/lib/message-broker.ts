@@ -1,10 +1,15 @@
-import { debug } from "./debug";
+import { debug } from './debug';
 
 export interface AgentMessage {
     id: string;
     from: string;
     to: string;
-    type: "task-assigned" | "task-result" | "status-update" | "data-sharing" | "directive";
+    type:
+        | 'task-assigned'
+        | 'task-result'
+        | 'status-update'
+        | 'data-sharing'
+        | 'directive';
     payload: unknown;
     timestamp: number;
 }
@@ -16,7 +21,7 @@ class MessageBroker {
     private subscribers = new Map<string, Set<MessageHandler>>();
     private maxHistory = 1000;
 
-    publish(message: Omit<AgentMessage, "id" | "timestamp">): AgentMessage {
+    publish(message: Omit<AgentMessage, 'id' | 'timestamp'>): AgentMessage {
         const full: AgentMessage = {
             ...message,
             id: crypto.randomUUID(),
@@ -28,7 +33,10 @@ class MessageBroker {
             this.history = this.history.slice(-this.maxHistory);
         }
 
-        debug.log("broker", `Message: ${full.from} → ${full.to} [${full.type}]`);
+        debug.log(
+            'broker',
+            `Message: ${full.from} → ${full.to} [${full.type}]`,
+        );
 
         // Deliver to subscriber
         const handlers = this.subscribers.get(full.to);
@@ -41,7 +49,7 @@ class MessageBroker {
         }
 
         // Also deliver to wildcard subscribers
-        const wildcardHandlers = this.subscribers.get("*");
+        const wildcardHandlers = this.subscribers.get('*');
         if (wildcardHandlers) {
             for (const handler of wildcardHandlers) {
                 try {
@@ -63,10 +71,12 @@ class MessageBroker {
         };
     }
 
-    broadcast(message: Omit<AgentMessage, "id" | "timestamp" | "to">): AgentMessage[] {
+    broadcast(
+        message: Omit<AgentMessage, 'id' | 'timestamp' | 'to'>,
+    ): AgentMessage[] {
         const sent: AgentMessage[] = [];
         for (const agentId of this.subscribers.keys()) {
-            if (agentId === "*") continue;
+            if (agentId === '*') continue;
             sent.push(this.publish({ ...message, to: agentId }));
         }
         return sent;
@@ -75,7 +85,7 @@ class MessageBroker {
     getHistory(agentId?: string): AgentMessage[] {
         if (!agentId) return [...this.history];
         return this.history.filter(
-            (m) => m.from === agentId || m.to === agentId || m.to === "*",
+            (m) => m.from === agentId || m.to === agentId || m.to === '*',
         );
     }
 
