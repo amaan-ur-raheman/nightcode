@@ -1,26 +1,30 @@
-import { z } from "zod";
-import { useEffect, useMemo, useRef } from "react";
-import { useNavigate, useLocation } from "react-router";
+import { z } from 'zod';
+import { useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 
-import { Mode, modeSchema } from "@nightcode/shared";
+import { Mode, modeSchema } from '@nightcode/shared';
 
-import { useToast } from "@/providers/toast";
-import { apiClient } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/http-errors";
-import { orchestratorManager } from "@/lib/orchestrator-manager";
+import { useToast } from '@/providers/toast';
+import { apiClient } from '@/lib/api-client';
+import { getErrorMessage } from '@/lib/http-errors';
+import { orchestratorManager } from '@/lib/orchestrator-manager';
 
-import { UserMessage } from "@/components/messages";
-import { SessionShell } from "@/components/session-shell";
+import { UserMessage } from '@/components/messages';
+import { SessionShell } from '@/components/session-shell';
 
 const newSessionStateSchema = z.object({
     message: z.string(),
     mode: modeSchema,
     model: z.string(),
-    imageAttachments: z.array(z.object({
-        dataUrl: z.string(),
-        mimeType: z.string(),
-        name: z.string(),
-    })).optional(),
+    imageAttachments: z
+        .array(
+            z.object({
+                dataUrl: z.string(),
+                mimeType: z.string(),
+                name: z.string(),
+            }),
+        )
+        .optional(),
 });
 
 export function NewSession() {
@@ -37,7 +41,7 @@ export function NewSession() {
     // Guard: if navigated here directly without state, go home
     useEffect(() => {
         if (!state) {
-            navigate("/", { replace: true });
+            navigate('/', { replace: true });
         }
     }, [navigate, state]);
 
@@ -63,26 +67,33 @@ export function NewSession() {
                 }
 
                 const session = await res.json();
-                navigate(
-                    `/sessions/${session.id}`,
-                    { replace: true, state: { session, initialPrompt: state } },
-                );
+                navigate(`/sessions/${session.id}`, {
+                    replace: true,
+                    state: { session, initialPrompt: state },
+                });
             } catch (error) {
                 if (ignore) return;
                 // Don't redirect to home if orchestration is running
-                const hasActiveOrchestrations = orchestratorManager.getAll().length > 0;
+                const hasActiveOrchestrations =
+                    orchestratorManager.getAll().length > 0;
                 if (hasActiveOrchestrations) {
                     toast.show({
-                        variant: "error",
-                        message: error instanceof Error ? error.message : "Failed to create session (orchestration active)",
+                        variant: 'error',
+                        message:
+                            error instanceof Error
+                                ? error.message
+                                : 'Failed to create session (orchestration active)',
                     });
                     return;
                 }
                 toast.show({
-                    variant: "error",
-                    message: error instanceof Error ? error.message : "Failed to create session",
+                    variant: 'error',
+                    message:
+                        error instanceof Error
+                            ? error.message
+                            : 'Failed to create session',
                 });
-                navigate("/", { replace: true });
+                navigate('/', { replace: true });
             }
         };
 
@@ -97,7 +108,11 @@ export function NewSession() {
 
     return (
         <SessionShell onSubmit={() => {}} inputDisabled loading>
-            <UserMessage message={state.message} mode={state.mode} imageCount={state.imageAttachments?.length ?? 0} />
+            <UserMessage
+                message={state.message}
+                mode={state.mode}
+                imageCount={state.imageAttachments?.length ?? 0}
+            />
         </SessionShell>
     );
 }

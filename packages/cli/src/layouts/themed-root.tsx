@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { useTheme } from "@/providers/theme";
+import type { ReactNode } from 'react';
+import { useTheme } from '@/providers/theme';
 
 type ThemedRootProps = {
     children: ReactNode;
