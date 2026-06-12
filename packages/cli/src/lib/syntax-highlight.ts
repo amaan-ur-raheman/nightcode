@@ -9,6 +9,7 @@ type Token = {
         | 'comment'
         | 'function'
         | 'type'
+        | 'variable'
         | 'text';
     value: string;
 };
@@ -233,20 +234,22 @@ const LANG_KEYWORDS: Record<string, string[]> = {
         'fi',
         'for',
         'while',
+        'until',
         'do',
         'done',
         'case',
         'esac',
         'function',
+        'in',
+        'select',
+        'time',
+        'coproc',
+        'break',
+        'continue',
         'return',
         'exit',
-        'local',
-        'export',
-        'source',
-        'echo',
-        'read',
-        'test',
-        'in',
+        'set',
+        'shopt',
     ],
     java: [
         'public',
@@ -943,16 +946,14 @@ const BUILTIN_FUNCS: Record<string, Set<string>> = {
         'unset',
         'shift',
         'source',
+        '.',
         'eval',
         'exec',
-        'exit',
-        'return',
         'trap',
         'wait',
         'kill',
         'sleep',
         'date',
-        'time',
         'cal',
         'which',
         'type',
@@ -967,9 +968,6 @@ const BUILTIN_FUNCS: Record<string, Set<string>> = {
         'bg',
         'fg',
         'disown',
-        'suspend',
-        'logout',
-        'login',
         'cd',
         'pwd',
         'pushd',
@@ -1003,13 +1001,20 @@ const BUILTIN_FUNCS: Record<string, Set<string>> = {
         'grep',
         'egrep',
         'fgrep',
+        'rg',
         'find',
         'xargs',
         'df',
         'du',
         'stat',
-        'touch',
         'file',
+        'alias',
+        'unalias',
+        'getopts',
+        'caller',
+        'true',
+        'false',
+        'null',
     ]),
     java: new Set([
         'System',
@@ -1189,6 +1194,23 @@ function tokenize(code: string, lang: string): Token[] {
             continue;
         }
 
+        // Check for $-variable expansion
+        if (code[i] === '$' && /[a-zA-Z_{]/.test(code[i + 1] ?? '')) {
+            let j = i + 1;
+            if (code[j] === '{') {
+                // ${VAR} or ${VAR:-default}
+                j++;
+                while (j < code.length && code[j] !== '}') j++;
+                j = Math.min(j + 1, code.length);
+            } else {
+                // $VAR
+                while (j < code.length && /[a-zA-Z0-9_]/.test(code[j]!)) j++;
+            }
+            tokens.push({ type: 'variable', value: code.slice(i, j) });
+            i = j;
+            continue;
+        }
+
         // Check for words (identifiers/keywords)
         if (/[a-zA-Z_$]/.test(code[i]!)) {
             let j = i;
@@ -1231,6 +1253,8 @@ function getTokenColor(tokenType: Token['type'], colors: ThemeColors): string {
             return colors.info;
         case 'type':
             return colors.planMode;
+        case 'variable':
+            return colors.info;
         case 'text':
             return colors.text;
         default:
@@ -1274,6 +1298,7 @@ function highlightCode(
     code: string,
     langHint?: string,
     colors?: ThemeColors,
+    hideLabel = false,
 ): React.ReactElement {
     if (!colors) {
         return React.createElement('text', null, code);
@@ -1283,30 +1308,101 @@ function highlightCode(
     const tokens = tokenize(code, lang);
     const label = LANG_LABELS[lang] ?? lang.toUpperCase();
 
-    return React.createElement(
-        React.Fragment,
-        null,
+    const tokenElements = tokens.map((token, i) =>
         React.createElement(
-            'text',
-            { attributes: 2, fg: colors.dimSeparator },
-            `--- ${label} ---`,
-        ),
-        React.createElement(
-            'text',
-            null,
-            tokens.map((token, i) =>
-                React.createElement(
-                    'span',
-                    {
-                        key: i,
-                        fg: getTokenColor(token.type, colors),
-                        attributes: getTokenAttributes(token.type),
-                    },
-                    token.value,
-                ),
-            ),
+            'span',
+            {
+                key: i,
+                fg: getTokenColor(token.type, colors),
+                attributes: getTokenAttributes(token.type),
+            },
+            token.value,
         ),
     );
+
+    const lines = code.split('\n');
+    const isMultiLine = lines.length > 1;
+
+    const children: React.ReactElement[] = [];
+    if (!hideLabel) {
+        children.push(
+            React.createElement(
+                'text',
+                { key: 'label', attributes: 2, fg: colors.dimSeparator },
+                `--- ${label} ---`,
+            ),
+        );
+    }
+
+    if (isMultiLine) {
+        children.push(
+            React.createElement('text', { key: 'code' }, tokenElements),
+        );
+    } else {
+        children.push(
+            React.createElement('text', { key: 'code' }, tokenElements),
+        );
+    }
+
+    return React.createElement(React.Fragment, null, ...children);
 }
 
-export { highlightCode, detectLanguage, LANG_LABELS };
+const ERROR_PATTERN =
+    /^\s*(error:|fatal:|panic:|cannot|permission denied|no such file|not found|failed|ERR!)/i;
+
+function renderBashOutput(
+    stdout: string,
+    stderr: string,
+    exitCode: number,
+    colors: ThemeColors,
+): React.ReactElement | null {
+    const children: React.ReactElement[] = [];
+
+    if (stdout.trim()) {
+        const lines = stdout.split('\n');
+        children.push(
+            React.createElement(
+                'text',
+                { key: 'stdout' },
+                lines.map((line, i) =>
+                    React.createElement(
+                        'text',
+                        {
+                            key: `s-${i}`,
+                            fg: colors.text,
+                        },
+                        line + (i < lines.length - 1 ? '\n' : ''),
+                    ),
+                ),
+            ),
+        );
+    }
+
+    if (stderr.trim()) {
+        const lines = stderr.split('\n');
+        children.push(
+            React.createElement(
+                'text',
+                { key: 'stderr' },
+                lines.map((line, i) =>
+                    React.createElement(
+                        'text',
+                        {
+                            key: `e-${i}`,
+                            fg: ERROR_PATTERN.test(line)
+                                ? colors.error
+                                : colors.dimSeparator,
+                        },
+                        line + (i < lines.length - 1 ? '\n' : ''),
+                    ),
+                ),
+            ),
+        );
+    }
+
+    if (children.length === 0) return null;
+
+    return React.createElement('text', null, ...children);
+}
+
+export { highlightCode, detectLanguage, LANG_LABELS, renderBashOutput };
