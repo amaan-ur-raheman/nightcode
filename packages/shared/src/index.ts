@@ -6,7 +6,9 @@ export {
     type SupportedProvider,
     type SupportedChatModel,
     type SupportedChatModelId,
-} from "./models";
+    type DynamicModel,
+    type ModelsApiResponse,
+} from './models';
 
 export {
     Mode,
@@ -20,9 +22,16 @@ export {
     type TextContent,
     type MessageContent,
     type ConversationBranch,
-} from "./schemas";
+} from './schemas';
 
-export { keychain } from "./keychain";
+export { keychain } from './keychain';
+
+export {
+    PROVIDER_KEYCHAIN_NAMES,
+    PROVIDER_ENV_VARS,
+    resolveProviderForModel,
+    getKeychainName,
+} from './provider-keys';
 
 export {
     createTaskGraph,
@@ -39,4 +48,4 @@ export {
     type AgentRole,
     type TaskNode,
     type TaskGraph,
-} from "./task-graph";
+} from './task-graph';
