@@ -1,71 +1,85 @@
-import { mkdirSync, writeFileSync, existsSync } from "fs";
-import path, { join } from "path";
-import { execSync } from "child_process";
+import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import path, { join } from 'path';
+import { execSync } from 'child_process';
 
 interface InitOptions {
     name?: string;
-    template?: "basic" | "fullstack" | "api";
+    template?: 'basic' | 'fullstack' | 'api';
     git?: boolean;
 }
 
 const TEMPLATES = {
     basic: {
-        description: "Basic project with minimal config",
+        description: 'Basic project with minimal config',
         files: {
-            ".nightcode/settings.json": {
+            '.nightcode/settings.json': {
                 mcp: { servers: {} },
             },
-            ".nightcode/README.md": "# NightCode Project\n\nThis project is configured for NightCode.",
+            '.nightcode/README.md':
+                '# NightCode Project\n\nThis project is configured for NightCode.',
         },
     },
     fullstack: {
-        description: "Full-stack project with MCP servers",
+        description: 'Full-stack project with MCP servers',
         files: {
-            ".nightcode/settings.json": {
+            '.nightcode/settings.json': {
                 mcp: {
                     servers: {
                         filesystem: {
-                            command: "npx",
-                            args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+                            command: 'npx',
+                            args: [
+                                '-y',
+                                '@modelcontextprotocol/server-filesystem',
+                                '.',
+                            ],
                         },
                     },
                 },
             },
-            ".nightcode/README.md": "# NightCode Full-Stack Project\n\nThis project includes MCP server configuration.",
+            '.nightcode/README.md':
+                '# NightCode Full-Stack Project\n\nThis project includes MCP server configuration.',
         },
     },
     api: {
-        description: "API project with database tools",
+        description: 'API project with database tools',
         files: {
-            ".nightcode/settings.json": {
+            '.nightcode/settings.json': {
                 mcp: {
                     servers: {
                         postgres: {
-                            command: "npx",
-                            args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"],
+                            command: 'npx',
+                            args: [
+                                '-y',
+                                '@modelcontextprotocol/server-postgres',
+                                'postgresql://localhost/mydb',
+                            ],
                         },
                     },
                 },
             },
-            ".nightcode/README.md": "# NightCode API Project\n\nThis project includes database MCP server configuration.",
+            '.nightcode/README.md':
+                '# NightCode API Project\n\nThis project includes database MCP server configuration.',
         },
     },
 };
 
 export function initCommand(options: InitOptions): void {
     const projectDir = process.cwd();
-    const projectName = options.name || path.basename(projectDir) || "nightcode-project";
-    const templateKey = options.template || "basic";
+    const projectName =
+        options.name || path.basename(projectDir) || 'nightcode-project';
+    const templateKey = options.template || 'basic';
     const template = TEMPLATES[templateKey];
 
     console.log(`\n🚀 Initializing NightCode project: ${projectName}\n`);
     console.log(`Template: ${template.description}\n`);
 
     // Check for existing .nightcode directory
-    const nightcodeDir = join(projectDir, ".nightcode");
+    const nightcodeDir = join(projectDir, '.nightcode');
     if (existsSync(nightcodeDir)) {
-        console.log("⚠️  .nightcode directory already exists. Skipping initialization.");
-        console.log("   Remove it first if you want to re-initialize.\n");
+        console.log(
+            '⚠️  .nightcode directory already exists. Skipping initialization.',
+        );
+        console.log('   Remove it first if you want to re-initialize.\n');
         return;
     }
 
@@ -78,10 +92,10 @@ export function initCommand(options: InitOptions): void {
         const dir = path.dirname(fullPath);
         mkdirSync(dir, { recursive: true });
 
-        if (typeof content === "object") {
-            writeFileSync(fullPath, JSON.stringify(content, null, 2), "utf-8");
+        if (typeof content === 'object') {
+            writeFileSync(fullPath, JSON.stringify(content, null, 2), 'utf-8');
         } else {
-            writeFileSync(fullPath, content, "utf-8");
+            writeFileSync(fullPath, content, 'utf-8');
         }
         console.log(`  ✅ Created ${filePath}`);
     }
@@ -91,32 +105,45 @@ export function initCommand(options: InitOptions): void {
         try {
             let isInsideGit = false;
             try {
-                const gitStatus = execSync("git rev-parse --is-inside-work-tree", {
-                    cwd: projectDir,
-                    stdio: ["ignore", "pipe", "ignore"],
-                }).toString().trim();
-                isInsideGit = gitStatus === "true";
+                const gitStatus = execSync(
+                    'git rev-parse --is-inside-work-tree',
+                    {
+                        cwd: projectDir,
+                        stdio: ['ignore', 'pipe', 'ignore'],
+                    },
+                )
+                    .toString()
+                    .trim();
+                isInsideGit = gitStatus === 'true';
             } catch {
                 // Not a git repository or git not installed
             }
 
             if (isInsideGit) {
-                console.log("  ⚠️  Directory is already inside a Git repository. Skipping Git initialization.");
+                console.log(
+                    '  ⚠️  Directory is already inside a Git repository. Skipping Git initialization.',
+                );
             } else {
-                execSync("git init", { cwd: projectDir, stdio: "ignore" });
-                execSync("git add .", { cwd: projectDir, stdio: "ignore" });
-                execSync('git commit -m "Initial NightCode setup"', { cwd: projectDir, stdio: "ignore" });
-                console.log("  ✅ Initialized git repository");
+                execSync('git init', { cwd: projectDir, stdio: 'ignore' });
+                execSync('git add .', { cwd: projectDir, stdio: 'ignore' });
+                execSync('git commit -m "Initial NightCode setup"', {
+                    cwd: projectDir,
+                    stdio: 'ignore',
+                });
+                console.log('  ✅ Initialized git repository');
             }
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            console.log(`  ⚠️  Git initialization skipped/failed in ${projectDir}: ${errorMsg}`);
+            const errorMsg =
+                error instanceof Error ? error.message : String(error);
+            console.log(
+                `  ⚠️  Git initialization skipped/failed in ${projectDir}: ${errorMsg}`,
+            );
         }
     }
 
-    console.log("\n✨ NightCode project initialized!\n");
-    console.log("Next steps:");
-    console.log("  1. Run `nightcode` to start the TUI");
-    console.log("  2. Configure MCP servers in .nightcode/settings.json");
-    console.log("  3. Start coding!\n");
+    console.log('\n✨ NightCode project initialized!\n');
+    console.log('Next steps:');
+    console.log('  1. Run `nightcode` to start the TUI');
+    console.log('  2. Configure MCP servers in .nightcode/settings.json');
+    console.log('  3. Start coding!\n');
 }
