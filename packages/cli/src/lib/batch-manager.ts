@@ -65,7 +65,6 @@ const ALL_PARALLEL_TOOLS = [
     'gitStatusExtended',
     'webFetch',
     'httpRequest',
-    'codeSearch',
     'getOutline',
     'diffFiles',
     'runTests',
@@ -143,7 +142,12 @@ class BatchManager {
             if (!this.timer) {
                 this.timer = setTimeout(() => {
                     this.timer = null;
-                    this.flush(executor);
+                    this.flush(executor).catch((err) => {
+                        debug.log(
+                            'batch',
+                            `Timer flush failed: ${err instanceof Error ? err.message : String(err)}`,
+                        );
+                    });
                 }, this.config.maxWaitTime);
             }
 
@@ -152,7 +156,12 @@ class BatchManager {
                     clearTimeout(this.timer);
                     this.timer = null;
                 }
-                this.flush(executor);
+                this.flush(executor).catch((err) => {
+                    debug.log(
+                        'batch',
+                        `Batch flush failed: ${err instanceof Error ? err.message : String(err)}`,
+                    );
+                });
             }
         });
     }
@@ -262,7 +271,8 @@ class BatchManager {
         if (toolCalls.length === 0) return [];
 
         const capped = toolCalls.slice(0, this.config.maxParallelTools);
-        if (toolCalls.length > this.config.maxParallelTools) {
+        const skipped = toolCalls.slice(this.config.maxParallelTools);
+        if (skipped.length > 0) {
             debug.log(
                 'batch',
                 `Capping parallel execution from ${toolCalls.length} to ${this.config.maxParallelTools}`,
@@ -312,7 +322,15 @@ class BatchManager {
             }
         });
 
-        return Promise.all(promises);
+        const skippedResults: ParallelToolResult[] = skipped.map((tc) => ({
+            toolCallId: tc.toolCallId,
+            result: undefined,
+            error: new Error(
+                `Tool execution skipped: parallel limit of ${this.config.maxParallelTools} reached`,
+            ),
+        }));
+
+        return Promise.all([...promises, ...skippedResults]);
     }
 
     getConfig(): Readonly<BatchConfig> {
@@ -326,9 +344,17 @@ class BatchManager {
 
     toggle(): boolean {
         if (this.config.enabledTools.length > 0) {
-            this.config = { ...this.config, enabledTools: [] };
+            this.config = {
+                ...this.config,
+                enabledTools: [],
+                parallelExecutionEnabled: false,
+            };
         } else {
-            this.config = { ...this.config, enabledTools: DEFAULT_BATCH_TOOLS };
+            this.config = {
+                ...this.config,
+                enabledTools: DEFAULT_BATCH_TOOLS,
+                parallelExecutionEnabled: true,
+            };
         }
         debug.log(
             'batch',
@@ -343,6 +369,7 @@ class BatchManager {
             pendingFlush: this.pendingFlush,
             enabled: this.config.enabledTools.length > 0,
             parallelExecution: this.config.parallelExecutionEnabled,
+            maxParallelTools: this.config.maxParallelTools,
         };
     }
 

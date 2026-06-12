@@ -16,6 +16,50 @@ function getCacheKey(params: SystemPromptParams): string {
     return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}`;
 }
 
+/**
+ * Shared rules for all modes. Rules 1-3 are identical across PLAN and BUILD.
+ * Mode-specific rules are appended separately.
+ */
+const SHARED_RULES = `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+2. Never re-read files already read this session.
+3. **Emit ALL independent tool calls in a SINGLE response — they execute in parallel:**
+   - When reading multiple files: emit ALL readFile calls together, not one per turn
+   - When searching: emit multiple grep/glob calls for different patterns at once
+   - When writing independent files: emit ALL writeFile/editFile calls together
+   - Example: need to read auth.ts, db.ts, api.ts? Call readFile("auth.ts"), readFile("db.ts"), readFile("api.ts") in ONE response
+   - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)`;
+
+const PLAN_RULES = `${SHARED_RULES}
+4. Check git status first when context about changes is needed.
+5. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.`;
+
+const BUILD_RULES = `${SHARED_RULES}
+4. Run tests first to establish a baseline before changes.
+5. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
+6. editFile: oldString must match EXACTLY including whitespace. Read the block first if unsure.
+7. Use editFile for small edits; writeFile only for new files or full rewrites.
+8. Use patch for multi-file changes, moveFile for renames, renameSymbol for symbol renames.
+9. Use undo to revert the last change if something goes wrong.
+10. Verify: run tests and check gitStatus/gitDiff after changes.`;
+
+/**
+ * Lean rules for subagent/worker requests. Reuses SHARED_RULES with
+ * mode-specific additions. Much shorter than main prompt rules.
+ */
+function buildSubagentRules(mode: ModeType): string {
+    if (mode === 'PLAN') {
+        return `${SHARED_RULES}
+4. Check git status first when context about changes is needed.
+5. Present concrete findings with file paths and line references.`;
+    }
+    return `${SHARED_RULES}
+4. Run tests first to establish a baseline before changes.
+5. If a test/command fails: analyze the error, fix the code, retest.
+6. editFile: oldString must match EXACTLY including whitespace.
+7. Use editFile for small edits; writeFile only for new files.
+8. Verify: run tests and check gitStatus/gitDiff after changes.`;
+}
+
 export function buildSystemPrompt({
     mode,
     projectContext,
@@ -31,32 +75,6 @@ export function buildSystemPrompt({
     const spawnAgentDesc = isSubagent
         ? ''
         : `- **spawnAgent** — Delegate a self-contained task to a subagent that runs autonomously and returns the result. Omit "model" to use the same model (${model}).`;
-
-    const sharedRules =
-        mode === 'PLAN'
-            ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
-2. Never re-read files already read this session.
-3. **Emit ALL independent tool calls in a SINGLE response — they execute in parallel:**
-   - When reading multiple files: emit ALL readFile calls together, not one per turn
-   - When searching: emit multiple grep/glob calls for different patterns at once
-   - Example: need to read auth.ts, db.ts, api.ts? Call readFile("auth.ts"), readFile("db.ts"), readFile("api.ts") in ONE response
-   - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)
-4. Check git status first when context about changes is needed.
-5. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.`
-            : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
-2. Never re-read files already read this session.
-3. **Emit ALL independent tool calls in a SINGLE response — they execute in parallel:**
-   - When reading multiple files: emit ALL readFile calls together, not one per turn
-   - When searching: emit multiple grep/glob calls for different patterns at once
-   - When writing independent files: emit ALL writeFile/editFile calls together
-   - Example: need to read auth.ts, db.ts, api.ts? Call readFile("auth.ts"), readFile("db.ts"), readFile("api.ts") in ONE response
-   - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)
-4. Run tests first to establish a baseline before changes.
-5. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
-6. editFile: oldString must match EXACTLY including whitespace. Read the block first if unsure.
-7. Use editFile for small edits; writeFile only for new files or full rewrites.
-8. Use patch for multi-file changes, moveFile for renames, renameSymbol for symbol renames.
-9. Verify: run tests and check gitStatus/gitDiff after changes.`;
 
     const parts: string[] = [];
 
@@ -85,6 +103,7 @@ Implement changes directly.
 - Read relevant code before modifying
 - writeFile for new files, editFile for targeted edits
 - Use bash for commands (tests, builds, git)
+- Use undo to revert if a change goes wrong
 - Verify changes when possible`,
     );
 
@@ -122,13 +141,6 @@ Use the **secretScan** tool before committing to detect accidentally committed s
 - Supports recursive scanning of source files
 - False positives are possible — review each finding before acting
 
-### Extended Reasoning
-When extended reasoning is enabled, think step-by-step through complex problems before answering.
-- Break down the problem into smaller parts
-- Consider edge cases and alternatives
-- Provide your reasoning before the final answer
-- Use this for: architecture decisions, debugging complex issues, optimizing code
-
 ### Asking Questions
 Use the **askQuestion** tool to prompt the user for input when you need clarification or a decision:
 - Provide 1-10 questions, each with optional predefined choices
@@ -141,8 +153,32 @@ Use the **askQuestion** tool to prompt the user for input when you need clarific
 Example:
 askQuestion({ questions: [{ question: "Which state manager?", choices: ["Zustand", "Jotai", "Redux Toolkit"], allowCustom: true }] })
 
+### Skills
+Skills are specialized guides for common tasks. Use them when your task matches a known domain.
+- **listSkills** — Discover all available skills (names + descriptions). Call this first if unsure what skills exist.
+- **useSkill** — Load a skill by name to get step-by-step instructions. Follow the returned instructions.
+When to use skills: API design, authentication setup, database work, testing patterns, containerization, deployment, security audits, performance optimization, UI/UX design, and many more domains.
+
+### Tool Selection Guide
+Choose the right tool for the job:
+- **editFile** — Targeted text replacement in a file. Use for small, precise changes.
+- **searchReplace** — Find and replace text across multiple files using regex. Use for bulk patterns (e.g., renaming a function across 10 files).
+- **patch** — Apply a unified diff. Use for complex multi-file changes where you have the diff.
+- **writeFile** — Create new files or full rewrites. Overwrites existing content.
+- **createFile** — Create a new file only. Errors if file already exists (safety check).
+- **deleteFile** — Remove a file or empty directory.
+- **moveFile** — Move or rename files/directories.
+- **renameSymbol** — AST-aware rename across all files. Handles declarations, imports, types. Safer than searchReplace for code symbols.
+- **undo** — Revert the last file change if something went wrong.
+- **spawnAgent** — Independent tasks that don't need your context. Provide all info in the prompt.
+- **orchestrator** — Complex tasks with dependencies between subtasks. Use when work can be decomposed into a DAG.
+- **gitCommit** — Stage and commit. Pass file paths to auto-stage, or commit everything.
+- **gitBranch** — Create, list, delete, or checkout branches.
+- **gitLog** — Browse commit history. Filter by author or limit count.
+- **gitBlame** — See who last modified each line of a file.
+
 ### Rules
-${sharedRules}`);
+${mode === 'PLAN' ? PLAN_RULES : BUILD_RULES}`);
 
     if (mode === 'BUILD' && !isSubagent) {
         parts.push(`## Task Lists
@@ -238,28 +274,6 @@ export function buildSubagentSystemPrompt({
     const cached = subagentPromptCache.get(key);
     if (cached) return cached;
 
-    const sharedRules =
-        mode === 'PLAN'
-            ? `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
-2. Never re-read files already read this session.
-3. **Batch tool calls in parallel.** When you need multiple reads/searches, emit ALL of them in ONE response:
-   - GOOD: [grep("patternA"), grep("patternB"), readFile("file.ts")] — 3 tools, 1 LLM call
-   - BAD: grep("patternA") → wait → grep("patternB") → wait → readFile("file.ts") — 3 LLM calls, 3x slower
-   The system executes multiple tool calls from one response concurrently.
-4. Check git status first when context about changes is needed.
-5. Present concrete findings with file paths and line references.`
-            : `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
-2. Never re-read files already read this session.
-3. **Batch tool calls in parallel.** When you need multiple reads/searches, emit ALL of them in ONE response:
-   - GOOD: [readFile("a.ts"), readFile("b.ts"), runTests()] — 3 tools, 1 LLM call
-   - BAD: readFile("a.ts") → wait → readFile("b.ts") → wait → runTests() — 3 LLM calls, 3x slower
-   The system executes multiple tool calls from one response concurrently.
-4. Run tests first to establish a baseline before changes.
-5. If a test/command fails: analyze the error, fix the code, retest.
-6. editFile: oldString must match EXACTLY including whitespace.
-7. Use editFile for small edits; writeFile only for new files.
-8. Verify: run tests and check gitStatus/gitDiff after changes.`;
-
     const parts: string[] = [
         `You are a specialized worker agent. Complete the assigned task and return the result. Do NOT spawn further subagents.`,
         mode === 'BUILD'
@@ -271,7 +285,7 @@ export function buildSubagentSystemPrompt({
         parts.push(`## Project Context\n${projectContext}`);
     }
 
-    parts.push(`## Rules\n${sharedRules}`);
+    parts.push(`## Rules\n${buildSubagentRules(mode)}`);
 
     const result = optimizePrompt(parts.join('\n'));
 

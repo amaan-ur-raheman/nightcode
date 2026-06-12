@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    optimizePrompt,
-    estimateTokens,
-    buildContextualSections,
-} from '../prompt-optimizer';
+import { optimizePrompt, estimateTokens } from '../prompt-optimizer';
 
 describe('Prompt Optimization', () => {
     it('should reduce prompt size by removing filler phrases', () => {
@@ -50,42 +46,5 @@ describe('Prompt Optimization', () => {
         expect(estimateTokens('')).toBe(0); // 0/4 = 0 → 0
         // "hello world, this is a test!" has 28 chars: 28/4 = 7 → 7
         expect(estimateTokens('hello world, this is a test!')).toBe(7);
-    });
-});
-
-describe('buildContextualSections', () => {
-    it('includes subagent spawning section in build mode', () => {
-        const sections = buildContextualSections({ isBuildMode: true });
-        const joined = sections.join('\n');
-        expect(joined).toContain('Spawning Subagents');
-        expect(joined).toContain('spawnAgent');
-        expect(joined).toContain('BUILD');
-    });
-
-    it('includes PLAN subagent section for non-subagent PLAN mode', () => {
-        const sections = buildContextualSections({
-            isBuildMode: false,
-            isSubagent: false,
-        });
-        const joined = sections.join('\n');
-        expect(joined).toContain('Spawning Subagents');
-        expect(joined).toContain('spawnAgent');
-        expect(joined).toContain('PLAN');
-    });
-
-    it('returns nothing for subagent in non-build mode', () => {
-        const sections = buildContextualSections({
-            isBuildMode: false,
-            isSubagent: true,
-        });
-        expect(sections.length).toBe(0);
-    });
-
-    it('accepts project type option', () => {
-        const sections = buildContextualSections({
-            isBuildMode: true,
-            projectType: 'nextjs',
-        });
-        expect(sections.length).toBeGreaterThan(0);
     });
 });

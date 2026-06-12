@@ -35,8 +35,14 @@ describe('grepTool', () => {
         mockBunSpawn('/hello.ts:1:const x = hello;\n');
         const { grepTool } = await import('../grep');
         const result = await grepTool({ pattern: 'hello', path: '.' });
-        expect(result.matches.length).toBeGreaterThanOrEqual(1);
-        expect(result.matches[0].content).toContain('hello');
+        expect(result).toHaveProperty('matches');
+        const matches = (
+            result as {
+                matches: { file: string; line: number; content: string }[];
+            }
+        ).matches;
+        expect(matches.length).toBeGreaterThanOrEqual(1);
+        expect(matches[0]!.content).toContain('hello');
     });
 
     it('returns no matches for nonexistent pattern', async () => {

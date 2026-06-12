@@ -107,9 +107,10 @@ describe('buildSystemPrompt', () => {
 
     it('includes parallel tool execution rules in subagent prompt', () => {
         const prompt = buildSubagentSystemPrompt({ mode: 'PLAN' });
-        expect(prompt).toContain('Batch tool calls in parallel');
-        expect(prompt).toContain('GOOD:');
-        expect(prompt).toContain('BAD:');
+        expect(prompt).toContain(
+            'Emit ALL independent tool calls in a SINGLE response',
+        );
+        expect(prompt).toContain('they execute in parallel');
     });
 
     it('buildSubagentSystemPrompt includes mode-specific rules', () => {

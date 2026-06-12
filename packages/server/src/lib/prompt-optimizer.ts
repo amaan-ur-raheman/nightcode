@@ -5,7 +5,7 @@
  * 1. Remove redundant filler phrases
  * 2. Consolidate repeated patterns
  * 3. Remove excessive whitespace
- * 4. Context-aware conditional sections (only include what's needed)
+ * 4. Deduplicate consecutive lines with same structure
  */
 
 export function optimizePrompt(prompt: string): string {
@@ -24,35 +24,4 @@ export function optimizePrompt(prompt: string): string {
 
 export function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
-}
-
-export interface ContextOptions {
-    hasMcpServers?: boolean;
-    hasMemory?: boolean;
-    isBuildMode?: boolean;
-    isSubagent?: boolean;
-    projectType?: string;
-}
-
-export function buildContextualSections(ctx: ContextOptions): string[] {
-    const sections: string[] = [];
-
-    if (ctx.isBuildMode) {
-        sections.push(
-            `## Spawning Subagents`,
-            `Use **spawnAgent** for independent, parallelizable tasks.`,
-            `- Provide a self-contained prompt with all context (file paths, code, targets). The subagent has no access to your history.`,
-            `- Mode: Set to BUILD for changes, PLAN for read-only.`,
-            `- Integrate results after the subagent completes.`,
-        );
-    } else if (!ctx.isSubagent) {
-        sections.push(
-            `## Spawning Subagents`,
-            `Use **spawnAgent** for self-contained research/analysis tasks.`,
-            `- Provide a self-contained prompt with all context.`,
-            `- You are in PLAN mode — subagent must also be PLAN.`,
-        );
-    }
-
-    return sections;
 }

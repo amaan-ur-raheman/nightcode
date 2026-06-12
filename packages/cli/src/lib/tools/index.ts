@@ -54,6 +54,7 @@ export { envManageTool } from './env-manage';
 export { secretScanTool } from './secret-scan';
 export { taskListTool } from './task-list';
 export { askQuestionTool } from './ask-question';
+export { useSkillTool, listSkillsTool } from './use-skill';
 
 type ToolFn =
     | ((input: unknown) => Promise<unknown>)
@@ -132,6 +133,8 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     secretScan: () => import('./secret-scan').then((m) => m.secretScanTool),
     taskList: () => import('./task-list').then((m) => m.taskListTool),
     askQuestion: () => import('./ask-question').then((m) => m.askQuestionTool),
+    useSkill: () => import('./use-skill').then((m) => m.useSkillTool),
+    listSkills: () => import('./use-skill').then((m) => m.listSkillsTool),
     orchestrator: () =>
         import('./orchestrator').then((m) => m.orchestratorTool),
     getTaskStatus: () =>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import prettyMs from 'pretty-ms';
 
@@ -13,7 +13,7 @@ import {
     getProviderDisplayName,
     extractProvider,
 } from '@/lib/model-names';
-import { highlightCode } from '@/lib/syntax-highlight';
+import { highlightCode, renderBashOutput } from '@/lib/syntax-highlight';
 import { loadSettings } from '@/lib/settings';
 import { toUnifiedDiff } from '@/lib/diff-utils';
 
@@ -161,6 +161,60 @@ function renderHighlightedContent(
                   {text}
               </MarkdownText>,
           ];
+}
+
+const COLLAPSE_THRESHOLD = 10;
+
+function BashOutput({
+    output,
+    colors,
+}: {
+    output: { stdout: string; stderr: string; exitCode: number };
+    colors: ReturnType<typeof useTheme>['colors'];
+}) {
+    const [collapsed, setCollapsed] = useState(true);
+    const hasOutput = !!(output.stdout?.trim() || output.stderr?.trim());
+    const totalLines =
+        (output.stdout?.split('\n').length ?? 0) +
+        (output.stderr?.split('\n').length ?? 0);
+    const isLong = totalLines > COLLAPSE_THRESHOLD;
+
+    if (!hasOutput) return null;
+
+    const rendered = renderBashOutput(
+        output.stdout ?? '',
+        output.stderr ?? '',
+        output.exitCode,
+        colors,
+    );
+
+    if (!rendered) return null;
+
+    if (!isLong) {
+        return (
+            <box paddingLeft={2} width="100%">
+                {rendered}
+            </box>
+        );
+    }
+
+    return (
+        <box flexDirection="column" paddingLeft={2} width="100%">
+            <box
+                {...({ onClick: () => setCollapsed((c) => !c) } as any)}
+                flexDirection="row"
+                gap={1}
+            >
+                <text fg={colors.dimSeparator}>{collapsed ? '▸' : '▾'}</text>
+                <text fg={colors.dimSeparator}>
+                    {collapsed
+                        ? `${totalLines} lines (click to expand)`
+                        : 'click to collapse'}
+                </text>
+            </box>
+            {!collapsed && rendered}
+        </box>
+    );
 }
 
 export const BotMessage = React.memo(function BotMessage({
@@ -341,13 +395,28 @@ export const BotMessage = React.memo(function BotMessage({
                                             {isRunning && <ToolTimer />}
                                         </text>
                                     </box>
+                                    {/* Show bash output for bash tool */}
+                                    {toolName === 'bash' &&
+                                        isComplete &&
+                                        'output' in part &&
+                                        !!part.output &&
+                                        typeof part.output === 'object' && (
+                                            <BashOutput
+                                                output={part.output as any}
+                                                colors={colors}
+                                            />
+                                        )}
                                     {/* Show inline diff for editFile/writeFile */}
                                     {(isEditFile || isWriteFile) &&
                                         diffText &&
                                         isComplete && (
                                             <box paddingLeft={2} width="100%">
                                                 <diff
-                                                    view="split"
+                                                    view={
+                                                        isWriteFile
+                                                            ? 'unified'
+                                                            : 'split'
+                                                    }
                                                     diff={diffText}
                                                     showLineNumbers
                                                 />

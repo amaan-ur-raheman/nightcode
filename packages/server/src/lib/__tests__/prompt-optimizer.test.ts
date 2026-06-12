@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    optimizePrompt,
-    estimateTokens,
-    buildContextualSections,
-} from '../prompt-optimizer';
+import { optimizePrompt, estimateTokens } from '../prompt-optimizer';
 
 describe('optimizePrompt', () => {
     it('removes redundant newlines', () => {
@@ -76,38 +72,5 @@ describe('estimateTokens', () => {
     it('returns correct count for longer text', () => {
         const text = 'a'.repeat(100);
         expect(estimateTokens(text)).toBe(25);
-    });
-});
-
-describe('buildContextualSections', () => {
-    it('includes spawn agent section for BUILD mode', () => {
-        const sections = buildContextualSections({ isBuildMode: true });
-        expect(sections.some((s) => s.includes('spawnAgent'))).toBe(true);
-        expect(sections.some((s) => s.includes('parallelizable'))).toBe(true);
-    });
-
-    it('includes spawn agent section for PLAN mode (non-subagent)', () => {
-        const sections = buildContextualSections({
-            isBuildMode: false,
-            isSubagent: false,
-        });
-        expect(sections.some((s) => s.includes('spawnAgent'))).toBe(true);
-        expect(sections.some((s) => s.includes('self-contained'))).toBe(true);
-    });
-
-    it('returns empty for non-build mode subagent', () => {
-        const sections = buildContextualSections({
-            isBuildMode: false,
-            isSubagent: true,
-        });
-        expect(sections).toEqual([]);
-    });
-
-    it('returns sections for non-build non-subagent', () => {
-        const sections = buildContextualSections({
-            isBuildMode: false,
-            isSubagent: false,
-        });
-        expect(sections.length).toBeGreaterThan(0);
     });
 });
