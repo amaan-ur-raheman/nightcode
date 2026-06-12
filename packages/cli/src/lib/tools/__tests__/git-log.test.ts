@@ -21,8 +21,14 @@ describe('gitLogTool', () => {
         const { gitLogTool } = await import('../git-log');
         const result = await gitLogTool({ oneline: true, limit: 10 });
         expect(result.success).toBe(true);
-        expect(result.commits).toHaveLength(2);
-        expect(result.commits[0].hash).toBe('abc1234');
+        const commits = (
+            result as {
+                success: true;
+                commits: { hash: string; message: string }[];
+            }
+        ).commits;
+        expect(commits).toHaveLength(2);
+        expect(commits[0]!.hash).toBe('abc1234');
     });
 
     it('returns empty commits when log is empty', async () => {

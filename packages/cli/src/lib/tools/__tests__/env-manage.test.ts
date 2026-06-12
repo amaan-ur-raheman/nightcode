@@ -33,11 +33,13 @@ describe('envManageTool', () => {
         const { envManageTool } = await import('../env-manage');
         const result = await envManageTool({ action: 'list', file: '.env' });
         expect(result).toHaveProperty('count', 2);
-        expect(result.variables[0]).toHaveProperty('key', 'DATABASE_URL');
-        expect(result.variables[0]).toHaveProperty(
-            'value',
-            'postgres://localhost/db',
-        );
+        const variables = (
+            result as {
+                variables: { key: string; value: string; line: number }[];
+            }
+        ).variables;
+        expect(variables[0]).toHaveProperty('key', 'DATABASE_URL');
+        expect(variables[0]).toHaveProperty('value', 'postgres://localhost/db');
     });
 
     it('adds a new variable', async () => {

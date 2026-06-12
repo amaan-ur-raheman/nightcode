@@ -35,8 +35,14 @@ describe('codeSearchTool', () => {
         mockBunSpawn('/code.ts:1:export function greet(name) {}\n');
         const { codeSearchTool } = await import('../code-search');
         const result = await codeSearchTool({ symbol: 'greet', path: '.' });
-        expect(result.matches.length).toBeGreaterThanOrEqual(1);
-        expect(result.matches[0].content).toContain('greet');
+        expect(result).toHaveProperty('matches');
+        const matches = (
+            result as {
+                matches: { file: string; line: number; content: string }[];
+            }
+        ).matches;
+        expect(matches.length).toBeGreaterThanOrEqual(1);
+        expect(matches[0]!.content).toContain('greet');
     });
 
     it('returns no definitions for nonexistent symbol', async () => {
