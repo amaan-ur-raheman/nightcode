@@ -13,12 +13,33 @@ type OrchestratorListener = (states: OrchestratorState[]) => void;
 class OrchestratorManager {
     private active = new Map<string, OrchestratorState>();
     private listeners = new Set<OrchestratorListener>();
+    private taskAbortControllers = new Map<string, AbortController>();
 
     /**
      * Mapping from toolCallId → graphId so UI components can filter
      * to only show the graph spawned by a specific orchestrator tool call.
      */
     private toolCallToGraph = new Map<string, string>();
+
+    registerTaskAbortController(graphId: string, taskId: string, controller: AbortController): void {
+        this.taskAbortControllers.set(`${graphId}:${taskId}`, controller);
+    }
+
+    unregisterTaskAbortController(graphId: string, taskId: string): void {
+        this.taskAbortControllers.delete(`${graphId}:${taskId}`);
+    }
+
+    getTaskSignal(graphId: string, taskId: string): AbortSignal | undefined {
+        return this.taskAbortControllers.get(`${graphId}:${taskId}`)?.signal;
+    }
+
+    abortTask(graphId: string, taskId: string): void {
+        const controller = this.taskAbortControllers.get(`${graphId}:${taskId}`);
+        if (controller) {
+            controller.abort();
+            this.taskAbortControllers.delete(`${graphId}:${taskId}`);
+        }
+    }
 
     private currentToolCallContext: string | null = null;
 

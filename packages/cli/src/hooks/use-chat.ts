@@ -17,7 +17,7 @@ import {
     Mode,
 } from '@nightcode/shared';
 
-import { getAuth } from '@/lib/auth';
+import { getValidAuth } from '@/lib/auth';
 import { apiClient } from '@/lib/api-client';
 import { getApiKeyForProvider } from '@/lib/api-keys';
 import { resolveProviderForModel } from '@nightcode/shared';
@@ -47,6 +47,8 @@ import {
     setExecutionContext,
 } from '@/lib/subagent-progress';
 import { safeStringify } from '@/lib/safe-json';
+import { timelineManager } from '@/lib/timeline-manager';
+
 
 const MAX_SUBAGENT_OUTPUT_CHARS = 8000;
 
@@ -277,7 +279,7 @@ export function useChat(
                         }
                     })(),
                     (async () => {
-                        const auth = getAuth();
+                        const auth = await getValidAuth();
                         return auth?.token ?? null;
                     })(),
                 ]);
@@ -345,6 +347,39 @@ export function useChat(
 
     // Store chat ref for access in callbacks
     chatRef.current = chat;
+
+    const lastSnapshotRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (chat.status === 'ready' && chat.messages.length > 0) {
+            const lastMsg = chat.messages[chat.messages.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+                const isComplete = !lastMsg.parts.some((p: any) => {
+                    if (
+                        p.type === 'dynamic-tool' ||
+                        (typeof p.type === 'string' && p.type.startsWith('tool-'))
+                    ) {
+                        const toolPart = p as any;
+                        return (
+                            toolPart.state !== 'output-available' &&
+                            toolPart.state !== 'output-error'
+                        );
+                    }
+                    return false;
+                });
+
+                if (isComplete && lastSnapshotRef.current !== lastMsg.id) {
+                    lastSnapshotRef.current = lastMsg.id;
+                    const userMsgIdx = chat.messages.findLastIndex(
+                        (m, idx) => m.role === 'user' && idx < chat.messages.length - 1,
+                    );
+                    const parentMessageId = userMsgIdx >= 0 ? chat.messages[userMsgIdx]?.id : undefined;
+
+                    void timelineManager.takeSnapshot(sessionId, lastMsg.id, parentMessageId);
+                }
+            }
+        }
+    }, [chat.status, chat.messages, sessionId]);
+
 
     // Flush collected tool calls — executes single tools directly, batches multiple via batchManager
     const flushPendingToolCalls = useCallback(
@@ -781,6 +816,11 @@ export function useChat(
                     ...prev,
                     [newBranch.id]: [...snapshot],
                 }));
+
+                const parentMsg = chat.messages[idx];
+                if (parentMsg) {
+                    void timelineManager.takeSnapshot(sessionId, newBranch.id, parentMsg.id);
+                }
             } catch (err) {
                 console.error('Failed to create branch:', err);
             }

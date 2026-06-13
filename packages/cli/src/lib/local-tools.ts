@@ -36,6 +36,16 @@ const PLAN_TOOLS = new Set([
     'askQuestion',
     'useSkill',
     'listSkills',
+    'buildKnowledgeGraph',
+    'queryKnowledgeGraph',
+    'getKnowledgeNeighbors',
+    'addKnowledgeNode',
+    'addKnowledgeEdge',
+    'detectKnowledgeCycles',
+    'getKnowledgeStats',
+    'impactAnalysis',
+    'breakingChangeCheck',
+    'suggestMigration',
 ]);
 
 async function directExecute(

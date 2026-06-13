@@ -6,6 +6,8 @@ type SystemPromptParams = {
     projectContext?: string;
     isSubagent?: boolean;
     currentModel?: string;
+    /** Learned corrections from previous undo operations */
+    corrections?: string[];
 };
 
 const MAX_PROMPT_CACHE_SIZE = 32;
@@ -13,7 +15,7 @@ const promptCache = new Map<string, string>();
 const subagentPromptCache = new Map<string, string>();
 
 function getCacheKey(params: SystemPromptParams): string {
-    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}`;
+    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}:${params.corrections?.length ?? 0}`;
 }
 
 /**
@@ -65,8 +67,9 @@ export function buildSystemPrompt({
     projectContext,
     isSubagent,
     currentModel,
+    corrections,
 }: SystemPromptParams): string {
-    const key = getCacheKey({ mode, projectContext, isSubagent, currentModel });
+    const key = getCacheKey({ mode, projectContext, isSubagent, currentModel, corrections });
     const cached = promptCache.get(key);
     if (cached) return cached;
 
@@ -84,6 +87,12 @@ export function buildSystemPrompt({
 
     if (projectContext) {
         parts.push(`## Project Context\n${projectContext}`);
+    }
+
+    if (corrections && corrections.length > 0) {
+        parts.push(
+            `## Previous Corrections\n${corrections.map((c) => `- ${c}`).join('\n')}`,
+        );
     }
 
     if (isSubagent) {
@@ -152,6 +161,23 @@ Use the **askQuestion** tool to prompt the user for input when you need clarific
 
 Example:
 askQuestion({ questions: [{ question: "Which state manager?", choices: ["Zustand", "Jotai", "Redux Toolkit"], allowCustom: true }] })
+
+### Knowledge Graph
+Build a semantic knowledge graph of the project's architecture, dependencies, and API contracts.
+- **buildKnowledgeGraph** — Scan the project and build the graph (call first to understand the codebase). Results are cached.
+- **queryKnowledgeGraph** — Search for nodes by type, name, file path, or export status.
+- **getKnowledgeNeighbors** — Find all connected nodes (imports, exports, calls, dependencies) for a given node.
+- **addKnowledgeNode / addKnowledgeEdge** — Manually add custom relationships not auto-detected.
+- **detectKnowledgeCycles** — Find circular dependencies.
+- **getKnowledgeStats** — Summary statistics (node/edge counts, types breakdown).
+
+### Dependency Impact Analysis
+Leverage the knowledge graph to assess the blast radius of changes before making them:
+- **impactAnalysis** — Given a node ID, trace all direct and transitive consumers. Returns affected files and a risk level (none/low/medium/high). Use BEFORE modifying any exported symbol.
+- **breakingChangeCheck** — Compare current exports against a list of exports that will be kept. Reports which consumers will break and which files need updating.
+- **suggestMigration** — Generate a step-by-step migration plan for renaming or moving a node. Returns ordered steps with file paths, descriptions, and priorities (critical/recommended/optional).
+
+When to use: before refactoring APIs, renaming functions/classes, moving files, or any change that affects exports. These tools prevent regressions by showing you exactly what will break.
 
 ### Skills
 Skills are specialized guides for common tasks. Use them when your task matches a known domain.

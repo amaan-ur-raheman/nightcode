@@ -1360,49 +1360,41 @@ function renderBashOutput(
 
     if (stdout.trim()) {
         const lines = stdout.split('\n');
-        children.push(
-            React.createElement(
-                'text',
-                { key: 'stdout' },
-                lines.map((line, i) =>
-                    React.createElement(
-                        'text',
-                        {
-                            key: `s-${i}`,
-                            fg: colors.text,
-                        },
-                        line + (i < lines.length - 1 ? '\n' : ''),
-                    ),
+        lines.forEach((line, i) => {
+            children.push(
+                React.createElement(
+                    'text',
+                    {
+                        key: `s-${i}`,
+                        fg: colors.text,
+                    },
+                    line + (i < lines.length - 1 ? '\n' : ''),
                 ),
-            ),
-        );
+            );
+        });
     }
 
     if (stderr.trim()) {
         const lines = stderr.split('\n');
-        children.push(
-            React.createElement(
-                'text',
-                { key: 'stderr' },
-                lines.map((line, i) =>
-                    React.createElement(
-                        'text',
-                        {
-                            key: `e-${i}`,
-                            fg: ERROR_PATTERN.test(line)
-                                ? colors.error
-                                : colors.dimSeparator,
-                        },
-                        line + (i < lines.length - 1 ? '\n' : ''),
-                    ),
+        lines.forEach((line, i) => {
+            children.push(
+                React.createElement(
+                    'text',
+                    {
+                        key: `e-${i}`,
+                        fg: ERROR_PATTERN.test(line)
+                            ? colors.error
+                            : colors.dimSeparator,
+                    },
+                    line + (i < lines.length - 1 ? '\n' : ''),
                 ),
-            ),
-        );
+            );
+        });
     }
 
     if (children.length === 0) return null;
 
-    return React.createElement('text', null, ...children);
+    return React.createElement('box', null, ...children);
 }
 
 export { highlightCode, detectLanguage, LANG_LABELS, renderBashOutput };

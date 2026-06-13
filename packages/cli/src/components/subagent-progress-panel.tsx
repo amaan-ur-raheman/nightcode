@@ -290,9 +290,6 @@ export const SubagentProgressPanel = React.memo(function SubagentProgressPanel({
                         </box>
                     );
                 })}
-                <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
-                    — ctrl+x down view subagents
-                </text>
             </box>
         );
     }

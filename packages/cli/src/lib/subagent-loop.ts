@@ -64,6 +64,10 @@ function summarizeToolInput(toolName: string, input: any): string {
             return typeof input.command === 'string'
                 ? truncate(input.command, 50)
                 : '';
+        case 'replExecute':
+            return typeof input.command === 'string'
+                ? truncate(input.command, 50)
+                : '';
         case 'runTests':
             return typeof input.pattern === 'string'
                 ? truncate(input.pattern)
@@ -125,11 +129,11 @@ export type SubagentLoopConfig = {
     mode: 'BUILD' | 'PLAN';
     /** Model ID */
     model: string;
-    /** Auth token — used as initial token, refreshed before each step */
+    /** Auth data — used as initial token, refreshed on 401 */
     auth: { token: string };
     /** Abort signal for cancellation */
     signal: AbortSignal;
-    /** Max steps before giving up (default 50) */
+    /** Max steps before giving up (default 100) */
     maxSteps?: number;
     /** Agent ID for progress tracking (if omitted, no progress updates) */
     agentId?: string;
@@ -137,6 +141,10 @@ export type SubagentLoopConfig = {
     label?: string;
     /** Max retries for rate-limited requests (default 5) */
     maxRetries?: number;
+    /** Max messages to keep in context window (default 20) */
+    maxContextMessages?: number;
+    /** Per-step timeout in ms (default 90000). Steps exceeding this are aborted. */
+    stepTimeoutMs?: number;
 };
 
 /**
@@ -159,6 +167,8 @@ export async function runSubagentLoop(
         agentId,
         label = 'subagent',
         maxRetries = 5,
+        maxContextMessages = 20,
+        stepTimeoutMs: configuredStepTimeout,
     } = config;
 
     const messages: any[] = [
@@ -170,13 +180,16 @@ export async function runSubagentLoop(
     ];
 
     // H2: Maximum messages to keep in context to prevent unbounded growth.
-    // Keeps the first user message + last MAX_CONTEXT_MESSAGES messages.
-    // Lowered from 20→12 to reduce token explosion in long-running workers.
-    const MAX_CONTEXT_MESSAGES = 12;
+    // Keeps the first user message + last maxContextMessages messages.
+    const MAX_CONTEXT_MESSAGES = maxContextMessages;
 
     // Per-step timeout: if a single step (LLM call + tool execution) takes longer
     // than this, abort the step to prevent runaway generation (e.g. 3K+ token outputs).
-    const STEP_TIMEOUT_MS = 90_000;
+    const STEP_TIMEOUT_MS = configuredStepTimeout ?? 90_000;
+
+    // Heartbeat watchdog: if no progress for this long, abort to detect hung connections.
+    // Independent of step timeout — detects truly hung connections, not slow steps.
+    const HEARTBEAT_TIMEOUT_MS = 180_000; // 3 minutes default
 
     // Accumulate text output across steps for partial results on timeout
     let accumulatedText = '';
@@ -188,8 +201,84 @@ export async function runSubagentLoop(
         `[${label}] Task: ${prompt.slice(0, 200)}${prompt.length > 200 ? '...' : ''}`,
     );
 
+    // Heartbeat watchdog: creates its own AbortController to avoid hijacking the parent signal.
+    // Only monitors the LLM fetch phase — resets before/after tool execution.
+    let lastProgressTime = Date.now();
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    const heartbeatController = new AbortController();
+
+    // Link parent abort to heartbeat controller
+    if (signal.aborted) {
+        heartbeatController.abort(signal.reason);
+    } else {
+        signal.addEventListener(
+            'abort',
+            () => heartbeatController.abort(signal.reason),
+            { once: true },
+        );
+    }
+
+    const resetHeartbeat = () => {
+        lastProgressTime = Date.now();
+    };
+
+    const pauseHeartbeat = () => {
+        // Pause during tool execution — tools have their own timeouts
+        if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+        }
+    };
+
+    const resumeHeartbeat = () => {
+        resetHeartbeat();
+        if (heartbeatTimer) return; // Already running
+        heartbeatTimer = setInterval(() => {
+            const elapsed = Date.now() - lastProgressTime;
+            if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+                debug.log(
+                    label,
+                    `Heartbeat timeout: no progress for ${Math.round(elapsed / 1000)}s, aborting`,
+                );
+                console.log(
+                    `[${label}] Heartbeat timeout: no progress for ${Math.round(elapsed / 1000)}s`,
+                );
+                // Only abort our own controller — parent signal is untouched
+                heartbeatController.abort();
+            }
+        }, 10_000);
+    };
+
+    resumeHeartbeat();
+
+    // Cache auth token outside the loop to avoid reading from disk on every step.
+    // Refresh is only attempted on 401 (proactive expiry check + lazy refresh).
+    const { getValidAuth } = await import('@/lib/auth');
+    let currentAuth = auth;
+    let providerKey: string | null = null;
+
+    // Resolve provider API key once — it doesn't change between steps
+    try {
+        const provider = resolveProviderForModel(model);
+        providerKey = await getApiKeyForProvider(provider);
+    } catch {
+        // Provider key is optional — some models don't need one
+    }
+
+    /** Ensure we have a valid token, refreshing if expired or on explicit request. */
+    async function ensureAuth(forceRefresh = false): Promise<{ token: string }> {
+        if (!forceRefresh) return currentAuth;
+        const refreshed = await getValidAuth();
+        if (refreshed) {
+            currentAuth = refreshed;
+            return refreshed;
+        }
+        return currentAuth;
+    }
+
+    try {
     for (let step = 0; step < maxSteps; step++) {
-        if (signal.aborted) {
+        if (signal.aborted || heartbeatController.signal.aborted) {
             // Return partial results instead of throwing on abort
             if (accumulatedText) {
                 if (agentId) completeSubagent(agentId, 'completed');
@@ -200,31 +289,20 @@ export async function runSubagentLoop(
             throw err;
         }
 
-        // Fetch with retry for rate limits, wrapped with per-step timeout
-        // Refresh auth before each step to handle token expiry mid-execution
+        // Reset heartbeat at the start of each step
+        resetHeartbeat();
+
+        // Fetch with retry for rate limits, wrapped with per-step timeout.
+        // Auth is cached — only refreshed on 401 (see recovery below).
         let response: Response | undefined;
         const stepSignal = AbortSignal.any([
             signal,
             AbortSignal.timeout(STEP_TIMEOUT_MS),
         ]);
-        const { getValidAuth } = await import('@/lib/auth');
-        const freshAuth = await getValidAuth();
-        if (!freshAuth) {
-            throw new Error('Not authenticated. Run /login to continue.');
-        }
-        // Resolve provider API key to send with the request
-        const providerKey = await (async () => {
-            try {
-                const provider = resolveProviderForModel(model);
-                return await getApiKeyForProvider(provider);
-            } catch {
-                return null;
-            }
-        })();
 
         const subagentHeaders: Record<string, string> = {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${freshAuth.token}`,
+            Authorization: `Bearer ${currentAuth.token}`,
         };
         if (providerKey) {
             subagentHeaders['x-provider-key'] = providerKey;
@@ -257,6 +335,23 @@ export async function runSubagentLoop(
         }
 
         if (!response || !response.ok) {
+            // 401 recovery: attempt token refresh and retry once
+            if (response?.status === 401) {
+                debug.log(label, 'Got 401 — attempting token refresh');
+                const refreshed = await ensureAuth(true);
+                if (refreshed.token !== currentAuth.token) {
+                    // Token was refreshed — retry this step once
+                    console.log(`[${label}] Token refreshed after 401, retrying step`);
+                    subagentHeaders['Authorization'] = `Bearer ${refreshed.token}`;
+                    response = await fetch(`${API_URL}/subagent`, {
+                        method: 'POST',
+                        headers: subagentHeaders,
+                        body: JSON.stringify({ messages, model, mode, agentId }),
+                        signal: stepSignal,
+                    });
+                }
+            }
+
             const body = (await response?.json().catch(() => ({}))) as {
                 error?: string;
             };
@@ -467,8 +562,12 @@ export async function runSubagentLoop(
             },
         );
 
+        // Pause heartbeat during tool execution — tools have their own timeouts
+        pauseHeartbeat();
         // Execute all tool calls in parallel
         await Promise.allSettled(toolExecutionPromises);
+        // Resume heartbeat for the next LLM fetch
+        resumeHeartbeat();
     }
 
     console.log(`[${label}] Completed after ${maxSteps} steps`);
@@ -480,6 +579,15 @@ export async function runSubagentLoop(
     if (agentId)
         completeSubagent(agentId, 'failed', `Exceeded max steps (${maxSteps})`);
     throw new Error(`${label} exceeded maximum steps (${maxSteps})`);
+    } finally {
+        // Always clean up heartbeat timer and controller
+        if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+        }
+        // Unlink parent abort listener if we added one
+        // (heartbeatController is GC'd when function exits)
+    }
 }
 
 /**
