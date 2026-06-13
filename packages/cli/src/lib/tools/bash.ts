@@ -1,5 +1,5 @@
 import { toolInputSchemas } from '@nightcode/shared';
-import { checkCommandSafety } from './bash-safety';
+import { checkCommandSafety } from './dangerous-ops';
 import { MAX_OUTPUT, truncate } from './utils';
 import { ptySessionManager } from '../pty-session';
 
