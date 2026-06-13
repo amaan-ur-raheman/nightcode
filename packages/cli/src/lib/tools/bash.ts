@@ -1,6 +1,7 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { checkCommandSafety } from './bash-safety';
 import { MAX_OUTPUT, truncate } from './utils';
+import { ptySessionManager } from '../pty-session';
 
 export function spawnCommand(command: string, options: Record<string, any>) {
     return Bun.spawn(['bash', '-c', command], options);
@@ -46,11 +47,22 @@ export async function bashTool(
     let timedOut = false;
     const proc = spawnCommand(command, {
         cwd: process.cwd(),
+        stdin: 'pipe',
         stdout: 'pipe',
         stderr: 'pipe',
         env: { ...process.env, TERM: 'dumb' },
         detached: true,
     });
+
+    ptySessionManager.registerProcess(proc, command);
+
+    // Auto-attach if the command is still running after 1.5 seconds (potentially waiting for input or doing long operations)
+    const attachTimer = setTimeout(() => {
+        if (proc.pid) {
+            ptySessionManager.attach();
+        }
+    }, 1500);
+
     const timer = setTimeout(() => {
         timedOut = true;
         killProcessGroup(proc);
@@ -61,19 +73,18 @@ export async function bashTool(
     };
     signal?.addEventListener('abort', onAbort);
 
-    let stdout = '';
-    let stderr = '';
     let exitCode = 1;
     try {
-        [stdout, stderr] = await Promise.all([
-            new Response(proc.stdout).text(),
-            new Response(proc.stderr).text(),
-        ]);
         exitCode = await proc.exited;
     } finally {
+        clearTimeout(attachTimer);
         clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
     }
+
+    await ptySessionManager.waitForStreams();
+    const stdout = ptySessionManager.getStdout();
+    const stderr = ptySessionManager.getStderr();
 
     const result: {
         stdout: string;
