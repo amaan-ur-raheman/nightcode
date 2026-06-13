@@ -9,12 +9,16 @@ vi.hoisted(() => {
         },
         stdout: {
             getReader: () => ({
-                read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+                read: vi
+                    .fn()
+                    .mockResolvedValue({ done: true, value: undefined }),
             }),
         },
         stderr: {
             getReader: () => ({
-                read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+                read: vi
+                    .fn()
+                    .mockResolvedValue({ done: true, value: undefined }),
             }),
         },
         killed: false,
@@ -34,7 +38,7 @@ describe('ReplRunner', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        
+
         mockProc = {
             stdin: {
                 write: vi.fn(),
@@ -42,12 +46,16 @@ describe('ReplRunner', () => {
             },
             stdout: {
                 getReader: () => ({
-                    read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+                    read: vi
+                        .fn()
+                        .mockResolvedValue({ done: true, value: undefined }),
                 }),
             },
             stderr: {
                 getReader: () => ({
-                    read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+                    read: vi
+                        .fn()
+                        .mockResolvedValue({ done: true, value: undefined }),
                 }),
             },
             killed: false,

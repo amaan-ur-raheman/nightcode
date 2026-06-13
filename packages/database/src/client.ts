@@ -39,7 +39,8 @@ if (
     dbInstance = new PrismaClient({ adapter });
 } else {
     const { PrismaClient } = await import('../generated/sqlite/client.ts');
-    const { PrismaBetterSqlite3 } = await import('@prisma/adapter-better-sqlite3');
+    const { PrismaBetterSqlite3 } =
+        await import('@prisma/adapter-better-sqlite3');
 
     let sqlitePath = databaseUrl.replace(/^file:/, '');
     if (!path.isAbsolute(sqlitePath)) {
@@ -53,15 +54,28 @@ if (
 
     if (!fs.existsSync(sqlitePath)) {
         try {
-            console.log(`[Database] Local SQLite database file not found at ${sqlitePath}. Bootstrapping...`);
-            const schemaPath = path.resolve(import.meta.dirname, '../prisma/schema.sqlite.prisma');
-            execSync(`bunx prisma db push --schema "${schemaPath}" --accept-data-loss`, {
-                env: { ...process.env, DATABASE_URL: databaseUrl },
-                stdio: 'inherit',
-            });
-            console.log(`[Database] Local SQLite database bootstrapped successfully.`);
+            console.log(
+                `[Database] Local SQLite database file not found at ${sqlitePath}. Bootstrapping...`,
+            );
+            const schemaPath = path.resolve(
+                import.meta.dirname,
+                '../prisma/schema.sqlite.prisma',
+            );
+            execSync(
+                `bunx prisma db push --schema "${schemaPath}" --accept-data-loss`,
+                {
+                    env: { ...process.env, DATABASE_URL: databaseUrl },
+                    stdio: 'inherit',
+                },
+            );
+            console.log(
+                `[Database] Local SQLite database bootstrapped successfully.`,
+            );
         } catch (error) {
-            console.error(`[Database] Failed to bootstrap SQLite database:`, error);
+            console.error(
+                `[Database] Failed to bootstrap SQLite database:`,
+                error,
+            );
         }
     }
 

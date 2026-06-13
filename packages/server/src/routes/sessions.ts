@@ -48,9 +48,7 @@ const app = new Hono<AuthenticatedEnv>()
             const sessions = await db.session.findMany({
                 where: {
                     userId,
-                    ...(cursor
-                        ? { createdAt: { lt: new Date(cursor) } }
-                        : {}),
+                    ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
                 },
                 orderBy: { createdAt: 'desc' },
                 take: limit,
@@ -254,10 +252,7 @@ const app = new Hono<AuthenticatedEnv>()
                 return c.json({ branchId });
             } catch (err) {
                 console.error('Failed to update active branch:', err);
-                return c.json(
-                    { error: 'Failed to update active branch' },
-                    500,
-                );
+                return c.json({ error: 'Failed to update active branch' }, 500);
             }
         },
     )

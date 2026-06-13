@@ -22,6 +22,53 @@ const providerCache = new Map<
     ReturnType<typeof createOpenAICompatible>
 >();
 
+/**
+ * Circuit breaker for provider failures.
+ * Tracks failures per provider and opens the circuit after 3 failures,
+ * preventing wasted requests to known-bad endpoints.
+ */
+class CircuitBreaker {
+    private failures = new Map<string, number>();
+    private lastFailure = new Map<string, number>();
+    private readonly maxFailures = 3;
+    private readonly resetTimeoutMs = 60_000; // 60 seconds
+
+    /**
+     * Check if a provider's circuit is open (should be skipped).
+     */
+    isOpen(provider: string): boolean {
+        const failCount = this.failures.get(provider) ?? 0;
+        if (failCount < this.maxFailures) return false;
+
+        const lastFail = this.lastFailure.get(provider) ?? 0;
+        if (Date.now() - lastFail > this.resetTimeoutMs) {
+            // Half-open: allow one retry after timeout
+            this.failures.set(provider, this.maxFailures - 1);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Record a failure for a provider.
+     */
+    recordFailure(provider: string): void {
+        const current = this.failures.get(provider) ?? 0;
+        this.failures.set(provider, current + 1);
+        this.lastFailure.set(provider, Date.now());
+    }
+
+    /**
+     * Reset failure count on success (circuit closes).
+     */
+    recordSuccess(provider: string): void {
+        this.failures.delete(provider);
+        this.lastFailure.delete(provider);
+    }
+}
+
+export const circuitBreaker = new CircuitBreaker();
+
 function getOrCreateProvider(name: string, baseUrl: string, apiKey: string) {
     const cacheKey = `${name}:${apiKey}`;
     let provider = providerCache.get(cacheKey);
@@ -137,6 +184,13 @@ const LOCAL_PROVIDER: ProviderConfig = {
     models: [],
 };
 
+const LIGHTNINGAI_PROVIDER: ProviderConfig = {
+    name: 'lightningai',
+    baseUrl: 'https://lightning.ai/api/v1',
+    apiKey: '',
+    models: [],
+};
+
 const ALL_PROVIDERS: ProviderConfig[] = [
     NIM_PROVIDER,
     ANTHROPIC_PROVIDER,
@@ -151,6 +205,7 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     GEMINI_PROVIDER,
     KILO_PROVIDER,
     LOCAL_PROVIDER,
+    LIGHTNINGAI_PROVIDER,
 ];
 
 // Provider prefix mapping for dynamic model IDs
@@ -165,6 +220,7 @@ const PROVIDER_PREFIXES: Record<string, string> = {
     'google/': 'gemini',
     'kilo/': 'kilo',
     'local/': 'local',
+    'lightningai/': 'lightningai',
 };
 
 function findProviderForModel(modelId: string): ProviderConfig | undefined {
@@ -228,14 +284,31 @@ export async function getProviderClient(
 ): Promise<LanguageModelV3> {
     // OpenCode Zen models use multi-SDK routing
     if (isZenModel(modelId)) {
-        const model = await zen(modelId, apiKey);
-        return wrapModelWithQueue(model);
+        const providerName = 'opencode';
+        if (circuitBreaker.isOpen(providerName)) {
+            throw new Error(
+                `Provider "${providerName}" is temporarily unavailable due to repeated failures. Try again later.`,
+            );
+        }
+        try {
+            const model = await zen(modelId, apiKey);
+            circuitBreaker.recordSuccess(providerName);
+            return wrapModelWithQueue(model);
+        } catch (error) {
+            circuitBreaker.recordFailure(providerName);
+            throw error;
+        }
     }
 
     // Check for dynamic model with provider prefix
     const dynamicProvider = getProviderForDynamicModel(modelId);
     if (dynamicProvider) {
         const { provider, actualModelId } = dynamicProvider;
+        if (circuitBreaker.isOpen(provider.name)) {
+            throw new Error(
+                `Provider "${provider.name}" is temporarily unavailable due to repeated failures. Try again later.`,
+            );
+        }
         const resolvedKey = apiKey || provider.apiKey || '';
         if (!resolvedKey) {
             throw new Error(
@@ -243,19 +316,26 @@ export async function getProviderClient(
                     `Configure the key in your client settings.`,
             );
         }
-        // Gemini uses a non-OpenAI-compatible API, route through Google AI SDK
-        if (provider.name === 'gemini') {
-            const googleProvider = createGoogleGenerativeAI({
-                apiKey: resolvedKey,
-            });
-            return wrapModelWithQueue(googleProvider(actualModelId));
+        try {
+            // Gemini uses a non-OpenAI-compatible API, route through Google AI SDK
+            if (provider.name === 'gemini') {
+                const googleProvider = createGoogleGenerativeAI({
+                    apiKey: resolvedKey,
+                });
+                circuitBreaker.recordSuccess(provider.name);
+                return wrapModelWithQueue(googleProvider(actualModelId));
+            }
+            const sdk = getOrCreateProvider(
+                provider.name,
+                provider.baseUrl,
+                resolvedKey,
+            );
+            circuitBreaker.recordSuccess(provider.name);
+            return wrapModelWithQueue(sdk(actualModelId));
+        } catch (error) {
+            circuitBreaker.recordFailure(provider.name);
+            throw error;
         }
-        const sdk = getOrCreateProvider(
-            provider.name,
-            provider.baseUrl,
-            resolvedKey,
-        );
-        return wrapModelWithQueue(sdk(actualModelId));
     }
 
     const provider = findProviderForModel(modelId);
@@ -267,6 +347,12 @@ export async function getProviderClient(
         );
     }
 
+    if (circuitBreaker.isOpen(provider.name)) {
+        throw new Error(
+            `Provider "${provider.name}" is temporarily unavailable due to repeated failures. Try again later.`,
+        );
+    }
+
     const resolvedKey = apiKey || provider.apiKey || '';
     if (!resolvedKey) {
         throw new Error(
@@ -275,12 +361,18 @@ export async function getProviderClient(
         );
     }
 
-    const sdk = getOrCreateProvider(
-        provider.name,
-        provider.baseUrl,
-        resolvedKey,
-    );
-    return wrapModelWithQueue(sdk(modelId));
+    try {
+        const sdk = getOrCreateProvider(
+            provider.name,
+            provider.baseUrl,
+            resolvedKey,
+        );
+        circuitBreaker.recordSuccess(provider.name);
+        return wrapModelWithQueue(sdk(modelId));
+    } catch (error) {
+        circuitBreaker.recordFailure(provider.name);
+        throw error;
+    }
 }
 
 export async function isModelAvailable(modelId: string): Promise<boolean> {

@@ -45,7 +45,9 @@ describe('getModelName', () => {
     });
 
     it('returns friendly name with [Local] prefix for local models', () => {
-        expect(getModelName('local/llama3:latest')).toBe('[Local] Llama3 Latest');
+        expect(getModelName('local/llama3:latest')).toBe(
+            '[Local] Llama3 Latest',
+        );
         expect(getModelName('local/mistral')).toBe('[Local] Mistral');
     });
 });

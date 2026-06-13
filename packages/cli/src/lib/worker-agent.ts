@@ -30,14 +30,14 @@ import { writeResult } from '@/lib/workspace';
 const WORKER_SYSTEM_PROMPTS: Record<AgentRole, string> = {
     orchestrator:
         'You are an orchestrator agent managing a team of specialized workers.',
-    coder: 'You are an expert software engineer. Implement the assigned coding task precisely. Write clean, production-quality code. Verify your work by reading the files you modified.',
+    coder: 'You are an expert software engineer. Implement the assigned coding task precisely. Write clean, production-quality code. Read all relevant files before modifying. Verify your work by reading the files you modified and running appropriate checks. Accuracy over speed - one correct change is better than three wrong ones.',
     reviewer:
-        'You are a senior code reviewer. Analyze the code for bugs, security issues, performance problems, and adherence to best practices. Provide specific, actionable feedback with file:line references.',
-    tester: "You are a test engineer. Write comprehensive tests that cover edge cases, error paths, and happy paths. Use the project's existing test framework.",
+        'You are a senior code reviewer. Analyze the code for bugs, security issues, performance problems, and adherence to best practices. Provide specific, actionable feedback with file:line references. Read the full files you review — don’t guess at context.',
+    tester: "You are a test engineer. Write comprehensive tests that cover edge cases, error paths, and happy paths. Use the project's existing test framework. Run the tests after writing them to confirm they pass.",
     researcher:
-        'You are a technical researcher. Investigate the codebase, documentation, and patterns to provide thorough, well-sourced answers.',
+        'You are a technical researcher. Investigate the codebase, documentation, and patterns to provide thorough, well-sourced answers. Cite file paths and line numbers for all findings.',
     debugger:
-        'You are a debugging specialist. Systematically trace the root cause of the bug, verify your hypothesis, and apply a minimal fix. Explain your reasoning.',
+        'You are a debugging specialist. Systematically trace the root cause of the bug by reading the relevant code paths. Form a hypothesis, test it, and apply a minimal fix. Explain your reasoning at each step.',
 };
 
 /** Build a lean prompt for worker agents — role-first, no generic preamble. */
@@ -74,23 +74,68 @@ const ROLE_MODE_MAP: Record<AgentRole, 'BUILD' | 'PLAN'> = {
 };
 
 const WORKER_MAX_STEPS = 60;
-/** Per-worker wall-clock timeout (5 minutes). Prevents stuck workers from blocking slots. */
+/** Base per-worker wall-clock timeout (5 minutes). Prevents stuck workers from blocking slots. */
 const WORKER_TIMEOUT_MS = 5 * 60 * 1000;
+/** Additional time per file referenced by the task (complexity scaling). */
+const TIMEOUT_PER_FILE_MS = 30 * 1000;
+/** Maximum worker timeout cap. */
+const WORKER_TIMEOUT_MAX_MS = 15 * 60 * 1000;
 /** Max chars for immediate dependency results. */
 const DEP_RESULT_FULL_MAX = 3000;
-/** Max chars for transitive dependency results. */
-const DEP_RESULT_SUMMARY_MAX = 500;
 /**
  * Maximum total workers the orchestrator can spawn per graph.
  * Prevents runaway orchestration from burning excessive tokens.
  * Individual tasks beyond this cap are marked as cancelled.
  */
 const MAX_TOTAL_WORKERS = 8;
-/**
- * Task execution timeout. Workers get 5 minutes by default,
- * but tasks can override via maxDurationMs for complex operations.
- */
-const TASK_EXECUTION_TIMEOUT_MS = 5 * 60 * 1000;
+
+// ── Adaptive Worker Timeout: Latency History Tracker ──
+const LATENCY_HISTORY_MAX = 50; // Keep last N latencies per task type
+const LATENCY_PERCENTILE = 0.95; // p95
+const LATENCY_MULTIPLIER = 3; // Timeout = 3x p95
+
+interface LatencyEntry {
+    durationMs: number;
+    timestamp: number;
+}
+
+class WorkerLatencyTracker {
+    private history = new Map<string, LatencyEntry[]>();
+
+    record(taskType: string, durationMs: number): void {
+        const entries = this.history.get(taskType) ?? [];
+        entries.push({ durationMs, timestamp: Date.now() });
+        // Keep only recent entries
+        if (entries.length > LATENCY_HISTORY_MAX) {
+            entries.splice(0, entries.length - LATENCY_HISTORY_MAX);
+        }
+        this.history.set(taskType, entries);
+    }
+
+    /**
+     * Get the adaptive timeout for a task type based on p95 latency.
+     * Returns null if insufficient data (< 5 samples).
+     */
+    getAdaptiveTimeout(taskType: string): number | null {
+        const entries = this.history.get(taskType);
+        if (!entries || entries.length < 5) return null;
+
+        const sorted = [...entries]
+            .map((e) => e.durationMs)
+            .sort((a, b) => a - b);
+        const p95Index = Math.floor(sorted.length * LATENCY_PERCENTILE);
+        const p95 = sorted[Math.min(p95Index, sorted.length - 1)]!;
+
+        return Math.min(p95 * LATENCY_MULTIPLIER, WORKER_TIMEOUT_MAX_MS);
+    }
+
+    /** Clear all history (useful for tests). */
+    clear(): void {
+        this.history.clear();
+    }
+}
+
+const latencyTracker = new WorkerLatencyTracker();
 
 /**
  * Build dependency results with compression and graceful degradation.
@@ -126,6 +171,56 @@ function buildDependencyResults(task: TaskNode, graph: TaskGraph): string {
         .join('\n\n---\n\n');
 }
 
+/**
+ * Check if an error is transient (worth retrying).
+ * Transient errors: rate limits, timeouts, connection resets, 5xx server errors.
+ * Non-transient: auth failures, permission errors, file not found, syntax errors.
+ */
+function isTransientError(error: any): boolean {
+    const message = error?.message?.toLowerCase() || '';
+
+    // Rate limits — always retry
+    if (
+        message.includes('rate limit') ||
+        message.includes('429') ||
+        message.includes('too many requests')
+    ) {
+        return true;
+    }
+
+    // Connection / network errors — retry
+    if (
+        message.includes('econnreset') ||
+        message.includes('econnrefused') ||
+        message.includes('etimedout') ||
+        message.includes('fetch failed') ||
+        message.includes('network')
+    ) {
+        return true;
+    }
+
+    // Timeout — retry
+    if (message.includes('timeout') || message.includes('timed out')) {
+        return true;
+    }
+
+    // Server errors (5xx) — retry
+    if (
+        message.includes('502') ||
+        message.includes('503') ||
+        message.includes('504')
+    ) {
+        return true;
+    }
+
+    // Heartbeat timeout — the connection hung, retry
+    if (message.includes('heartbeat timeout')) {
+        return true;
+    }
+
+    return false;
+}
+
 export async function runWorker(
     task: TaskNode,
     graph: TaskGraph,
@@ -154,7 +249,19 @@ export async function runWorker(
     registerSubagent(agentId, task.description, WORKER_MAX_STEPS);
 
     // Combine external signal with per-worker timeout and task-specific abort signal
-    const workerTimeoutMs = task.maxDurationMs ?? WORKER_TIMEOUT_MS;
+    // Adaptive timeout: use latency history if available, otherwise scale by complexity
+    const adaptiveTimeout = latencyTracker.getAdaptiveTimeout(task.type);
+    const baseTimeout = task.maxDurationMs ?? WORKER_TIMEOUT_MS;
+    const complexityBonus = Math.min(
+        task.files.length * TIMEOUT_PER_FILE_MS,
+        Math.max(0, WORKER_TIMEOUT_MAX_MS - baseTimeout),
+    );
+    const staticTimeout = Math.min(
+        baseTimeout + complexityBonus,
+        WORKER_TIMEOUT_MAX_MS,
+    );
+    // Use adaptive timeout if we have enough history; otherwise use static formula
+    const workerTimeoutMs = adaptiveTimeout ?? staticTimeout;
     const timeoutSignal = AbortSignal.timeout(workerTimeoutMs);
     const taskSignal = orchestratorManager.getTaskSignal(graph.id, task.id);
     const signals = [signal, timeoutSignal];
@@ -164,32 +271,73 @@ export async function runWorker(
     const combined = AbortSignal.any(signals);
 
     let startTime: number = 0;
+    const maxWorkerRetries = 2;
+    let lastError: any;
+
     try {
-        // Execute with optimized timeout for faster failure detection
-        startTime = Date.now();
-        const result = await runSubagentLoop({
-            prompt: taskPrompt,
-            mode,
-            model: resolvedModel,
-            auth,
-            signal: combined,
-            maxSteps: WORKER_MAX_STEPS,
-            agentId,
-            label: `worker-${task.id}`,
-            maxRetries: 3,
-        });
-        const elapsed = Date.now() - startTime;
-        // Enhanced provider latency tracking with task type information
-        const provider = extractProvider(resolvedModel);
-        if (provider) recordProviderLatency(provider, elapsed, true, mode);
-        return result;
-    } catch (error) {
-        // Enhanced error handling with better logging for debugging
-        const elapsed = Date.now() - startTime;
-        const provider = extractProvider(resolvedModel);
-        if (provider) recordProviderLatency(provider, elapsed, false, mode);
-        console.error(`[worker-${task.id}] Worker failed:`, error);
-        throw error;
+        for (let attempt = 0; attempt <= maxWorkerRetries; attempt++) {
+            try {
+                startTime = Date.now();
+                const result = await runSubagentLoop({
+                    prompt: taskPrompt,
+                    mode,
+                    model: resolvedModel,
+                    auth,
+                    signal: combined,
+                    maxSteps: WORKER_MAX_STEPS,
+                    agentId,
+                    label: `worker-${task.id}`,
+                    maxRetries: 3,
+                });
+                const elapsed = Date.now() - startTime;
+                const provider = extractProvider(resolvedModel);
+                if (provider)
+                    recordProviderLatency(provider, elapsed, true, mode);
+                latencyTracker.record(task.type, elapsed);
+                return result;
+            } catch (error) {
+                lastError = error;
+                const elapsed = Date.now() - startTime;
+                const provider = extractProvider(resolvedModel);
+                if (provider)
+                    recordProviderLatency(provider, elapsed, false, mode);
+                latencyTracker.record(task.type, elapsed);
+
+                // Don't retry for non-transient errors
+                if (!isTransientError(error) || attempt >= maxWorkerRetries) {
+                    console.error(
+                        `[worker-${task.id}] Worker failed after ${attempt + 1} attempt(s):`,
+                        error,
+                    );
+                    throw error;
+                }
+
+                // Exponential backoff before retry
+                const delay = Math.min(2000 * Math.pow(2, attempt), 10000);
+                console.log(
+                    `[worker-${task.id}] Transient error, retrying in ${delay}ms (attempt ${attempt + 2}/${maxWorkerRetries + 1}): ${error instanceof Error ? error.message : String(error)}`,
+                );
+                debug.log(
+                    `worker-${task.id}`,
+                    `Retrying after transient error: ${error instanceof Error ? error.message : String(error)}`,
+                );
+                await new Promise<void>((resolve) => {
+                    const t = setTimeout(resolve, delay);
+                    combined.addEventListener(
+                        'abort',
+                        () => {
+                            clearTimeout(t);
+                            resolve();
+                        },
+                        { once: true },
+                    );
+                });
+                // If signal was aborted during delay, don't retry
+                if (combined.aborted) break;
+            }
+        }
+
+        throw lastError;
     } finally {
         removeSubagent(agentId);
     }
@@ -279,9 +427,13 @@ export async function executeTaskGraph(
                 if (hasPendingOrPaused && !controller.signal.aborted) {
                     await new Promise<void>((resolve) => {
                         resolveAnyWorkerDone = resolve;
-                        controller.signal.addEventListener('abort', () => resolve(), {
-                            once: true,
-                        });
+                        controller.signal.addEventListener(
+                            'abort',
+                            () => resolve(),
+                            {
+                                once: true,
+                            },
+                        );
                     });
                     resolveAnyWorkerDone = null;
                     continue;
@@ -317,11 +469,11 @@ export async function executeTaskGraph(
             }
 
             // Start ready tasks (respect concurrency limit)
-            const totalSpawned = Object.values(graph.nodes).filter(
-                (n) => n.status !== 'pending',
-            ).length;
             for (const task of readyTasks) {
                 if (activeWorkers.size >= maxConcurrency) break;
+                const totalSpawned = Object.values(graph.nodes).filter(
+                    (n) => n.status !== 'pending',
+                ).length;
                 if (totalSpawned >= MAX_TOTAL_WORKERS) {
                     const remaining = Object.values(graph.nodes).filter(
                         (n) => n.status === 'pending',
@@ -329,7 +481,9 @@ export async function executeTaskGraph(
                     for (const r of remaining) {
                         r.status = 'cancelled';
                         r.completedAt = Date.now();
-                        void updateTaskNodeInDb(graph.id, r.id, { status: 'cancelled' });
+                        void updateTaskNodeInDb(graph.id, r.id, {
+                            status: 'cancelled',
+                        });
                     }
                     debug.log(
                         'orchestrator',
@@ -353,7 +507,9 @@ export async function executeTaskGraph(
                 if (activeWorkers.has(task.id)) continue;
 
                 markTaskRunning(graph, task.id);
-                void updateTaskNodeInDb(graph.id, task.id, { status: 'running' });
+                void updateTaskNodeInDb(graph.id, task.id, {
+                    status: 'running',
+                });
                 debug.log(
                     'orchestrator',
                     `Starting worker: ${task.id} (${task.type}) — deps=[${task.dependencies.join(', ')}] ready=${readyTasks.map((t) => t.id).join(', ')}`,
@@ -365,7 +521,11 @@ export async function executeTaskGraph(
                 const workerStartedAt = Date.now();
 
                 const taskController = new AbortController();
-                orchestratorManager.registerTaskAbortController(graph.id, task.id, taskController);
+                orchestratorManager.registerTaskAbortController(
+                    graph.id,
+                    task.id,
+                    taskController,
+                );
 
                 const workerPromise = (async () => {
                     if (!acquireSlot()) {
@@ -407,14 +567,6 @@ export async function executeTaskGraph(
                             'orchestrator',
                             `Task ${task.id} completed: ${task.description}`,
                         );
-                        const provider = extractProvider(task.model ?? '');
-                        if (provider)
-                            recordProviderLatency(
-                                provider,
-                                Date.now() - workerStartedAt,
-                                true,
-                                task.mode,
-                            );
                         // Broadcast completion for inter-worker awareness
                         messageBroker.publish({
                             from: workerAgentId,
@@ -437,7 +589,10 @@ export async function executeTaskGraph(
                             // Manually force-completed, do not overwrite
                             return;
                         }
-                        if (task.status === 'paused' || task.status === 'cancelled') {
+                        if (
+                            task.status === 'paused' ||
+                            task.status === 'cancelled'
+                        ) {
                             task.error = msg;
                             task.completedAt = Date.now();
                             graph.version++;
@@ -456,18 +611,13 @@ export async function executeTaskGraph(
                             'orchestrator',
                             `Task ${task.id} failed: ${msg}`,
                         );
-                        const provider = extractProvider(task.model ?? '');
-                        if (provider)
-                            recordProviderLatency(
-                                provider,
-                                Date.now() - workerStartedAt,
-                                false,
-                                task.mode,
-                            );
                     })
                     .finally(() => {
                         activeWorkers.delete(task.id);
-                        orchestratorManager.unregisterTaskAbortController(graph.id, task.id);
+                        orchestratorManager.unregisterTaskAbortController(
+                            graph.id,
+                            task.id,
+                        );
                         orchestratorManager.completeWorker(graph.id);
                         orchestratorManager.updateGraph(graph);
                         signalWorkerDone(); // Signal: something finished
@@ -558,7 +708,9 @@ async function syncTaskNodesToDb(graph: TaskGraph) {
         if (!sessionId) return;
 
         const { apiClient } = await import('@/lib/api-client');
-        await apiClient.orchestrator.sessions[':sessionId'].graphs[':graphId'].nodes.$post({
+        await apiClient.orchestrator.sessions[':sessionId'].graphs[
+            ':graphId'
+        ].nodes.$post({
             param: { sessionId, graphId: graph.id },
             json: {
                 nodes: Object.values(graph.nodes).map((n) => ({
@@ -575,7 +727,10 @@ async function syncTaskNodesToDb(graph: TaskGraph) {
             },
         });
     } catch (err) {
-        debug.log('orchestrator', `Failed to sync task nodes for graph ${graph.id} to DB: ${err}`);
+        debug.log(
+            'orchestrator',
+            `Failed to sync task nodes for graph ${graph.id} to DB: ${err}`,
+        );
     }
 }
 
@@ -588,7 +743,7 @@ async function updateTaskNodeInDb(
         error?: string | null;
         description?: string;
         files?: string[];
-    }
+    },
 ) {
     try {
         const { lastSession } = await import('@/index');
@@ -596,11 +751,70 @@ async function updateTaskNodeInDb(
         if (!sessionId) return;
 
         const { apiClient } = await import('@/lib/api-client');
-        await apiClient.orchestrator.sessions[':sessionId'].graphs[':graphId'].nodes[':nodeId'].$put({
+        await apiClient.orchestrator.sessions[':sessionId'].graphs[
+            ':graphId'
+        ].nodes[':nodeId'].$put({
             param: { sessionId, graphId, nodeId },
             json: update,
         });
     } catch (err) {
-        debug.log('orchestrator', `Failed to update task node ${nodeId} in DB: ${err}`);
+        debug.log(
+            'orchestrator',
+            `Failed to update task node ${nodeId} in DB: ${err}`,
+        );
     }
+}
+
+/**
+ * Resume a previously crashed/aborted task graph from its checkpoint.
+ *
+ * Loads the checkpoint, preserves completed task results, and re-executes
+ * only the pending/failed tasks. Returns a summary of all results.
+ */
+export async function resumeTaskGraph(
+    graphId: string,
+    projectContext: string,
+    maxConcurrency: number,
+    signal: AbortSignal,
+    maxDurationMs?: number,
+): Promise<string> {
+    const { loadCheckpoint } = await import('@/lib/orchestrator-manager');
+    const { getCompletedResults } = await import('@nightcode/shared');
+
+    const graph = await loadCheckpoint(graphId);
+    if (!graph) {
+        throw new Error(`No checkpoint found for graph ${graphId}`);
+    }
+
+    const completedResults = getCompletedResults(graph);
+    const completedCount = Object.keys(completedResults).length;
+    const totalCount = Object.keys(graph.nodes).length;
+    debug.log(
+        'orchestrator',
+        `Resuming graph ${graphId}: ${completedCount}/${totalCount} tasks already completed`,
+    );
+
+    // Reset non-completed tasks to pending
+    for (const node of Object.values(graph.nodes)) {
+        if (node.status !== 'completed') {
+            node.status = 'pending';
+            node.error = undefined;
+            node.retryCount = 0;
+        }
+    }
+
+    // Reset graph status so the while-loop in executeTaskGraph can run
+    graph.status = 'running';
+
+    // Bump version so UI refreshes
+    graph.version++;
+
+    // Execute with the restored graph — completed tasks will be skipped by getReadyTasks
+    return executeTaskGraph(
+        graph,
+        projectContext,
+        maxConcurrency,
+        signal,
+        maxDurationMs,
+    );
 }

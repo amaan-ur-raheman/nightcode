@@ -153,7 +153,9 @@ export function SessionShell({
                     flexShrink={0}
                     marginLeft="auto"
                 >
-                    {active ? <KeyHint keyName="ctrl+p" label="terminal" /> : null}
+                    {active ? (
+                        <KeyHint keyName="ctrl+p" label="terminal" />
+                    ) : null}
                     {canRetry ? (
                         <KeyHint keyName="ctrl+r" label="retry" />
                     ) : null}

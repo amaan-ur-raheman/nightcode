@@ -6,6 +6,8 @@ import { memory } from './memory';
  *
  * This creates a feedback loop: the AI makes a mistake,
  * the user undoes it, and the AI learns not to repeat it.
+ *
+ * Corrections are scoped to sessions to prevent cross-session contamination.
  */
 
 interface TrackedAction {
@@ -13,6 +15,7 @@ interface TrackedAction {
     input: unknown;
     description: string;
     timestamp: number;
+    sessionId?: string;
 }
 
 const MAX_TRACKED = 20;
@@ -21,6 +24,14 @@ const MAX_CORRECTIONS = 50;
 
 class CorrectionTracker {
     private recentActions: TrackedAction[] = [];
+    private currentSessionId?: string;
+
+    /**
+     * Set the current session ID for scoping corrections.
+     */
+    setSession(sessionId: string): void {
+        this.currentSessionId = sessionId;
+    }
 
     /**
      * Record a tool call for potential correction tracking.
@@ -32,6 +43,7 @@ class CorrectionTracker {
             input,
             description,
             timestamp: Date.now(),
+            sessionId: this.currentSessionId,
         });
 
         // Keep only the most recent actions
@@ -53,9 +65,13 @@ class CorrectionTracker {
         const pattern = this.generatePattern(lastAction);
         if (!pattern) return null;
 
-        // Store in memory with correction tag
-        const key = `${CORRECTION_PREFIX}${Date.now()}`;
-        await memory.set(key, pattern, ['correction', lastAction.tool]);
+        // Store in memory with correction tag and session scope
+        const key = `${CORRECTION_PREFIX}${lastAction.sessionId ?? 'global'}:${Date.now()}`;
+        const tags = ['correction', lastAction.tool];
+        if (lastAction.sessionId) {
+            tags.push(`session:${lastAction.sessionId}`);
+        }
+        await memory.set(key, pattern, tags);
 
         // Enforce max corrections limit
         await this.enforceLimit();
@@ -69,8 +85,17 @@ class CorrectionTracker {
     private generatePattern(action: TrackedAction): string | null {
         const { tool, input, description } = action;
 
-        const getStr = (key: string, maxLen?: number, fallback = ''): string => {
-            if (input === null || input === undefined || typeof input !== 'object') return fallback;
+        const getStr = (
+            key: string,
+            maxLen?: number,
+            fallback = '',
+        ): string => {
+            if (
+                input === null ||
+                input === undefined ||
+                typeof input !== 'object'
+            )
+                return fallback;
             const val = (input as Record<string, unknown>)[key];
             if (typeof val !== 'string') return fallback;
             return maxLen ? val.slice(0, maxLen) : val;
@@ -130,23 +155,41 @@ class CorrectionTracker {
     }
 
     /**
-     * Get all active corrections for prompt injection.
+     * Get corrections for the current session.
      */
     async getCorrections(): Promise<string[]> {
         const entries = await memory.list({ tag: 'correction' });
-        return entries.map((e) => e.value);
+        return entries
+            .filter((e) => {
+                // Include corrections for current session or global corrections
+                if (!this.currentSessionId) return true;
+                return (
+                    e.tags?.some(
+                        (t) => t === `session:${this.currentSessionId}`,
+                    ) ?? true
+                );
+            })
+            .map((e) => e.value);
     }
 
     /**
-     * Clear all corrections (e.g., when user dismisses them).
+     * Clear corrections for the current session.
      */
     async clearCorrections(): Promise<number> {
         const entries = await memory.list({ tag: 'correction' });
         let count = 0;
         for (const entry of entries) {
             if (entry.key.startsWith(CORRECTION_PREFIX)) {
-                await memory.delete(entry.key);
-                count++;
+                // Only clear corrections for current session
+                if (
+                    !this.currentSessionId ||
+                    entry.tags?.some(
+                        (t) => t === `session:${this.currentSessionId}`,
+                    )
+                ) {
+                    await memory.delete(entry.key);
+                    count++;
+                }
             }
         }
         return count;

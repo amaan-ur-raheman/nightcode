@@ -49,7 +49,6 @@ import {
 import { safeStringify } from '@/lib/safe-json';
 import { timelineManager } from '@/lib/timeline-manager';
 
-
 const MAX_SUBAGENT_OUTPUT_CHARS = 8000;
 
 /**
@@ -221,6 +220,24 @@ export function useChat(
         };
     }, [sessionId]);
 
+    // Clean up branch-specific state when switching branches
+    // Prevents pending tool calls, snapshots, and usage from leaking across branches
+    useEffect(() => {
+        pendingToolCallsRef.current.clear();
+        if (pendingToolCallsTimer.current) {
+            clearTimeout(pendingToolCallsTimer.current);
+            pendingToolCallsTimer.current = null;
+        }
+        lastSnapshotRef.current = null;
+        cumulativeUsageRef.current = {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalCost: 0,
+        };
+        activeToolControllers.current.forEach((c) => c.abort());
+        activeToolControllers.current.clear();
+    }, [activeBranchId]);
+
     const transport = useMemo(() => {
         return new DefaultChatTransport<Message>({
             api: apiClient.chat.$url().toString(),
@@ -356,7 +373,8 @@ export function useChat(
                 const isComplete = !lastMsg.parts.some((p: any) => {
                     if (
                         p.type === 'dynamic-tool' ||
-                        (typeof p.type === 'string' && p.type.startsWith('tool-'))
+                        (typeof p.type === 'string' &&
+                            p.type.startsWith('tool-'))
                     ) {
                         const toolPart = p as any;
                         return (
@@ -370,16 +388,23 @@ export function useChat(
                 if (isComplete && lastSnapshotRef.current !== lastMsg.id) {
                     lastSnapshotRef.current = lastMsg.id;
                     const userMsgIdx = chat.messages.findLastIndex(
-                        (m, idx) => m.role === 'user' && idx < chat.messages.length - 1,
+                        (m, idx) =>
+                            m.role === 'user' && idx < chat.messages.length - 1,
                     );
-                    const parentMessageId = userMsgIdx >= 0 ? chat.messages[userMsgIdx]?.id : undefined;
+                    const parentMessageId =
+                        userMsgIdx >= 0
+                            ? chat.messages[userMsgIdx]?.id
+                            : undefined;
 
-                    void timelineManager.takeSnapshot(sessionId, lastMsg.id, parentMessageId);
+                    void timelineManager.takeSnapshot(
+                        sessionId,
+                        lastMsg.id,
+                        parentMessageId,
+                    );
                 }
             }
         }
     }, [chat.status, chat.messages, sessionId]);
-
 
     // Flush collected tool calls — executes single tools directly, batches multiple via batchManager
     const flushPendingToolCalls = useCallback(
@@ -819,7 +844,11 @@ export function useChat(
 
                 const parentMsg = chat.messages[idx];
                 if (parentMsg) {
-                    void timelineManager.takeSnapshot(sessionId, newBranch.id, parentMsg.id);
+                    void timelineManager.takeSnapshot(
+                        sessionId,
+                        newBranch.id,
+                        parentMsg.id,
+                    );
                 }
             } catch (err) {
                 console.error('Failed to create branch:', err);

@@ -13,9 +13,15 @@ vi.mock('fs/promises', () => ({
 describe('MemoryManager with file locking', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
+        vi.clearAllMocks();
         // Reset local memory state
         (memory as any).entries.clear();
         (memory as any).loaded = false;
+        if ((memory as any).saveTimeout) {
+            clearTimeout((memory as any).saveTimeout);
+            (memory as any).saveTimeout = null;
+        }
+        (memory as any)._dirty = false;
     });
 
     afterEach(() => {

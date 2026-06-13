@@ -442,7 +442,12 @@ export function InputBar({
         }
 
         // Up/Down arrows - history navigation
-        if (key.name === 'up' && !showCommandMenu && !showMentionMenu && !showSymbolMenu) {
+        if (
+            key.name === 'up' &&
+            !showCommandMenu &&
+            !showMentionMenu &&
+            !showSymbolMenu
+        ) {
             key.preventDefault();
             const textarea = textareaRef.current;
             if (textarea && history.length > 0) {
@@ -456,7 +461,12 @@ export function InputBar({
             return;
         }
 
-        if (key.name === 'down' && !showCommandMenu && !showMentionMenu && !showSymbolMenu) {
+        if (
+            key.name === 'down' &&
+            !showCommandMenu &&
+            !showMentionMenu &&
+            !showSymbolMenu
+        ) {
             key.preventDefault();
             const textarea = textareaRef.current;
             if (textarea && history.length > 0) {

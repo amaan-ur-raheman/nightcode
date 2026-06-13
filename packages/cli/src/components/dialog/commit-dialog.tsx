@@ -17,7 +17,11 @@ interface CommitDialogContentProps {
     onSuccess?: () => void;
 }
 
-export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialogContentProps) {
+export function CommitDialogContent({
+    sessionId,
+    model,
+    onSuccess,
+}: CommitDialogContentProps) {
     const { colors } = useTheme();
     const { close } = useDialog();
     const toast = useToast();
@@ -34,7 +38,10 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
     const fetchStagedFiles = async (signal?: { aborted: boolean }) => {
         setLoadingFiles(true);
         try {
-            const statusResult = await runGit(process.cwd(), ['status', '--porcelain']);
+            const statusResult = await runGit(process.cwd(), [
+                'status',
+                '--porcelain',
+            ]);
             if (signal?.aborted) return;
             if (statusResult.exitCode === 0) {
                 const files: string[] = [];
@@ -75,7 +82,10 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
         setError(null);
         try {
             // Get diff of staged files
-            const diffResult = await runGit(process.cwd(), ['diff', '--cached']);
+            const diffResult = await runGit(process.cwd(), [
+                'diff',
+                '--cached',
+            ]);
             if (diffResult.exitCode !== 0) {
                 throw new Error(diffResult.stderr || 'Failed to get git diff');
             }
@@ -96,28 +106,35 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
                 headers['x-provider-key'] = providerKey;
             }
 
-            const res = await apiClient.sessions[':id']['commit-message'].$post({
-                param: { id: sessionId },
-                json: {
-                    diff: diffResult.stdout,
-                    model: model,
+            const res = await apiClient.sessions[':id']['commit-message'].$post(
+                {
+                    param: { id: sessionId },
+                    json: {
+                        diff: diffResult.stdout,
+                        model: model,
+                    },
                 },
-            }, {
-                headers,
-            });
+                {
+                    headers,
+                },
+            );
 
             if (!res.ok) {
-                const data = await res.json() as { error?: string };
-                throw new Error(data.error || 'Failed to generate commit message');
+                const data = (await res.json()) as { error?: string };
+                throw new Error(
+                    data.error || 'Failed to generate commit message',
+                );
             }
 
-            const data = await res.json() as { commitMessage: string };
+            const data = (await res.json()) as { commitMessage: string };
             if (inputRef.current) {
                 inputRef.current.value = data.commitMessage;
             }
             setCommitMessage(data.commitMessage);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Error generating message');
+            setError(
+                err instanceof Error ? err.message : 'Error generating message',
+            );
         } finally {
             setGeneratingMessage(false);
         }
@@ -135,7 +152,11 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
         setCommitting(true);
         setError(null);
         try {
-            const result = await runGit(process.cwd(), ['commit', '-m', commitMessage]);
+            const result = await runGit(process.cwd(), [
+                'commit',
+                '-m',
+                commitMessage,
+            ]);
             if (result.exitCode === 0) {
                 toast.show({
                     variant: 'success',
@@ -144,10 +165,14 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
                 close();
                 onSuccess?.();
             } else {
-                throw new Error(result.stderr || result.stdout || 'Git commit failed');
+                throw new Error(
+                    result.stderr || result.stdout || 'Git commit failed',
+                );
             }
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Error committing changes');
+            setError(
+                err instanceof Error ? err.message : 'Error committing changes',
+            );
         } finally {
             setCommitting(false);
         }
@@ -167,7 +192,11 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
         keyHandlerRef.current?.(key);
     });
 
-    const canSubmit = !committing && !generatingMessage && commitMessage.trim() !== '' && stagedFiles.length > 0;
+    const canSubmit =
+        !committing &&
+        !generatingMessage &&
+        commitMessage.trim() !== '' &&
+        stagedFiles.length > 0;
 
     return (
         <box flexDirection="column" gap={1} width="100%">
@@ -186,7 +215,8 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
                         ⚠️ No Changes Staged for Commit
                     </text>
                     <text fg={colors.text}>
-                        Use Space in the file tree view or run 'git add' in bash to stage changes.
+                        Use Space in the file tree view or run 'git add' in bash
+                        to stage changes.
                     </text>
                 </box>
             ) : (
@@ -213,7 +243,11 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
             )}
 
             <box flexDirection="column" gap={0} marginTop={1} width="100%">
-                <text attributes={TextAttributes.BOLD} fg={colors.primary} marginBottom={1}>
+                <text
+                    attributes={TextAttributes.BOLD}
+                    fg={colors.primary}
+                    marginBottom={1}
+                >
                     📝 Commit Message:
                 </text>
                 <box
@@ -248,16 +282,25 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
                 {stagedFiles.length > 0 && (
                     <box
                         paddingX={2}
-                        backgroundColor={generatingMessage ? undefined : colors.primary}
+                        backgroundColor={
+                            generatingMessage ? undefined : colors.primary
+                        }
                         onMouseDown={() => {
-                            if (!generatingMessage) void handleGenerateMessage();
+                            if (!generatingMessage)
+                                void handleGenerateMessage();
                         }}
                     >
                         <text
-                            fg={generatingMessage ? colors.dimSeparator : 'black'}
+                            fg={
+                                generatingMessage
+                                    ? colors.dimSeparator
+                                    : 'black'
+                            }
                             attributes={TextAttributes.BOLD}
                         >
-                            {generatingMessage ? 'Generating...' : '🪄 AI Generate'}
+                            {generatingMessage
+                                ? 'Generating...'
+                                : '🪄 AI Generate'}
                         </text>
                     </box>
                 )}
@@ -272,11 +315,17 @@ export function CommitDialogContent({ sessionId, model, onSuccess }: CommitDialo
                         fg={canSubmit ? 'black' : colors.dimSeparator}
                         attributes={TextAttributes.BOLD}
                     >
-                        {committing ? 'Committing...' : '💾 Commit (Ctrl+Enter)'}
+                        {committing
+                            ? 'Committing...'
+                            : '💾 Commit (Ctrl+Enter)'}
                     </text>
                 </box>
             </box>
-            <text attributes={TextAttributes.DIM} fg={colors.dimSeparator} marginTop={1}>
+            <text
+                attributes={TextAttributes.DIM}
+                fg={colors.dimSeparator}
+                marginTop={1}
+            >
                 Press Esc to cancel
             </text>
         </box>

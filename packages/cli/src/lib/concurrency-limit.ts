@@ -8,7 +8,7 @@
  * - Shared slot pool across subagents and workers
  */
 
-const DEFAULT_MAX_CONCURRENT = 5;
+const DEFAULT_MAX_CONCURRENT = 8;
 
 let activeCount = 0;
 let maxConcurrent = DEFAULT_MAX_CONCURRENT;
@@ -54,7 +54,6 @@ function getMetrics(provider: string): ProviderMetrics {
 
 const MAX_RECENT_SAMPLES = 20;
 const ADJUSTMENT_INTERVAL_MS = 5000; // Reduced from 10 seconds for faster adaptation
-let lastAdjustment = 0;
 
 /**
  * Record the latency and success/failure of a completed operation.
@@ -84,8 +83,7 @@ export function recordProviderLatency(
 
     // Periodically adjust concurrency with more frequent updates
     const now = Date.now();
-    if (now - lastAdjustment > ADJUSTMENT_INTERVAL_MS) {
-        lastAdjustment = now;
+    if (now - m.lastAdjustment > ADJUSTMENT_INTERVAL_MS) {
         adjustConcurrency(provider);
     }
 }
@@ -106,7 +104,6 @@ function adjustConcurrency(provider: string): void {
 
     // Adaptive concurrency based on task type distribution
     const taskDiversity = Object.keys(m.taskTypes).length;
-    const diversityFactor = Math.min(taskDiversity / 3, 1); // Cap diversity impact
 
     // Enhanced decision logic with diversity consideration
     let newConcurrency = maxConcurrent;
@@ -136,6 +133,7 @@ function adjustConcurrency(provider: string): void {
     // Reset counters after adjustment
     m.recentSuccesses = 0;
     m.recentFailures = 0;
+    m.taskTypes = {};
     m.lastAdjustment = Date.now();
 }
 
@@ -149,7 +147,8 @@ export function setProviderConcurrency(provider: string): void {
         maxConcurrent = providerLimit;
     }
     // Reset metrics for new provider
-    lastAdjustment = Date.now();
+    const m = getMetrics(provider);
+    m.lastAdjustment = Date.now();
 }
 
 /**
@@ -203,6 +202,92 @@ export async function waitForSlot(timeoutMs = 30_000): Promise<boolean> {
     while (Date.now() < deadline) {
         if (acquireSlot()) return true;
         await new Promise((r) => setTimeout(r, 200));
+    }
+    return false;
+}
+
+// ── Smarter Conflict Detection ──
+
+/**
+ * Tools that modify files and may conflict with each other.
+ */
+const FILE_CONFLICT_TOOLS = new Set([
+    'writeFile',
+    'editFile',
+    'patch',
+    'searchReplace',
+    'deleteFile',
+    'moveFile',
+    'createFile',
+    'renameSymbol',
+]);
+
+/**
+ * Extract the target file path from a tool call's input.
+ */
+function extractFilePath(toolName: string, input: unknown): string[] {
+    if (!input || typeof input !== 'object') return [];
+    const inp = input as Record<string, unknown>;
+    const paths: string[] = [];
+    const candidates = ['path', 'filePath', 'file', 'target'];
+    for (const key of candidates) {
+        const val = inp[key];
+        if (typeof val === 'string') {
+            paths.push(val);
+        }
+    }
+    if (toolName === 'moveFile') {
+        const fromVal = (inp.from as string) ?? (inp.source as string);
+        if (fromVal && !paths.includes(fromVal)) {
+            paths.push(fromVal);
+        }
+        const toVal = (inp.to as string) ?? (inp.path as string);
+        if (toVal && !paths.includes(toVal)) {
+            paths.push(toVal);
+        }
+    }
+    return paths;
+}
+
+/**
+ * Normalize a file path for comparison (resolve . and // segments).
+ */
+function normalizePath(p: string): string {
+    return (
+        p
+            .replace(/^\.\//, '')
+            .replace(/\/+/g, '/')
+            .replace(/\/\.\//g, '/')
+            .replace(/\/$/, '') || '/'
+    );
+}
+
+/**
+ * Detect if two tool calls conflict (try to modify the same file).
+ * Returns true if they conflict and should not run in parallel.
+ */
+export function detectConflict(
+    toolA: string,
+    inputA: unknown,
+    toolB: string,
+    inputB: unknown,
+): boolean {
+    // Only file-modifying tools can conflict
+    if (!FILE_CONFLICT_TOOLS.has(toolA) || !FILE_CONFLICT_TOOLS.has(toolB)) {
+        return false;
+    }
+    const filesA = extractFilePath(toolA, inputA);
+    const filesB = extractFilePath(toolB, inputB);
+    if (filesA.length === 0 || filesB.length === 0) return false;
+
+    for (const fileA of filesA) {
+        const normA = normalizePath(fileA);
+        for (const fileB of filesB) {
+            const normB = normalizePath(fileB);
+            if (normA === normB) {
+                return true;
+            }
+        }
     }
     return false;
 }

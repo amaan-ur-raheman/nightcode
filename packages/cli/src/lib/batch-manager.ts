@@ -45,6 +45,33 @@ const DEFAULT_BATCH_TOOLS = [
     'fileInfo',
 ];
 
+/**
+ * Tools that modify files and need conflict detection.
+ */
+const FILE_WRITE_TOOLS = new Set([
+    'writeFile',
+    'editFile',
+    'searchReplace',
+    'patch',
+    'deleteFile',
+    'moveFile',
+]);
+
+/**
+ * Extract the target file path from a tool call input.
+ */
+function getTargetFile(toolName: string, input: unknown): string | null {
+    if (!input || typeof input !== 'object') return null;
+    const inp = input as Record<string, unknown>;
+
+    if (toolName === 'moveFile') {
+        // moveFile has both source and destination
+        return (inp.to as string) ?? (inp.path as string) ?? null;
+    }
+
+    return (inp.path as string) ?? null;
+}
+
 const ALL_PARALLEL_TOOLS = [
     ...DEFAULT_BATCH_TOOLS,
     'writeFile',
@@ -76,6 +103,8 @@ const ALL_PARALLEL_TOOLS = [
     'memoryDelete',
     'memoryList',
     'memorySearch',
+    'memoryFuzzySearch',
+    'memoryStats',
     'keychainSet',
     'keychainGet',
     'keychainDelete',
@@ -92,6 +121,11 @@ const ALL_PARALLEL_TOOLS = [
     'impactAnalysis',
     'breakingChangeCheck',
     'suggestMigration',
+    'validateCode',
+    'checkExternalChanges',
+    'reviewPr',
+    'semanticSearch',
+    'profileCode',
 ];
 
 const DEFAULT_CONFIG: BatchConfig = {
@@ -305,32 +339,104 @@ class BatchManager {
             }
         };
 
-        const promises = capped.map(async (tc): Promise<ParallelToolResult> => {
-            try {
-                const result = await executor(
-                    tc.toolName,
-                    tc.input,
-                    mode,
-                    model,
-                    tc.signal ?? signal,
-                    tc.toolCallId,
-                );
-                const settled = { toolCallId: tc.toolCallId, result };
-                notifySettled(settled);
-                return settled;
-            } catch (reason) {
-                const settled = {
-                    toolCallId: tc.toolCallId,
-                    result: undefined,
-                    error:
-                        reason instanceof Error
-                            ? reason
-                            : new Error(String(reason)),
-                };
-                notifySettled(settled);
-                return settled;
+        // Detect file conflicts: group write tools by target file
+        const fileConflictGroups = new Map<string, ParallelToolCall[]>();
+        const nonConflictCalls: ParallelToolCall[] = [];
+
+        for (const tc of capped) {
+            if (FILE_WRITE_TOOLS.has(tc.toolName)) {
+                const targetFile = getTargetFile(tc.toolName, tc.input);
+                if (targetFile) {
+                    const existing = fileConflictGroups.get(targetFile);
+                    if (existing) {
+                        existing.push(tc);
+                    } else {
+                        fileConflictGroups.set(targetFile, [tc]);
+                    }
+                } else {
+                    nonConflictCalls.push(tc);
+                }
+            } else {
+                nonConflictCalls.push(tc);
             }
-        });
+        }
+
+        // Execute non-conflicting calls in parallel
+        const parallelPromises = nonConflictCalls.map(
+            async (tc): Promise<ParallelToolResult> => {
+                try {
+                    const result = await executor(
+                        tc.toolName,
+                        tc.input,
+                        mode,
+                        model,
+                        tc.signal ?? signal,
+                        tc.toolCallId,
+                    );
+                    const settled = { toolCallId: tc.toolCallId, result };
+                    notifySettled(settled);
+                    return settled;
+                } catch (reason) {
+                    const settled = {
+                        toolCallId: tc.toolCallId,
+                        result: undefined,
+                        error:
+                            reason instanceof Error
+                                ? reason
+                                : new Error(String(reason)),
+                    };
+                    notifySettled(settled);
+                    return settled;
+                }
+            },
+        );
+
+        // Execute conflicting calls sequentially per file
+        const sequentialPromises: Promise<ParallelToolResult[]>[] = [];
+        for (const [file, conflicts] of fileConflictGroups) {
+            if (conflicts.length > 1) {
+                debug.log(
+                    'batch',
+                    `Serializing ${conflicts.length} writes to ${file}`,
+                );
+            }
+
+            // Execute sequentially within each file group
+            const sequentialPromise = (async (): Promise<
+                ParallelToolResult[]
+            > => {
+                const results: ParallelToolResult[] = [];
+                for (const tc of conflicts) {
+                    try {
+                        const result = await executor(
+                            tc.toolName,
+                            tc.input,
+                            mode,
+                            model,
+                            tc.signal ?? signal,
+                            tc.toolCallId,
+                        );
+                        const settled = { toolCallId: tc.toolCallId, result };
+                        notifySettled(settled);
+                        results.push(settled);
+                    } catch (reason) {
+                        const settled = {
+                            toolCallId: tc.toolCallId,
+                            result: undefined,
+                            error:
+                                reason instanceof Error
+                                    ? reason
+                                    : new Error(String(reason)),
+                        };
+                        notifySettled(settled);
+                        results.push(settled);
+                    }
+                }
+                return results;
+            })();
+
+            sequentialPromises.push(sequentialPromise);
+        }
 
         const skippedResults: ParallelToolResult[] = skipped.map((tc) => ({
             toolCallId: tc.toolCallId,
@@ -340,7 +446,17 @@ class BatchManager {
             ),
         }));
 
-        return Promise.all([...promises, ...skippedResults]);
+        // Wait for all parallel and sequential groups to complete
+        const [parallelResults, sequentialResults] = await Promise.all([
+            Promise.all(parallelPromises),
+            Promise.all(sequentialPromises),
+        ]);
+
+        return [
+            ...parallelResults,
+            ...sequentialResults.flat(),
+            ...skippedResults,
+        ];
     }
 
     getConfig(): Readonly<BatchConfig> {

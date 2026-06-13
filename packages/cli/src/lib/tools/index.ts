@@ -44,6 +44,8 @@ export {
     memoryDeleteTool,
     memoryListTool,
     memorySearchTool,
+    memoryFuzzySearchTool,
+    memoryStatsTool,
 } from './memory';
 export {
     keychainSetTool,
@@ -70,6 +72,11 @@ export {
     breakingChangeCheckTool,
     suggestMigrationTool,
 } from './impact-analysis';
+export { validateCodeTool } from './validate-code';
+export { checkExternalChangesTool } from './check-external-changes';
+export { reviewPrTool } from './review-pr';
+export { semanticSearchTool } from './semantic-search';
+export { profileCodeTool } from './profile-code';
 
 type ToolFn =
     | ((input: unknown) => Promise<unknown>)
@@ -139,6 +146,9 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     memoryDelete: () => import('./memory').then((m) => m.memoryDeleteTool),
     memoryList: () => import('./memory').then((m) => m.memoryListTool),
     memorySearch: () => import('./memory').then((m) => m.memorySearchTool),
+    memoryFuzzySearch: () =>
+        import('./memory').then((m) => m.memoryFuzzySearchTool),
+    memoryStats: () => import('./memory').then((m) => m.memoryStatsTool),
     keychainSet: () => import('./keychain').then((m) => m.keychainSetTool),
     keychainGet: () => import('./keychain').then((m) => m.keychainGetTool),
     keychainDelete: () =>
@@ -171,6 +181,16 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
         import('./impact-analysis').then((m) => m.breakingChangeCheckTool),
     suggestMigration: () =>
         import('./impact-analysis').then((m) => m.suggestMigrationTool),
+    validateCode: () =>
+        import('./validate-code').then((m) => m.validateCodeTool),
+    checkExternalChanges: () =>
+        import('./check-external-changes').then(
+            (m) => m.checkExternalChangesTool,
+        ),
+    reviewPr: () => import('./review-pr').then((m) => m.reviewPrTool),
+    semanticSearch: () =>
+        import('./semantic-search').then((m) => m.semanticSearchTool),
+    profileCode: () => import('./profile-code').then((m) => m.profileCodeTool),
     orchestrator: () =>
         import('./orchestrator').then((m) => m.orchestratorTool),
     getTaskStatus: () =>
@@ -190,6 +210,33 @@ async function loadTool(name: string): Promise<ToolFn> {
     const tool = await loader();
     toolCache.set(name, tool);
     return tool;
+}
+
+/**
+ * Preload commonly used tools in the background to reduce first-use latency.
+ * Call this after the server starts, before the first user message.
+ */
+export function preloadTools(): void {
+    const commonTools = [
+        'readFile',
+        'editFile',
+        'writeFile',
+        'searchReplace',
+        'bash',
+        'gitStatus',
+        'gitDiff',
+        'glob',
+        'grep',
+        'listDirectory',
+        'tokenCount',
+        'undo',
+    ];
+    // Fire-and-forget: load in parallel, cache results
+    for (const name of commonTools) {
+        if (!toolCache.has(name)) {
+            loadTool(name).catch(() => {}); // ignore preload failures
+        }
+    }
 }
 
 export { LAZY_TOOLS, loadTool };

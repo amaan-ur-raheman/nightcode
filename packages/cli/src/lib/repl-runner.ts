@@ -22,8 +22,11 @@ export class ReplRunner {
     }
 
     private initialize() {
-        const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
-        
+        const shell =
+            process.platform === 'win32'
+                ? 'powershell.exe'
+                : process.env.SHELL || '/bin/bash';
+
         // Spawn the persistent shell process.
         this.proc = Bun.spawn([shell], {
             stdin: 'pipe',
@@ -31,8 +34,8 @@ export class ReplRunner {
             stderr: 'pipe',
             env: {
                 ...process.env,
-                TERM: 'dumb' // prevents escape codes
-            }
+                TERM: 'dumb', // prevents escape codes
+            },
         });
 
         // Start reading streams in the background
@@ -41,7 +44,7 @@ export class ReplRunner {
 
     private async readStreams() {
         const decoder = new TextDecoder();
-        
+
         const readStdout = async () => {
             if (!this.proc?.stdout) return;
             const reader = this.proc.stdout.getReader();
@@ -166,12 +169,16 @@ export class ReplRunner {
             try {
                 this.proc.stdin.write(encoder.encode(command + '\n'));
                 const escapedSentinel = this.sentinel.replace(/"/g, '\\"');
-                this.proc.stdin.write(encoder.encode(`echo "${escapedSentinel}"\n`));
+                this.proc.stdin.write(
+                    encoder.encode(`echo "${escapedSentinel}"\n`),
+                );
                 this.proc.stdin.flush();
             } catch (err) {
                 this.currentResolver = null;
                 console.error('[repl-runner] Failed to write to stdin:', err);
-                resolve(`[REPL stdin error: ${err instanceof Error ? err.message : String(err)}]`);
+                resolve(
+                    `[REPL stdin error: ${err instanceof Error ? err.message : String(err)}]`,
+                );
             }
         });
     }

@@ -1,6 +1,9 @@
 import { readFile } from 'fs/promises';
 
-export async function extractSymbolBlock(filePath: string, startLine: number): Promise<string> {
+export async function extractSymbolBlock(
+    filePath: string,
+    startLine: number,
+): Promise<string> {
     const content = await readFile(filePath, 'utf-8');
     const lines = content.split('\n');
     const startIndex = startLine - 1;
@@ -65,9 +68,18 @@ export async function extractSymbolBlock(filePath: string, startLine: number): P
                 ci++;
                 continue;
             }
-            if (char === "'") { inSingle = true; continue; }
-            if (char === '"') { inDouble = true; continue; }
-            if (char === '`') { inTemplate = true; continue; }
+            if (char === "'") {
+                inSingle = true;
+                continue;
+            }
+            if (char === '"') {
+                inDouble = true;
+                continue;
+            }
+            if (char === '`') {
+                inTemplate = true;
+                continue;
+            }
 
             // Count braces only outside strings/comments
             if (char === '{') {

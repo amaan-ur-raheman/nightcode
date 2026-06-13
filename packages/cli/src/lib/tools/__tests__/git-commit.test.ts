@@ -15,9 +15,17 @@ describe('gitCommitTool', () => {
     it('commits with message', async () => {
         // getGitState: branch --show-current, status --porcelain, log -1
         mockRunGit
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'main\n',
+                stderr: '',
+            })
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'initial commit\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'initial commit\n',
+                stderr: '',
+            })
             // preCommitSecretScan: diff --cached --name-only (empty)
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
             // git commit
@@ -35,9 +43,17 @@ describe('gitCommitTool', () => {
     it('stages files before commit when files provided', async () => {
         // getGitState: branch, status, log
         mockRunGit
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'feature\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'feature\n',
+                stderr: '',
+            })
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'some commit\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'some commit\n',
+                stderr: '',
+            })
             // git add
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
             // preCommitSecretScan: diff --cached --name-only (empty, files scanned directly)
@@ -62,9 +78,17 @@ describe('gitCommitTool', () => {
 
     it('returns error on commit failure', async () => {
         mockRunGit
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'main\n',
+                stderr: '',
+            })
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'some commit\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'some commit\n',
+                stderr: '',
+            })
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
             .mockResolvedValueOnce({
                 exitCode: 1,
@@ -79,9 +103,17 @@ describe('gitCommitTool', () => {
 
     it('returns error on add failure', async () => {
         mockRunGit
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'main\n',
+                stderr: '',
+            })
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'some commit\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'some commit\n',
+                stderr: '',
+            })
             .mockResolvedValueOnce({
                 exitCode: 1,
                 stdout: '',
@@ -98,13 +130,25 @@ describe('gitCommitTool', () => {
 
     it('handles non-existent staged files gracefully during secret scan', async () => {
         mockRunGit
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'main\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'main\n',
+                stderr: '',
+            })
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'some commit\n', stderr: '' })
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'some commit\n',
+                stderr: '',
+            })
             // git add
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
             // preCommitSecretScan: diff --cached returns the file
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'file.ts\n', stderr: '' });
+            .mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'file.ts\n',
+                stderr: '',
+            });
 
         const { gitCommitTool } = await import('../git-commit');
         const result = await gitCommitTool({

@@ -202,6 +202,7 @@ import { Session } from '@/screens/session';
 import { NewSession } from '@/screens/new-session';
 import { toolAnalytics } from '@/lib/tool-analytics';
 import { auditLog } from '@/lib/audit-log';
+import { preloadTools } from '@/lib/tools';
 
 const NIGHTCODE_DIR = join(homedir(), '.nightcode');
 const LAST_SESSION_FILE = join(NIGHTCODE_DIR, 'last-session');
@@ -313,6 +314,9 @@ const renderer = await createCliRenderer({
     targetFps: 60,
     exitOnCtrlC: false,
 });
+
+// Preload commonly used tools in the background
+preloadTools();
 
 renderer.once('destroy', async () => {
     if (lastSession.id) {

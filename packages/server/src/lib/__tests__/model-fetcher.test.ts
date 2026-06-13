@@ -73,15 +73,14 @@ describe('fetchAllModels', () => {
     });
 
     it('fetchLocalOllama discovers local models and registers them', async () => {
-        const { fetchAllModels, clearModelCache } = await import('../model-fetcher');
+        const { fetchAllModels, clearModelCache } =
+            await import('../model-fetcher');
         const { findSupportedChatModel } = await import('@nightcode/shared');
 
         clearModelCache();
 
         const mockResponse = {
-            models: [
-                { name: 'llama3:latest', model: 'llama3:latest' }
-            ]
+            models: [{ name: 'llama3:latest', model: 'llama3:latest' }],
         };
 
         const originalFetch = global.fetch;
@@ -99,7 +98,9 @@ describe('fetchAllModels', () => {
 
         try {
             const result = await fetchAllModels();
-            const localModels = result.models.filter(m => m.provider === 'local');
+            const localModels = result.models.filter(
+                (m) => m.provider === 'local',
+            );
             expect(localModels).toHaveLength(1);
             const first = localModels[0];
             if (!first) throw new Error('No local models found');

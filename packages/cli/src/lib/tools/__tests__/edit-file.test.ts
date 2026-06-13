@@ -33,15 +33,17 @@ describe('editFileTool', () => {
         );
     });
 
-    it('throws error when oldString not found', async () => {
+    it('returns error when oldString not found', async () => {
         writeFileSync(join(TEST_DIR, 'test.ts'), 'const x = 1;');
         const { editFileTool } = await import('../edit-file');
-        await expect(
-            editFileTool({
-                path: 'test.ts',
-                oldString: 'not here',
-                newString: 'replacement',
-            }),
-        ).rejects.toThrow('oldString not found');
+        const result = await editFileTool({
+            path: 'test.ts',
+            oldString: 'not here',
+            newString: 'replacement',
+        });
+        expect(result).toMatchObject({
+            error: 'oldString not found in file',
+            retryable: true,
+        });
     });
 });

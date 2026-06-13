@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { toolInputSchemas } from '@nightcode/shared';
 import { globCache } from '../glob-cache';
 import { generateDiff, formatDiff } from '../diff-utils';
+import { undoManager } from '../undo-manager';
 
 export async function searchReplaceTool(input: unknown) {
     const {
@@ -22,7 +23,7 @@ export async function searchReplaceTool(input: unknown) {
         path: string;
         diff: string;
         replacements: number;
-        updated: string;
+        content: string;
     }[] = [];
 
     for (const file of allMatches) {
@@ -41,7 +42,7 @@ export async function searchReplaceTool(input: unknown) {
             path: relPath,
             diff: diffOutput,
             replacements: count,
-            updated,
+            content: updated,
         });
     }
 
@@ -49,13 +50,18 @@ export async function searchReplaceTool(input: unknown) {
         return { filesChanged: 0, changes: [] };
     }
 
-    // Apply changes using cached content from the diff generation phase
+    // Apply changes with undo backup
     const { writeFile } = await import('fs/promises');
     const changes: { path: string; replacements: number }[] = [];
 
     for (const d of diffs) {
         const resolved = resolve(cwd, d.path);
-        await writeFile(resolved, d.updated, 'utf-8');
+        await undoManager.backup(
+            resolved,
+            'searchReplace',
+            `Search-replace in ${d.path}`,
+        );
+        await writeFile(resolved, d.content, 'utf-8');
         changes.push({ path: d.path, replacements: d.replacements });
     }
     globCache.invalidate();

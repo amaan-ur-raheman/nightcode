@@ -86,7 +86,7 @@ async function resolveNimModel(
         ? await nimSubagent(modelId, apiKey)
         : await nim(modelId, apiKey);
     return {
-        model: subagent ? rawModel : wrapWithQueue(rawModel),
+        model: wrapWithQueue(rawModel),
         provider: 'nvidia',
         modelId,
         providerOptions: NIM_PROVIDER_OPTIONS[modelId],
@@ -100,7 +100,7 @@ async function resolveThirdPartyModel(
 ): Promise<ResolvedModel> {
     const client = await getProviderClient(model.id, apiKey);
     return {
-        model: subagent ? client : wrapWithQueue(client),
+        model: wrapWithQueue(client),
         provider: model.provider,
         modelId: model.id,
     };
@@ -128,6 +128,7 @@ async function resolveSupportedChatModel(
         case 'gemini':
         case 'kilo':
         case 'local':
+        case 'lightningai':
             return resolveThirdPartyModel(model, subagent, apiKey);
         default:
             const _exhaustive: never = provider;
@@ -212,7 +213,7 @@ export async function resolveSubagentChatModel(
     const client = await getProviderClient(normalized, apiKey);
     const provider = getProviderName(normalized);
     return {
-        model: client,
+        model: wrapWithQueue(client),
         provider: provider as SupportedProvider,
         modelId: normalized,
     };

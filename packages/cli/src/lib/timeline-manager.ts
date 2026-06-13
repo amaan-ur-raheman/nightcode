@@ -86,11 +86,18 @@ class TimelineManager {
                 const snapshots = Object.values(timeline.snapshots);
                 if (snapshots.length > 0) {
                     // Find the snapshot with the latest timestamp
-                    snapshots.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                    snapshots.sort(
+                        (a, b) =>
+                            new Date(b.timestamp).getTime() -
+                            new Date(a.timestamp).getTime(),
+                    );
                     parentSha = snapshots[0]!.commitHash;
                 } else {
                     // No snapshots yet, get current HEAD
-                    const headResult = await runGitWithEnv(['rev-parse', 'HEAD'], {});
+                    const headResult = await runGitWithEnv(
+                        ['rev-parse', 'HEAD'],
+                        {},
+                    );
                     if (headResult.exitCode === 0) {
                         parentSha = headResult.stdout.trim();
                     }
@@ -100,14 +107,18 @@ class TimelineManager {
             // Step 2: stage files to temporary index
             const gitDir = await this.getGitDir();
             const fullTempIndex = join(gitDir, 'index.nightcode');
-            const addResult = await runGitWithEnv(['add', '-A'], { GIT_INDEX_FILE: fullTempIndex });
+            const addResult = await runGitWithEnv(['add', '-A'], {
+                GIT_INDEX_FILE: fullTempIndex,
+            });
             if (addResult.exitCode !== 0) {
                 // If not in a git repo, return null
                 return null;
             }
 
             // Step 3: write tree
-            const writeTreeResult = await runGitWithEnv(['write-tree'], { GIT_INDEX_FILE: fullTempIndex });
+            const writeTreeResult = await runGitWithEnv(['write-tree'], {
+                GIT_INDEX_FILE: fullTempIndex,
+            });
             if (writeTreeResult.exitCode !== 0) {
                 try {
                     await unlink(fullTempIndex);
@@ -122,7 +133,12 @@ class TimelineManager {
             } catch {}
 
             // Step 4: commit tree
-            const commitArgs = ['commit-tree', treeSha, '-m', `Snapshot ${messageId}`];
+            const commitArgs = [
+                'commit-tree',
+                treeSha,
+                '-m',
+                `Snapshot ${messageId}`,
+            ];
             if (parentSha) {
                 commitArgs.push('-p', parentSha);
             }
@@ -134,7 +150,11 @@ class TimelineManager {
 
             // Step 5: update ref
             await runGitWithEnv(
-                ['update-ref', `refs/nightcode/snapshots/${sessionId}`, commitSha],
+                [
+                    'update-ref',
+                    `refs/nightcode/snapshots/${sessionId}`,
+                    commitSha,
+                ],
                 {},
             );
 
@@ -147,7 +167,10 @@ class TimelineManager {
             };
             await this.saveTimeline(sessionId, timeline);
 
-            debug.log('timeline', `Created snapshot commit ${commitSha} for message ${messageId}`);
+            debug.log(
+                'timeline',
+                `Created snapshot commit ${commitSha} for message ${messageId}`,
+            );
             return commitSha;
         } catch (e) {
             debug.log('timeline', `Error creating snapshot: ${e}`);
@@ -158,7 +181,10 @@ class TimelineManager {
     async rollbackTo(commitHash: string): Promise<boolean> {
         try {
             // Hard checkout of snapshot commit files into working directory
-            const result = await runGitWithEnv(['checkout', commitHash, '--', '.'], {});
+            const result = await runGitWithEnv(
+                ['checkout', commitHash, '--', '.'],
+                {},
+            );
             return result.exitCode === 0;
         } catch (e) {
             debug.log('timeline', `Error rolling back to ${commitHash}: ${e}`);
@@ -169,7 +195,10 @@ class TimelineManager {
     async getDiff(commitHash: string): Promise<string> {
         try {
             // Get diff of commit against its parent
-            const result = await runGitWithEnv(['show', '--stat', '--patch', commitHash], {});
+            const result = await runGitWithEnv(
+                ['show', '--stat', '--patch', commitHash],
+                {},
+            );
             return result.stdout;
         } catch (e) {
             return `Error loading diff: ${e}`;

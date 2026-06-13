@@ -180,9 +180,7 @@ export class KnowledgeGraph {
         return fullNode;
     }
 
-    addEdge(
-        edge: Omit<KnowledgeEdge, 'id' | 'createdAt'>,
-    ): KnowledgeEdge {
+    addEdge(edge: Omit<KnowledgeEdge, 'id' | 'createdAt'>): KnowledgeEdge {
         const id = `${edge.source}→${edge.target}:${edge.type}`;
         const existing = this.edges.get(id);
         if (existing) {
@@ -332,8 +330,7 @@ export class KnowledgeGraph {
         if (filter.filePath) {
             const fp = filter.filePath.toLowerCase();
             results = results.filter(
-                (n) =>
-                    n.filePath?.toLowerCase().includes(fp) ?? false,
+                (n) => n.filePath?.toLowerCase().includes(fp) ?? false,
             );
         }
         if (filter.name) {
@@ -503,13 +500,14 @@ export class KnowledgeGraph {
             ...new Set(allAffected.map((n) => n.filePath).filter(Boolean)),
         ] as string[];
 
-        const riskLevel = direct.length === 0 && transitive.length === 0
-            ? 'none'
-            : direct.length <= 3 && affectedFiles.length <= 3
-              ? 'low'
-              : direct.length <= 10 && affectedFiles.length <= 10
-                ? 'medium'
-                : 'high';
+        const riskLevel =
+            direct.length === 0 && transitive.length === 0
+                ? 'none'
+                : direct.length <= 3 && affectedFiles.length <= 3
+                  ? 'low'
+                  : direct.length <= 10 && affectedFiles.length <= 10
+                    ? 'medium'
+                    : 'high';
 
         return {
             nodeId,
@@ -612,7 +610,8 @@ export class KnowledgeGraph {
             if (edge) {
                 const consumer = this.nodes.get(edge.source);
                 if (consumer?.filePath) {
-                    const fileSteps = consumersByFile.get(consumer.filePath) ?? [];
+                    const fileSteps =
+                        consumersByFile.get(consumer.filePath) ?? [];
                     fileSteps.push(consumer.name);
                     consumersByFile.set(consumer.filePath, fileSteps);
                 }

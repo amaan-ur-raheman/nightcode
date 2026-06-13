@@ -1,4 +1,5 @@
 export { ThemeDialogContent } from '@/components/dialog/theme-dialog';
+export { ApiKeyDialogContent } from '@/components/dialog/api-key-dialog';
 export { AgentsDialogContent } from '@/components/dialog/agents-dialog';
 export { ModelsDialogContent } from '@/components/dialog/models-dialog';
 export { SessionDialogContent } from '@/components/dialog/sessions-dialog';
@@ -16,5 +17,3 @@ export { QueueDialogContent } from '@/components/dialog/queue-dialog';
 export { CommitDialogContent } from '@/components/dialog/commit-dialog';
 export { GraphViewer } from '@/components/graph-viewer';
 export { TimelineDialogContent } from '@/components/dialog/timeline-dialog';
-
-

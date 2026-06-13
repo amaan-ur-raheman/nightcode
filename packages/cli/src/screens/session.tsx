@@ -24,7 +24,11 @@ import { useDialog } from '@/providers/dialog';
 
 import { SessionShell } from '@/components/session-shell';
 import { FileTree } from '@/components/file-tree';
-import { CommitDialogContent, GraphViewer, TimelineDialogContent } from '@/components/dialog';
+import {
+    CommitDialogContent,
+    GraphViewer,
+    TimelineDialogContent,
+} from '@/components/dialog';
 import { timelineManager } from '@/lib/timeline-manager';
 import { FileDiffPanel } from '@/components/file-diff-panel';
 import { BranchIndicator } from '@/components/branch-indicator';
@@ -107,6 +111,7 @@ const MemoizedChatMessage = React.memo(ChatMessage);
 const MAX_VISIBLE_MESSAGES = 200;
 
 import { lastSession, writeLastSession } from '@/index';
+import { fileWatcher } from '@/lib/file-watcher';
 
 import { usePtySession } from '@/lib/pty-session';
 
@@ -174,6 +179,16 @@ function SessionChat({
         };
     }, [abort]);
 
+    // Start file watcher when session loads
+    useEffect(() => {
+        if (!fileWatcher.isWatching()) {
+            fileWatcher.start();
+        }
+        return () => {
+            // Don't stop watcher on unmount — it's shared across sessions
+        };
+    }, []);
+
     // Let the user cancel a reply even before the first streamed chunks arrived
     const keyHandlerRef = useRef<((key: any) => void) | undefined>(undefined);
     keyHandlerRef.current = (key) => {
@@ -194,10 +209,7 @@ function SessionChat({
             dialog.open({
                 title: 'Git Commit Planner',
                 children: (
-                    <CommitDialogContent
-                        sessionId={session.id}
-                        model={model}
-                    />
+                    <CommitDialogContent sessionId={session.id} model={model} />
                 ),
             });
         }
@@ -234,19 +246,24 @@ function SessionChat({
                         sessionId={session.id}
                         messages={messages}
                         onRollback={async (commitHash) => {
-                            const timeline = await timelineManager.loadTimeline(session.id);
-                            const snapshot = Object.values(timeline.snapshots).find(
-                                (s) => s.commitHash === commitHash
+                            const timeline = await timelineManager.loadTimeline(
+                                session.id,
                             );
+                            const snapshot = Object.values(
+                                timeline.snapshots,
+                            ).find((s) => s.commitHash === commitHash);
                             if (snapshot) {
-                                const branch = branches.find((b) => b.id === snapshot.messageId);
+                                const branch = branches.find(
+                                    (b) => b.id === snapshot.messageId,
+                                );
                                 if (branch) {
                                     await switchBranch(branch.id);
                                 }
                             }
                             dialog.close();
                             toast.show({
-                                message: 'Workspace rolled back successfully to checkpoint.',
+                                message:
+                                    'Workspace rolled back successfully to checkpoint.',
                                 variant: 'success',
                             });
                         }}
@@ -354,8 +371,11 @@ function SessionChat({
         });
     }, [initialPrompt, submit]);
 
-    const { showFileTree, selectedFile, setSelectedFile, diffMode } = useFileTree();
-    const [highlightedLine, setHighlightedLine] = useState<number | undefined>();
+    const { showFileTree, selectedFile, setSelectedFile, diffMode } =
+        useFileTree();
+    const [highlightedLine, setHighlightedLine] = useState<
+        number | undefined
+    >();
 
     useEffect(() => {
         setHighlightedLine(undefined);
@@ -377,7 +397,9 @@ function SessionChat({
                     <box flexDirection="row" flexGrow={1} height="100%">
                         <SymbolOutline
                             filePath={selectedFile}
-                            onSelectSymbol={(sym) => setHighlightedLine(sym.line)}
+                            onSelectSymbol={(sym) =>
+                                setHighlightedLine(sym.line)
+                            }
                         />
                         <CodePanel
                             filePath={selectedFile}

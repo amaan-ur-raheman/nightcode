@@ -1,11 +1,21 @@
-import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
+import {
+    useState,
+    useEffect,
+    useRef,
+    useCallback,
+    type RefObject,
+} from 'react';
 import { useKeyboard } from '@opentui/react';
 import type { TextareaRenderable, ScrollBoxRenderable } from '@opentui/core';
 import { basename } from 'path';
 
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
 import { getOutlineTool } from '@/lib/tools/get-outline';
-import { findActiveMention, findMentionTokenBefore, type MentionMatch } from './use-file-mention';
+import {
+    findActiveMention,
+    findMentionTokenBefore,
+    type MentionMatch,
+} from './use-file-mention';
 import { extractSymbolBlock } from './extract-symbol-block';
 
 export interface SymbolCandidate {
@@ -33,7 +43,9 @@ export function useSymbolMention(
     const activeMentionRef = useRef<MentionMatch | null>(null);
     const scrollRef = useRef<ScrollBoxRenderable>(null);
 
-    const [activeMention, setActiveMention] = useState<MentionMatch | null>(null);
+    const [activeMention, setActiveMention] = useState<MentionMatch | null>(
+        null,
+    );
     const [allSymbols, setAllSymbols] = useState<SymbolCandidate[]>([]);
     const [candidates, setCandidates] = useState<SymbolCandidate[]>([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -122,17 +134,24 @@ export function useSymbolMention(
 
             void (async () => {
                 try {
-                    const block = await extractSymbolBlock(selectedFile, candidate.line);
+                    const block = await extractSymbolBlock(
+                        selectedFile,
+                        candidate.line,
+                    );
                     const fileBase = basename(selectedFile);
                     const textToInsert = `\n\n\`\`\`\n// Symbol: ${candidate.name} (${fileBase}:${candidate.line})\n${block}\n\`\`\`\n`;
 
                     // Replace the mention query and append the code block context
-                    const beforeMention = textarea.plainText.slice(0, mention.start);
+                    const beforeMention = textarea.plainText.slice(
+                        0,
+                        mention.start,
+                    );
                     const afterMention = textarea.plainText.slice(mention.end);
                     const newText = beforeMention + textToInsert + afterMention;
 
                     textarea.replaceText(newText);
-                    textarea.cursorOffset = beforeMention.length + textToInsert.length;
+                    textarea.cursorOffset =
+                        beforeMention.length + textToInsert.length;
                     close();
                 } catch {
                     close();
@@ -169,7 +188,7 @@ export function useSymbolMention(
 
         const queryLower = activeMentionQuery.toLowerCase();
         const filtered = allSymbols.filter((sym) =>
-            sym.name.toLowerCase().includes(queryLower)
+            sym.name.toLowerCase().includes(queryLower),
         );
 
         setCandidates(filtered);

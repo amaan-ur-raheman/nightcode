@@ -9,15 +9,13 @@ describe('git-workflow', () => {
         mockRunGit.mockReset();
         mockScanFilesForSecrets.mockReset();
         vi.doMock('../tools/utils', async (importOriginal) => {
-            const orig = await importOriginal<
-                typeof import('../tools/utils')
-            >();
+            const orig =
+                await importOriginal<typeof import('../tools/utils')>();
             return { ...orig, runGit: mockRunGit };
         });
         vi.doMock('../tools/secret-scan', async (importOriginal) => {
-            const orig = await importOriginal<
-                typeof import('../tools/secret-scan')
-            >();
+            const orig =
+                await importOriginal<typeof import('../tools/secret-scan')>();
             return { ...orig, scanFilesForSecrets: mockScanFilesForSecrets };
         });
     });
@@ -251,7 +249,9 @@ describe('git-workflow', () => {
                 'This is a very long description that should be truncated at forty characters';
             const branchName = await createFeatureBranch(longDesc);
 
-            const slug = branchName.replace(/^ai\//, '').replace(/-[a-z0-9]+$/, '');
+            const slug = branchName
+                .replace(/^ai\//, '')
+                .replace(/-[a-z0-9]+$/, '');
             expect(slug.length).toBeLessThanOrEqual(40);
         });
 
@@ -434,11 +434,7 @@ describe('git-workflow', () => {
             ]);
 
             const { preCommitSecretScan } = await import('../git-workflow');
-            const result = await preCommitSecretScan([
-                'a.ts',
-                'b.ts',
-                'c.ts',
-            ]);
+            const result = await preCommitSecretScan(['a.ts', 'b.ts', 'c.ts']);
 
             expect(result.blocked).toBe(true);
             expect(result.high).toBe(1);

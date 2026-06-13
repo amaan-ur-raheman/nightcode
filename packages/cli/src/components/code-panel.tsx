@@ -37,7 +37,9 @@ export function CodePanel({ filePath, highlightedLine }: CodePanelProps) {
                 setLines(text.split('\n'));
             } catch (err) {
                 if (ignore) return;
-                setError(err instanceof Error ? err.message : 'Failed to read file');
+                setError(
+                    err instanceof Error ? err.message : 'Failed to read file',
+                );
                 setLines([]);
             } finally {
                 if (!ignore) setLoading(false);
@@ -51,7 +53,11 @@ export function CodePanel({ filePath, highlightedLine }: CodePanelProps) {
 
     // Scroll to highlighted line when it changes
     useEffect(() => {
-        if (highlightedLine !== undefined && scrollRef.current && lines.length > 0) {
+        if (
+            highlightedLine !== undefined &&
+            scrollRef.current &&
+            lines.length > 0
+        ) {
             // Scroll so the highlighted line is centered or near the top
             const targetScroll = Math.max(0, highlightedLine - 5);
             scrollRef.current.scrollTo(targetScroll);
@@ -138,7 +144,8 @@ export function CodePanel({ filePath, highlightedLine }: CodePanelProps) {
                             }
 
                             // Format line number with padding
-                            const lineNumStr = String(lineNum).padStart(4) + ' ';
+                            const lineNumStr =
+                                String(lineNum).padStart(4) + ' ';
 
                             return (
                                 <box
@@ -147,12 +154,17 @@ export function CodePanel({ filePath, highlightedLine }: CodePanelProps) {
                                     backgroundColor={bg}
                                     width="100%"
                                 >
-                                    <text fg={isHighlighted ? 'black' : colors.dimSeparator} selectable={false}>
+                                    <text
+                                        fg={
+                                            isHighlighted
+                                                ? 'black'
+                                                : colors.dimSeparator
+                                        }
+                                        selectable={false}
+                                    >
                                         {lineNumStr}
                                     </text>
-                                    <text fg={fg}>
-                                        {lineContent}
-                                    </text>
+                                    <text fg={fg}>{lineContent}</text>
                                 </box>
                             );
                         })}

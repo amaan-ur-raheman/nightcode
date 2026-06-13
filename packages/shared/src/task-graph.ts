@@ -344,3 +344,122 @@ export function validateGraph(graph: TaskGraph): string[] {
 
     return errors;
 }
+
+// ── Checkpoint Serialization ──
+
+const CHECKPOINT_VERSION = 1;
+
+interface SerializedGraph {
+    _version: number;
+    graph: TaskGraph;
+    serializedAt: number;
+}
+
+/**
+ * Serialize a TaskGraph to a JSON string for checkpoint persistence.
+ * Includes version field for forward compatibility.
+ */
+export function serializeGraph(graph: TaskGraph): string {
+    const payload: SerializedGraph = {
+        _version: CHECKPOINT_VERSION,
+        graph,
+        serializedAt: Date.now(),
+    };
+    return JSON.stringify(payload);
+}
+
+/**
+ * Deserialize a TaskGraph from a checkpoint JSON string.
+ * Returns null if the data is invalid or version is unsupported.
+ */
+export function deserializeGraph(json: string): TaskGraph | null {
+    try {
+        const parsed = JSON.parse(json) as Partial<SerializedGraph>;
+
+        if (!parsed || typeof parsed !== 'object') return null;
+        if (typeof parsed._version !== 'number') return null;
+        if (parsed._version > CHECKPOINT_VERSION) return null; // future version, can't read
+        if (!parsed.graph || typeof parsed.graph !== 'object') return null;
+
+        const g = parsed.graph as Record<string, any>;
+
+        // Validate required fields
+        if (typeof g.id !== 'string') return null;
+        if (typeof g.name !== 'string') return null;
+        if (!g.nodes || typeof g.nodes !== 'object') return null;
+        if (!g.edges || typeof g.edges !== 'object') return null;
+        if (!['running', 'completed', 'failed', 'cancelled'].includes(g.status))
+            return null;
+        if (typeof g.createdAt !== 'number') return null;
+        if (typeof g.version !== 'number') return null;
+
+        // Validate node structure
+        for (const [id, node] of Object.entries(
+            g.nodes as Record<string, any>,
+        )) {
+            if (typeof node !== 'object' || node === null) return null;
+            if (typeof node.id !== 'string' || node.id !== id) return null;
+            if (typeof node.description !== 'string') return null;
+            if (!Array.isArray(node.dependencies)) return null;
+            if (typeof node.retryCount !== 'number') return null;
+            if (typeof node.maxRetries !== 'number') return null;
+            if (typeof node.files !== 'object' || !Array.isArray(node.files))
+                return null;
+            if (
+                typeof node.type !== 'string' ||
+                ![
+                    'orchestrator',
+                    'coder',
+                    'reviewer',
+                    'tester',
+                    'researcher',
+                    'debugger',
+                ].includes(node.type)
+            )
+                return null;
+            if (
+                typeof node.status !== 'string' ||
+                ![
+                    'pending',
+                    'running',
+                    'completed',
+                    'failed',
+                    'cancelled',
+                    'paused',
+                ].includes(node.status)
+            )
+                return null;
+            if (node.mode !== 'BUILD' && node.mode !== 'PLAN') return null;
+        }
+
+        return parsed.graph as TaskGraph;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Get completed task IDs from a graph (useful for resume).
+ */
+export function getCompletedTaskIds(graph: TaskGraph): Set<string> {
+    const completed = new Set<string>();
+    for (const [id, node] of Object.entries(graph.nodes)) {
+        if (node.status === 'completed') {
+            completed.add(id);
+        }
+    }
+    return completed;
+}
+
+/**
+ * Get the aggregated results of completed tasks (for dependency injection on resume).
+ */
+export function getCompletedResults(graph: TaskGraph): Record<string, string> {
+    const results: Record<string, string> = {};
+    for (const [id, node] of Object.entries(graph.nodes)) {
+        if (node.status === 'completed' && node.result) {
+            results[id] = node.result;
+        }
+    }
+    return results;
+}

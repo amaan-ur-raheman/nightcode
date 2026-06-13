@@ -32,11 +32,7 @@ export async function getGitState(): Promise<GitState> {
     const isDirty = statusOutput.length > 0;
     const hasUntracked = statusOutput.includes('??');
 
-    const logResult = await runGit(cwd, [
-        'log',
-        '-1',
-        '--format=%s',
-    ]);
+    const logResult = await runGit(cwd, ['log', '-1', '--format=%s']);
     const lastCommit = logResult.stdout.trim();
 
     const isOnMain =
@@ -79,9 +75,7 @@ export async function createFeatureBranch(
  * Returns matches grouped by severity. Callers should block the commit if
  * high-severity secrets are found.
  */
-export async function preCommitSecretScan(
-    files: string[],
-): Promise<{
+export async function preCommitSecretScan(files: string[]): Promise<{
     blocked: boolean;
     high: number;
     medium: number;
@@ -147,11 +141,7 @@ export async function generatePRSummary(): Promise<{
     const cwd = process.cwd();
 
     // Determine the base branch
-    const mainCheck = await runGit(cwd, [
-        'rev-parse',
-        '--verify',
-        'main',
-    ]);
+    const mainCheck = await runGit(cwd, ['rev-parse', '--verify', 'main']);
     let baseBranch: string;
     if (mainCheck.exitCode === 0) {
         baseBranch = 'main';
@@ -204,10 +194,7 @@ export async function generatePRSummary(): Promise<{
     }
 
     // Generate title from first commit or branch name
-    const branchResult = await runGit(cwd, [
-        'branch',
-        '--show-current',
-    ]);
+    const branchResult = await runGit(cwd, ['branch', '--show-current']);
     const branchName = branchResult.stdout.trim();
     const title =
         commits.length > 0
@@ -223,5 +210,10 @@ export async function generatePRSummary(): Promise<{
         diffstat,
     ].join('\n');
 
-    return { title, body, commits, stats: { filesChanged, insertions, deletions } };
+    return {
+        title,
+        body,
+        commits,
+        stats: { filesChanged, insertions, deletions },
+    };
 }

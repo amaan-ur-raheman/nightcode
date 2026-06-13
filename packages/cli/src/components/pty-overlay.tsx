@@ -7,20 +7,26 @@ import { usePtySession } from '@/lib/pty-session';
 import { debug } from '@/lib/debug';
 
 const stripAnsi = (str: string) => {
-    return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+    return str.replace(
+        /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
+        '',
+    );
 };
 
 const sanitizeTerminalOutput = (output: string) => {
     const clean = stripAnsi(output);
     const lines = clean.split('\n');
-    return lines.map((line) => {
-        const parts = line.split('\r');
-        return parts[parts.length - 1] ?? '';
-    }).join('\n');
+    return lines
+        .map((line) => {
+            const parts = line.split('\r');
+            return parts[parts.length - 1] ?? '';
+        })
+        .join('\n');
 };
 
 export function PtyOverlay() {
-    const { active, command, output, isAttached, detach, writeInput } = usePtySession();
+    const { active, command, output, isAttached, detach, writeInput } =
+        usePtySession();
     const { isTopLayer, push, pop } = useKeyboardLayer();
     const dimensions = useTerminalDimensions();
     const { colors } = useTheme();
@@ -44,7 +50,10 @@ export function PtyOverlay() {
     useKeyboard((key) => {
         if (!isAttached || !isTopLayer('pty')) return;
 
-        debug.log('pty', `Key pressed: name=${key.name}, ctrl=${key.ctrl}, raw=${key.raw}, sequence=${key.sequence}`);
+        debug.log(
+            'pty',
+            `Key pressed: name=${key.name}, ctrl=${key.ctrl}, raw=${key.raw}, sequence=${key.sequence}`,
+        );
 
         // Ctrl+D to detach
         if (key.ctrl && key.name === 'd') {
@@ -149,7 +158,8 @@ export function PtyOverlay() {
                         Interactive Terminal Session
                     </text>
                     <text attributes={TextAttributes.DIM} fg={colors.text}>
-                        {command.slice(0, 40) + (command.length > 40 ? '...' : '')}
+                        {command.slice(0, 40) +
+                            (command.length > 40 ? '...' : '')}
                     </text>
                 </box>
 
@@ -172,12 +182,26 @@ export function PtyOverlay() {
                     borderColor={colors.dimSeparator}
                 >
                     <box flexDirection="row" gap={1}>
-                        <text fg={colors.success} attributes={TextAttributes.BOLD}>Ctrl+D</text>
-                        <text fg={colors.text} attributes={TextAttributes.DIM}>detach</text>
+                        <text
+                            fg={colors.success}
+                            attributes={TextAttributes.BOLD}
+                        >
+                            Ctrl+D
+                        </text>
+                        <text fg={colors.text} attributes={TextAttributes.DIM}>
+                            detach
+                        </text>
                     </box>
                     <box flexDirection="row" gap={1}>
-                        <text fg={colors.error} attributes={TextAttributes.BOLD}>Ctrl+C</text>
-                        <text fg={colors.text} attributes={TextAttributes.DIM}>interrupt</text>
+                        <text
+                            fg={colors.error}
+                            attributes={TextAttributes.BOLD}
+                        >
+                            Ctrl+C
+                        </text>
+                        <text fg={colors.text} attributes={TextAttributes.DIM}>
+                            interrupt
+                        </text>
                     </box>
                 </box>
             </box>

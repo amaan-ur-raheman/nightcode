@@ -85,7 +85,8 @@ export const apiClient = hc<AppType>(
             const MAX_RETRIES = 3;
             const RETRY_DELAY_MS = 1000;
             const method = (init?.method ?? 'GET').toUpperCase();
-            const isIdempotent = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+            const isIdempotent =
+                method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
             let response: Response | null = null;
             let lastError: Error | null = null;
 

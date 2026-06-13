@@ -9,6 +9,51 @@ const MUTATION_TIMEOUT_MS = 45_000;
 const COMMAND_TIMEOUT_GRACE_MS = 2_000;
 const LONG_RUNNING_TIMEOUT_MS = 10 * 60_000;
 
+// ── Model-Aware Timeout Multipliers ──
+// Slower reasoning models get more time; faster models get standard time.
+const MODEL_TIMEOUT_MULTIPLIERS: Record<string, number> = {
+    // Slow reasoning models — 1.5x
+    'claude-opus-4': 1.5,
+    'claude-3-opus': 1.5,
+    'gpt-4.5-preview': 1.5,
+    o1: 1.5,
+    o3: 1.5,
+    'o4-mini': 1.5,
+    // Standard models — 1.25x
+    'claude-sonnet-4': 1.25,
+    'gpt-4o': 1.25,
+    'gpt-4-turbo': 1.25,
+    // Fast models — 1.0x (no multiplier)
+    'gemini-2.0-flash': 1.0,
+    'gemini-2.5-flash': 1.0,
+    'gpt-4o-mini': 1.0,
+    'claude-3.5-haiku': 1.0,
+    'claude-3-haiku': 1.0,
+};
+const DEFAULT_MODEL_MULTIPLIER = 1.0; // No change by default for backward compatibility
+
+const MODEL_TIMEOUT_CAP = 2.25; // Never exceed 2.25x base timeout
+
+/**
+ * Get the timeout multiplier for a given model ID.
+ * Uses prefix matching so "openai/gpt-4o" matches "gpt-4o".
+ */
+export function getModelTimeoutMultiplier(modelId?: string): number {
+    if (!modelId) return DEFAULT_MODEL_MULTIPLIER;
+    const normalized = modelId.toLowerCase();
+    // Try exact match first
+    if (normalized in MODEL_TIMEOUT_MULTIPLIERS) {
+        return MODEL_TIMEOUT_MULTIPLIERS[normalized]!;
+    }
+    // Try suffix match (e.g., "openai/gpt-4o" → "gpt-4o")
+    for (const [key, mult] of Object.entries(MODEL_TIMEOUT_MULTIPLIERS)) {
+        if (normalized.endsWith(key)) {
+            return mult;
+        }
+    }
+    return DEFAULT_MODEL_MULTIPLIER;
+}
+
 const SHORT_TOOLS = new Set([
     'readFile',
     'listDirectory',
@@ -28,6 +73,8 @@ const SHORT_TOOLS = new Set([
     'memoryGet',
     'memoryList',
     'memorySearch',
+    'memoryFuzzySearch',
+    'memoryStats',
     'keychainGet',
     'getTaskStatus',
     'getKnowledgeNeighbors',
@@ -37,6 +84,9 @@ const SHORT_TOOLS = new Set([
     'impactAnalysis',
     'breakingChangeCheck',
     'suggestMigration',
+    'checkExternalChanges',
+    'semanticSearch',
+    'profileCode',
 ]);
 
 const MUTATION_TOOLS = new Set([
@@ -71,6 +121,8 @@ const LONG_RUNNING_TOOLS = new Set([
     'spawnRefactor',
     'spawnResearcher',
     'orchestrator',
+    'validateCode',
+    'reviewPr',
 ]);
 
 function getNumericInputField(
@@ -87,19 +139,28 @@ function getNumericInputField(
 export function getToolExecutionPolicy(
     toolName: string,
     input?: unknown,
+    modelId?: string,
 ): ToolExecutionPolicy {
+    const multiplier = Math.min(
+        getModelTimeoutMultiplier(modelId),
+        MODEL_TIMEOUT_CAP,
+    );
+
+    const applyMultiplier = (base: number) => Math.round(base * multiplier);
+
     if (toolName === 'bash') {
         return {
             timeoutMs:
-                (getNumericInputField(input, 'timeout') ?? 30_000) +
-                COMMAND_TIMEOUT_GRACE_MS,
+                applyMultiplier(
+                    getNumericInputField(input, 'timeout') ?? 30_000,
+                ) + COMMAND_TIMEOUT_GRACE_MS,
             longRunning: true,
         };
     }
 
     if (toolName === 'replExecute') {
         return {
-            timeoutMs: LONG_RUNNING_TIMEOUT_MS,
+            timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
             longRunning: true,
         };
     }
@@ -107,33 +168,52 @@ export function getToolExecutionPolicy(
     if (toolName === 'runTests') {
         return {
             timeoutMs:
-                (getNumericInputField(input, 'timeout') ?? 60_000) +
-                COMMAND_TIMEOUT_GRACE_MS,
+                applyMultiplier(
+                    getNumericInputField(input, 'timeout') ?? 60_000,
+                ) + COMMAND_TIMEOUT_GRACE_MS,
             longRunning: true,
         };
     }
 
     if (LONG_RUNNING_TOOLS.has(toolName)) {
-        return { timeoutMs: LONG_RUNNING_TIMEOUT_MS, longRunning: true };
+        return {
+            timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
+            longRunning: true,
+        };
     }
 
     if (SHORT_TOOLS.has(toolName)) {
-        return { timeoutMs: SHORT_TIMEOUT_MS, longRunning: false };
+        return {
+            timeoutMs: applyMultiplier(SHORT_TIMEOUT_MS),
+            longRunning: false,
+        };
     }
 
     if (MUTATION_TOOLS.has(toolName)) {
-        return { timeoutMs: MUTATION_TIMEOUT_MS, longRunning: false };
+        return {
+            timeoutMs: applyMultiplier(MUTATION_TIMEOUT_MS),
+            longRunning: false,
+        };
     }
 
     if (toolName === 'webFetch' || toolName === 'httpRequest') {
-        return { timeoutMs: MUTATION_TIMEOUT_MS, longRunning: false };
+        return {
+            timeoutMs: applyMultiplier(MUTATION_TIMEOUT_MS),
+            longRunning: false,
+        };
     }
 
     if (toolName === 'processManage') {
-        return { timeoutMs: SHORT_TIMEOUT_MS, longRunning: false };
+        return {
+            timeoutMs: applyMultiplier(SHORT_TIMEOUT_MS),
+            longRunning: false,
+        };
     }
 
-    return { timeoutMs: STANDARD_TIMEOUT_MS, longRunning: false };
+    return {
+        timeoutMs: applyMultiplier(STANDARD_TIMEOUT_MS),
+        longRunning: false,
+    };
 }
 
 export class ToolExecutionTimeoutError extends Error {
@@ -154,8 +234,9 @@ export async function runWithToolExecutionPolicy<T>(
     input: unknown,
     parentSignal: AbortSignal | undefined,
     run: (signal: AbortSignal) => Promise<T>,
+    modelId?: string,
 ): Promise<T> {
-    const policy = getToolExecutionPolicy(toolName, input);
+    const policy = getToolExecutionPolicy(toolName, input, modelId);
     const controller = new AbortController();
     let settledByTimeout = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;

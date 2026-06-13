@@ -14,8 +14,26 @@ const MAX_PROMPT_CACHE_SIZE = 32;
 const promptCache = new Map<string, string>();
 const subagentPromptCache = new Map<string, string>();
 
+/**
+ * Simple hash function for cache keys. Not cryptographic, but sufficient
+ * for deduplication. Uses DJB2 algorithm for fast string hashing.
+ */
+function simpleHash(str: string): number {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+    }
+    return hash;
+}
+
 function getCacheKey(params: SystemPromptParams): string {
-    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}:${params.corrections?.length ?? 0}`;
+    // Hash correction content instead of using count to avoid cache collisions
+    // when different corrections have the same length
+    const correctionsKey =
+        params.corrections && params.corrections.length > 0
+            ? String(simpleHash(params.corrections.join('\n')))
+            : '';
+    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}:${correctionsKey}`;
 }
 
 /**
@@ -29,20 +47,25 @@ const SHARED_RULES = `1. Use glob/grep/codeSearch to find relevant code, then re
    - When searching: emit multiple grep/glob calls for different patterns at once
    - When writing independent files: emit ALL writeFile/editFile calls together
    - Example: need to read auth.ts, db.ts, api.ts? Call readFile("auth.ts"), readFile("db.ts"), readFile("api.ts") in ONE response
-   - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)`;
+   - This is dramatically faster than sequential calls (3 parallel reads = 1 round-trip vs 3)
+4. **Think before acting:** Read and understand the relevant code before making changes. Never guess at API signatures, function names, or file contents.
+5. **Verify your work:** After making changes, run the appropriate checks (typecheck, tests, lint) to confirm correctness. Don't assume your changes work.`;
 
 const PLAN_RULES = `${SHARED_RULES}
-4. Check git status first when context about changes is needed.
-5. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.`;
+6. Check git status first when context about changes is needed.
+7. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.
+8. When suggesting a plan, list the EXACT files and line ranges that will be modified.
+9. Identify potential risks and edge cases before proposing the plan.`;
 
 const BUILD_RULES = `${SHARED_RULES}
-4. Run tests first to establish a baseline before changes.
-5. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
-6. editFile: oldString must match EXACTLY including whitespace. Read the block first if unsure.
-7. Use editFile for small edits; writeFile only for new files or full rewrites.
-8. Use patch for multi-file changes, moveFile for renames, renameSymbol for symbol renames.
-9. Use undo to revert the last change if something goes wrong.
-10. Verify: run tests and check gitStatus/gitDiff after changes.`;
+6. Run tests first to establish a baseline before changes.
+7. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
+8. editFile: oldString must match EXACTLY including whitespace. Read the block first if unsure.
+9. Use editFile for small edits; writeFile only for new files or full rewrites.
+10. Use patch for multi-file changes, moveFile for renames, renameSymbol for symbol renames.
+11. Use undo to revert the last change if something goes wrong.
+12. After all changes, verify: run tests and check gitStatus/gitDiff.
+13. **Accuracy over speed:** One correct change is better than three wrong ones. If unsure, read more code first.`;
 
 /**
  * Lean rules for subagent/worker requests. Reuses SHARED_RULES with
@@ -51,15 +74,17 @@ const BUILD_RULES = `${SHARED_RULES}
 function buildSubagentRules(mode: ModeType): string {
     if (mode === 'PLAN') {
         return `${SHARED_RULES}
-4. Check git status first when context about changes is needed.
-5. Present concrete findings with file paths and line references.`;
+6. Check git status first when context about changes is needed.
+7. Present concrete findings with file paths and line references.
+8. Be thorough — explore all relevant code paths before concluding.`;
     }
     return `${SHARED_RULES}
-4. Run tests first to establish a baseline before changes.
-5. If a test/command fails: analyze the error, fix the code, retest.
-6. editFile: oldString must match EXACTLY including whitespace.
-7. Use editFile for small edits; writeFile only for new files.
-8. Verify: run tests and check gitStatus/gitDiff after changes.`;
+6. Run tests first to establish a baseline before changes.
+7. If a test/command fails: analyze the error, fix the code, retest.
+8. editFile: oldString must match EXACTLY including whitespace.
+9. Use editFile for small edits; writeFile only for new files.
+10. Verify: run tests and check gitStatus/gitDiff after changes.
+11. If you encounter an unexpected error, stop and report it — don't keep retrying the same failed approach.`;
 }
 
 export function buildSystemPrompt({
@@ -69,7 +94,13 @@ export function buildSystemPrompt({
     currentModel,
     corrections,
 }: SystemPromptParams): string {
-    const key = getCacheKey({ mode, projectContext, isSubagent, currentModel, corrections });
+    const key = getCacheKey({
+        mode,
+        projectContext,
+        isSubagent,
+        currentModel,
+        corrections,
+    });
     const cached = promptCache.get(key);
     if (cached) return cached;
 
@@ -123,6 +154,14 @@ Persistent memory across sessions. Use it for:
 - Configuration (API endpoints, DB schemas)
 
 Keys: "user:code-style", "project:db-schema", "user:ignore-patterns", etc.
+- **memorySet** — Store a value. Supports optional \`tags\` for categorization and \`ttlMs\` for auto-expiry.
+- **memoryGet** — Retrieve a value by exact key.
+- **memoryDelete** — Remove a memory entry by key.
+- **memoryList** — List all entries, optionally filtered by tag.
+- **memorySearch** — Exact substring search across keys and values.
+- **memoryFuzzySearch** — Tolerates typos and misspellings using Levenshtein distance.
+- **memoryStats** — Get statistics: total count, tags, most accessed entry.
+
 Do NOT store secrets (keys, passwords, tokens) — memory is plaintext.
 
 ## Environment Variable Management
@@ -178,6 +217,44 @@ Leverage the knowledge graph to assess the blast radius of changes before making
 - **suggestMigration** — Generate a step-by-step migration plan for renaming or moving a node. Returns ordered steps with file paths, descriptions, and priorities (critical/recommended/optional).
 
 When to use: before refactoring APIs, renaming functions/classes, moving files, or any change that affects exports. These tools prevent regressions by showing you exactly what will break.
+
+### Auto-Fix Pipeline
+The auto-fix pipeline tracks file modifications and can validate your changes:
+- **validateCode** — Run typecheck, lint, and/or tests on modified files. Auto-detects project type (Node.js, Python, Rust, Go) and runs the appropriate tools. Optionally auto-fixes lint issues with \`--fix\`.
+- Files modified by editFile/writeFile/searchReplace/patch are automatically tracked.
+- Call validateCode without arguments to check all pending modified files, or pass specific file paths.
+- Use \`test: true\` explicitly to also run tests (disabled by default since tests are slow).
+- When to use: after a batch of code changes, before committing, or when you want to verify correctness without manually running commands.
+
+### External File Change Detection
+The system monitors the project directory for external file changes (git pull, external editor, npm install, etc.):
+- **checkExternalChanges** — Query what files changed externally since the last check. Returns a list of changed files (created/modified/deleted) and warns you to re-read them before editing.
+- File changes are debounced (300ms) to coalesce rapid events from git operations.
+- Internal changes (made by the AI) are automatically ignored so they don't appear as external changes.
+- The glob cache is automatically invalidated when external changes are detected.
+- **When to use**: Before editing files you haven't read yet, or when the user mentions running git pull, npm install, or editing files in another editor.
+
+### PR Review Bot
+Review GitHub Pull Requests with a single URL:
+- **reviewPr** — Takes a GitHub PR URL (e.g. https://github.com/owner/repo/pull/123), fetches the diff and metadata via the GitHub API, and produces a structured code review.
+- Reports bugs, security issues, performance concerns, and code quality findings with file:line references.
+- Use \`GITHUB_TOKEN\` env var for private repos; public repos work without auth.
+- Supports optional \`focus\` parameter to narrow the review (e.g. 'security', 'performance').
+- **When to use**: When the user shares a PR URL and wants a code review, or when reviewing upstream changes.
+
+### Semantic Search
+Instant codebase search powered by the Knowledge Graph:
+- **semanticSearch** — Search for functions, classes, interfaces, types, and variables by name or concept. Returns ranked results with file paths, line numbers, and match quality.
+- Supports filtering by node type (function, class, interface, etc.) and file path.
+- Uses an inverted index for fast lookup with fuzzy matching for typos.
+- **When to use**: When you need to find specific symbols, understand where something is defined, or search for concepts across the codebase. Much faster than grep for symbol-level searches.
+- The index is automatically rebuilt when you call buildKnowledgeGraph.
+
+### Performance Profiling
+Run benchmarks and identify performance hotspots:
+- **profileCode** — Auto-detects the project benchmark tool (vitest bench, cargo bench, go test -bench, pytest-benchmark) and runs benchmarks. Reports ops/sec, timing, and identifies the 3 slowest hotspots.
+- Supports optional \`filter\` to run specific benchmarks, \`command\` for custom benchmark commands.
+- **When to use**: When you need to measure performance, find slow code paths, or compare before/after optimization results.
 
 ### Skills
 Skills are specialized guides for common tasks. Use them when your task matches a known domain.

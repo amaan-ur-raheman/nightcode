@@ -1,4 +1,11 @@
 import type { TaskGraph } from '@nightcode/shared';
+import { serializeGraph, deserializeGraph } from '@nightcode/shared';
+import { mkdir, writeFile, readFile, readdir, unlink } from 'fs/promises';
+import { join } from 'path';
+import { homedir } from 'os';
+
+const CHECKPOINT_DIR = join(homedir(), '.nightcode', 'checkpoints');
+const CHECKPOINT_TTL_MS = 60_000; // Delete checkpoints 60s after completion
 
 export interface OrchestratorState {
     graph: TaskGraph;
@@ -21,7 +28,11 @@ class OrchestratorManager {
      */
     private toolCallToGraph = new Map<string, string>();
 
-    registerTaskAbortController(graphId: string, taskId: string, controller: AbortController): void {
+    registerTaskAbortController(
+        graphId: string,
+        taskId: string,
+        controller: AbortController,
+    ): void {
         this.taskAbortControllers.set(`${graphId}:${taskId}`, controller);
     }
 
@@ -34,7 +45,9 @@ class OrchestratorManager {
     }
 
     abortTask(graphId: string, taskId: string): void {
-        const controller = this.taskAbortControllers.get(`${graphId}:${taskId}`);
+        const controller = this.taskAbortControllers.get(
+            `${graphId}:${taskId}`,
+        );
         if (controller) {
             controller.abort();
             this.taskAbortControllers.delete(`${graphId}:${taskId}`);
@@ -85,13 +98,17 @@ class OrchestratorManager {
             // Clone the graph so React sees a new reference (graph is mutated in place)
             state.graph = { ...graph, nodes: { ...graph.nodes } };
             this.notify();
+            // Persist checkpoint for crash recovery (fire-and-forget)
+            saveCheckpoint(graph).catch(() => {});
             // M1: Auto-cleanup terminal graphs after 30s to give UI time to display final status
             if (
                 graph.status === 'completed' ||
                 graph.status === 'failed' ||
                 graph.status === 'cancelled'
             ) {
-                setTimeout(() => this.remove(graph.id), 30_000);
+                setTimeout(() => {
+                    this.remove(graph.id);
+                }, 30_000);
             }
         }
     }
@@ -114,6 +131,8 @@ class OrchestratorManager {
 
     remove(graphId: string): void {
         this.active.delete(graphId);
+        // Delete checkpoint file
+        deleteCheckpoint(graphId).catch(() => {});
         // Cleanup workspace asynchronously with error handling
         import('@/lib/workspace')
             .then((m) => m.cleanupWorkspace(graphId))
@@ -134,6 +153,7 @@ class OrchestratorManager {
         }
         for (const id of toRemove) {
             this.active.delete(id);
+            deleteCheckpoint(id).catch(() => {});
             import('@/lib/workspace')
                 .then((m) => m.cleanupWorkspace(id))
                 .catch(() => {});
@@ -185,6 +205,75 @@ class OrchestratorManager {
             }
         }
     }
+}
+
+// ── Checkpoint Persistence ──
+
+/**
+ * Save a graph checkpoint to disk.
+ * Called on every graph mutation for crash recovery.
+ */
+export async function saveCheckpoint(graph: TaskGraph): Promise<void> {
+    try {
+        await mkdir(CHECKPOINT_DIR, { recursive: true });
+        const filePath = join(CHECKPOINT_DIR, `${graph.id}.json`);
+        const json = serializeGraph(graph);
+        await writeFile(filePath, json, 'utf-8');
+    } catch (err) {
+        console.error(`[checkpoint] Failed to save graph ${graph.id}:`, err);
+    }
+}
+
+/**
+ * Load a graph checkpoint from disk.
+ * Returns null if no checkpoint exists or it's invalid.
+ */
+export async function loadCheckpoint(
+    graphId: string,
+): Promise<TaskGraph | null> {
+    try {
+        const filePath = join(CHECKPOINT_DIR, `${graphId}.json`);
+        const json = await readFile(filePath, 'utf-8');
+        return deserializeGraph(json);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Delete a checkpoint file from disk.
+ */
+export async function deleteCheckpoint(graphId: string): Promise<void> {
+    try {
+        const filePath = join(CHECKPOINT_DIR, `${graphId}.json`);
+        await unlink(filePath);
+    } catch {
+        // Ignore — file may not exist
+    }
+}
+
+/**
+ * List all checkpoint graph IDs on disk.
+ */
+export async function listCheckpoints(): Promise<string[]> {
+    try {
+        const files = await readdir(CHECKPOINT_DIR);
+        return files
+            .filter((f) => f.endsWith('.json'))
+            .map((f) => f.replace('.json', ''));
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Schedule checkpoint cleanup after a graph reaches a terminal state.
+ */
+export function scheduleCheckpointCleanup(graphId: string): void {
+    setTimeout(
+        () => deleteCheckpoint(graphId).catch(() => {}),
+        CHECKPOINT_TTL_MS,
+    );
 }
 
 export const orchestratorManager = new OrchestratorManager();

@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     isPrivateHost,
     truncate,
     PRIVATE_IPS,
     MAX_FILE_SIZE,
     MAX_OUTPUT,
+    runGit,
 } from '../utils';
 
 describe('isPrivateHost', () => {
@@ -72,5 +73,30 @@ describe('Constants', () => {
         expect(PRIVATE_IPS).toContain('localhost');
         expect(PRIVATE_IPS).toContain('10.');
         expect(PRIVATE_IPS).toContain('192.168.');
+    });
+});
+
+describe('runGit', () => {
+    it('successfully runs git and clears the timeout timer', async () => {
+        const mockProc = {
+            stdout: 'git version 2.40.0',
+            stderr: '',
+            exited: Promise.resolve(0),
+            kill: vi.fn(),
+        };
+        vi.stubGlobal('Bun', {
+            spawn: vi.fn().mockReturnValue(mockProc),
+        });
+
+        const spyClearTimeout = vi.spyOn(global, 'clearTimeout');
+        const result = await runGit(process.cwd(), ['--version']);
+        expect(result).toHaveProperty('stdout');
+        expect(result).toHaveProperty('stderr');
+        expect(result).toHaveProperty('exitCode');
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toBe('git version 2.40.0');
+        expect(spyClearTimeout).toHaveBeenCalled();
+        spyClearTimeout.mockRestore();
+        vi.unstubAllGlobals();
     });
 });

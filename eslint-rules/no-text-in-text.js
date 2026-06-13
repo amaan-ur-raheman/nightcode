@@ -23,7 +23,8 @@ module.exports = {
             JSXElement(node) {
                 const openingElement = node.openingElement;
                 const tagName =
-                    openingElement.name && openingElement.name.type === 'JSXIdentifier'
+                    openingElement.name &&
+                    openingElement.name.type === 'JSXIdentifier'
                         ? openingElement.name.name
                         : null;
 

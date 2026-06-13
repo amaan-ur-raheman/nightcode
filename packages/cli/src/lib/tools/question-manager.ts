@@ -26,11 +26,24 @@ export class QuestionManager {
         }
     }
 
-    request(questions: QuestionInput[]): Promise<string[]> {
+    request(
+        questions: QuestionInput[],
+        timeoutMs = 120_000,
+    ): Promise<string[]> {
         return new Promise((resolve) => {
             const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             this.pending.set(id, { questions, resolve });
             this.notify();
+
+            // Auto-reject after timeout to prevent hanging
+            setTimeout(() => {
+                if (this.pending.has(id)) {
+                    const empty = questions.map(() => '');
+                    resolve(empty);
+                    this.pending.delete(id);
+                    this.notify();
+                }
+            }, timeoutMs);
         });
     }
 
