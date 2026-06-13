@@ -71,4 +71,49 @@ describe('fetchAllModels', () => {
         const result = await fetchAllModels();
         expect(result.cached).toBe(false);
     });
+
+    it('fetchLocalOllama discovers local models and registers them', async () => {
+        const { fetchAllModels, clearModelCache } = await import('../model-fetcher');
+        const { findSupportedChatModel } = await import('@nightcode/shared');
+
+        clearModelCache();
+
+        const mockResponse = {
+            models: [
+                { name: 'llama3:latest', model: 'llama3:latest' }
+            ]
+        };
+
+        const originalFetch = global.fetch;
+        (global as any).fetch = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('11434')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve(mockResponse),
+                } as any);
+            }
+            return Promise.resolve({
+                ok: false,
+            } as any);
+        });
+
+        try {
+            const result = await fetchAllModels();
+            const localModels = result.models.filter(m => m.provider === 'local');
+            expect(localModels).toHaveLength(1);
+            const first = localModels[0];
+            if (!first) throw new Error('No local models found');
+            expect(first.id).toBe('local/llama3:latest');
+            expect(first.displayName).toBe('Llama3 Latest');
+
+            // Verify registered in SUPPORTED_CHAT_MODELS search
+            const resolved = findSupportedChatModel('local/llama3:latest');
+            expect(resolved).toBeDefined();
+            if (!resolved) throw new Error('Model was not resolved');
+            expect(resolved.provider).toBe('local');
+            expect(resolved.pricing.inputUsdPerMillionTokens).toBe(0.1);
+        } finally {
+            (global as any).fetch = originalFetch;
+        }
+    });
 });

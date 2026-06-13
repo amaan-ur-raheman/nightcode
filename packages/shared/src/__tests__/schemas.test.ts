@@ -3,7 +3,6 @@ import {
     toolInputSchemas,
     getToolContracts,
     getSubagentToolContracts,
-    Mode,
     modeSchema,
 } from '../schemas';
 
@@ -174,16 +173,16 @@ describe('getToolContracts', () => {
         const tools = getToolContracts('PLAN');
         expect(tools.readFile).toBeDefined();
         expect(tools.grep).toBeDefined();
-        expect((tools as any).writeFile).toBeUndefined();
-        expect((tools as any).bash).toBeUndefined();
+        expect((tools as Record<string, unknown>).writeFile).toBeUndefined();
+        expect((tools as Record<string, unknown>).bash).toBeUndefined();
     });
 
     it('returns all tools for BUILD mode', () => {
         const tools = getToolContracts('BUILD');
         expect(tools.readFile).toBeDefined();
-        expect((tools as any).writeFile).toBeDefined();
-        expect((tools as any).bash).toBeDefined();
-        expect((tools as any).editFile).toBeDefined();
+        expect((tools as Record<string, unknown>).writeFile).toBeDefined();
+        expect((tools as Record<string, unknown>).bash).toBeDefined();
+        expect((tools as Record<string, unknown>).editFile).toBeDefined();
     });
 
     it('includes spawnAgent in both modes', () => {
@@ -203,12 +202,12 @@ describe('getToolContracts', () => {
 describe('getSubagentToolContracts', () => {
     it('excludes spawnAgent for subagents', () => {
         const planTools = getSubagentToolContracts('PLAN');
-        expect((planTools as any).spawnAgent).toBeUndefined();
+        expect((planTools as Record<string, unknown>).spawnAgent).toBeUndefined();
     });
 
     it('excludes orchestrator for subagents', () => {
         const buildTools = getSubagentToolContracts('BUILD');
-        expect((buildTools as any).orchestrator).toBeUndefined();
+        expect((buildTools as Record<string, unknown>).orchestrator).toBeUndefined();
     });
 
     it('still includes read tools for subagents', () => {

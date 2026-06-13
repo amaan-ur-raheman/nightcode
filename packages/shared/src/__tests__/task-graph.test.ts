@@ -13,20 +13,6 @@ import {
     type TaskNode,
 } from '../task-graph';
 
-function makeTask(overrides: Partial<TaskNode> & { id: string }): TaskNode {
-    return {
-        type: 'coder',
-        description: `Task ${overrides.id}`,
-        dependencies: [],
-        status: 'pending',
-        files: [],
-        mode: 'BUILD',
-        createdAt: Date.now(),
-        retryCount: 0,
-        maxRetries: 2,
-        ...overrides,
-    };
-}
 
 // Helper to assert a node exists (type-safe lookup)
 function node(graph: ReturnType<typeof createTaskGraph>, id: string): TaskNode {
