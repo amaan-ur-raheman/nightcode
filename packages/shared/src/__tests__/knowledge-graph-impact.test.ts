@@ -78,7 +78,9 @@ describe('KnowledgeGraph impact analysis', () => {
             expect(report.directConsumers).toHaveLength(1);
             expect(report.directConsumers[0]!.id).toBe('file:src/api.ts');
             expect(report.transitiveConsumers).toHaveLength(1);
-            expect(report.transitiveConsumers[0]!.id).toBe('file:src/routes.ts');
+            expect(report.transitiveConsumers[0]!.id).toBe(
+                'file:src/routes.ts',
+            );
             expect(report.totalAffected).toBe(2);
             expect(report.riskLevel).not.toBe('none');
         });
@@ -361,12 +363,15 @@ describe('KnowledgeGraph impact analysis', () => {
                 'function:src/utils.ts#helper',
                 'myHelper',
             );
-            const importSteps = steps.filter((s) => s.action === 'update-import');
+            const importSteps = steps.filter(
+                (s) => s.action === 'update-import',
+            );
             expect(importSteps).toHaveLength(2);
-            expect(importSteps.map((s) => s.filePath).sort((a, b) => (a ?? '').localeCompare(b ?? ''))).toEqual([
-                'src/api.ts',
-                'src/routes.ts',
-            ]);
+            expect(
+                importSteps
+                    .map((s) => s.filePath)
+                    .sort((a, b) => (a ?? '').localeCompare(b ?? '')),
+            ).toEqual(['src/api.ts', 'src/routes.ts']);
         });
     });
 });

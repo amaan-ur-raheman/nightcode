@@ -36,7 +36,8 @@ export type SupportedProvider =
     | 'deepseek'
     | 'gemini'
     | 'kilo'
-    | 'local';
+    | 'local'
+    | 'lightningai';
 
 type SupportedChatModelDefinition = {
     id: string;
@@ -463,8 +464,12 @@ export type SupportedChatModel =
 
 export type SupportedChatModelId = string;
 
-export function findSupportedChatModel(modelId: string): SupportedChatModel | undefined {
-    const staticModel = SUPPORTED_CHAT_MODELS.find((model) => model.id === modelId);
+export function findSupportedChatModel(
+    modelId: string,
+): SupportedChatModel | undefined {
+    const staticModel = SUPPORTED_CHAT_MODELS.find(
+        (model) => model.id === modelId,
+    );
     if (staticModel) return staticModel;
     return REGISTERED_LOCAL_MODELS.find((model) => model.id === modelId);
 }

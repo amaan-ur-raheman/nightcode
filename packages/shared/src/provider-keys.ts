@@ -19,6 +19,7 @@ export const PROVIDER_KEYCHAIN_NAMES: Record<SupportedProvider, string> = {
     gemini: 'google-api-key',
     kilo: 'kilo-api-key',
     local: 'local-api-key',
+    lightningai: 'lightningai-api-key',
 };
 
 /**
@@ -38,6 +39,7 @@ export const PROVIDER_ENV_VARS: Record<SupportedProvider, string> = {
     gemini: 'GOOGLE_API_KEY',
     kilo: 'KILO_API_KEY',
     local: 'LOCAL_API_KEY',
+    lightningai: 'LIGHTNINGAI_API_KEY',
 };
 
 /**
@@ -56,6 +58,7 @@ const PROVIDER_PREFIXES: Record<string, SupportedProvider> = {
     'opencode/': 'opencode',
     'kilo/': 'kilo',
     'local/': 'local',
+    'lightningai/': 'lightningai',
 };
 
 /**

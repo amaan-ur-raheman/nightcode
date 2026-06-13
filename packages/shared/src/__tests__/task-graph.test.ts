@@ -10,9 +10,12 @@ import {
     getCriticalPath,
     getGraphStats,
     validateGraph,
+    serializeGraph,
+    deserializeGraph,
+    getCompletedTaskIds,
+    getCompletedResults,
     type TaskNode,
 } from '../task-graph';
-
 
 // Helper to assert a node exists (type-safe lookup)
 function node(graph: ReturnType<typeof createTaskGraph>, id: string): TaskNode {
@@ -774,5 +777,217 @@ describe('validateGraph', () => {
 
         const errors = validateGraph(graph);
         expect(errors.some((e) => e.includes('Cycle'))).toBe(true);
+    });
+});
+
+describe('serializeGraph / deserializeGraph', () => {
+    it('round-trips a graph through serialization', () => {
+        const graph = createTaskGraph('test', [
+            {
+                id: 'a',
+                type: 'coder',
+                description: 'A',
+                dependencies: [],
+                files: [],
+                mode: 'BUILD',
+            },
+            {
+                id: 'b',
+                type: 'tester',
+                description: 'B',
+                dependencies: ['a'],
+                files: [],
+                mode: 'BUILD',
+            },
+        ]);
+        markTaskCompleted(graph, 'a', 'result A');
+        markTaskRunning(graph, 'b');
+
+        const json = serializeGraph(graph);
+        const restored = deserializeGraph(json);
+
+        expect(restored).not.toBeNull();
+        expect(restored!.id).toBe(graph.id);
+        expect(restored!.name).toBe('test');
+        expect(restored!.status).toBe('running');
+        expect(restored!.version).toBe(graph.version);
+        expect(restored!.nodes['a']!.status).toBe('completed');
+        expect(restored!.nodes['a']!.result).toBe('result A');
+        expect(restored!.nodes['b']!.status).toBe('running');
+    });
+
+    it('returns null for invalid JSON', () => {
+        expect(deserializeGraph('not json')).toBeNull();
+    });
+
+    it('returns null for missing _version', () => {
+        expect(deserializeGraph(JSON.stringify({ graph: {} }))).toBeNull();
+    });
+
+    it('returns null for future version', () => {
+        const payload = { _version: 999, graph: {}, serializedAt: Date.now() };
+        expect(deserializeGraph(JSON.stringify(payload))).toBeNull();
+    });
+
+    it('returns null for missing required graph fields', () => {
+        const payload = {
+            _version: 1,
+            graph: { id: 'x' },
+            serializedAt: Date.now(),
+        };
+        expect(deserializeGraph(JSON.stringify(payload))).toBeNull();
+    });
+
+    it('returns null for invalid node structure', () => {
+        const payload = {
+            _version: 1,
+            serializedAt: Date.now(),
+            graph: {
+                id: 'g1',
+                name: 'test',
+                nodes: {
+                    a: {
+                        id: 'a',
+                        description: 'A',
+                        dependencies: ['nonexistent'],
+                    },
+                },
+                edges: {},
+                status: 'running',
+                createdAt: Date.now(),
+                version: 0,
+            },
+        };
+        expect(deserializeGraph(JSON.stringify(payload))).toBeNull();
+    });
+
+    it('returns null if node type, status, or mode is invalid', () => {
+        const createPayload = (nodeOverrides: any) => ({
+            _version: 1,
+            serializedAt: Date.now(),
+            graph: {
+                id: 'g1',
+                name: 'test',
+                nodes: {
+                    a: {
+                        id: 'a',
+                        description: 'A',
+                        dependencies: [],
+                        retryCount: 0,
+                        maxRetries: 3,
+                        files: [],
+                        type: 'coder',
+                        status: 'pending',
+                        mode: 'BUILD',
+                        ...nodeOverrides,
+                    },
+                },
+                edges: {},
+                status: 'running',
+                createdAt: Date.now(),
+                version: 0,
+            },
+        });
+
+        // Invalid type
+        expect(
+            deserializeGraph(
+                JSON.stringify(createPayload({ type: 'invalid_role' })),
+            ),
+        ).toBeNull();
+        // Invalid status
+        expect(
+            deserializeGraph(
+                JSON.stringify(createPayload({ status: 'invalid_status' })),
+            ),
+        ).toBeNull();
+        // Invalid mode
+        expect(
+            deserializeGraph(
+                JSON.stringify(createPayload({ mode: 'invalid_mode' })),
+            ),
+        ).toBeNull();
+    });
+
+    it('preserves all node fields through round-trip', () => {
+        const graph = createTaskGraph('test', [
+            {
+                id: 'a',
+                type: 'coder',
+                description: 'A',
+                dependencies: [],
+                files: ['src/a.ts'],
+                mode: 'BUILD',
+                model: 'gpt-4o',
+            },
+        ]);
+        markTaskCompleted(graph, 'a', 'done');
+
+        const json = serializeGraph(graph);
+        const restored = deserializeGraph(json)!;
+
+        const nodeA = restored.nodes['a']!;
+        expect(nodeA.type).toBe('coder');
+        expect(nodeA.files).toEqual(['src/a.ts']);
+        expect(nodeA.model).toBe('gpt-4o');
+        expect(nodeA.result).toBe('done');
+        expect(nodeA.completedAt).toBeDefined();
+    });
+});
+
+describe('getCompletedTaskIds', () => {
+    it('returns IDs of completed tasks', () => {
+        const graph = createTaskGraph('test', [
+            {
+                id: 'a',
+                type: 'coder',
+                description: 'A',
+                dependencies: [],
+                files: [],
+                mode: 'BUILD',
+            },
+            {
+                id: 'b',
+                type: 'coder',
+                description: 'B',
+                dependencies: [],
+                files: [],
+                mode: 'BUILD',
+            },
+        ]);
+        markTaskCompleted(graph, 'a', 'done');
+
+        const completed = getCompletedTaskIds(graph);
+        expect(completed.has('a')).toBe(true);
+        expect(completed.has('b')).toBe(false);
+    });
+});
+
+describe('getCompletedResults', () => {
+    it('returns task ID → result map for completed tasks', () => {
+        const graph = createTaskGraph('test', [
+            {
+                id: 'a',
+                type: 'coder',
+                description: 'A',
+                dependencies: [],
+                files: [],
+                mode: 'BUILD',
+            },
+            {
+                id: 'b',
+                type: 'coder',
+                description: 'B',
+                dependencies: [],
+                files: [],
+                mode: 'BUILD',
+            },
+        ]);
+        markTaskCompleted(graph, 'a', 'result A');
+        markTaskFailed(graph, 'b', 'error');
+
+        const results = getCompletedResults(graph);
+        expect(results['a']).toBe('result A');
+        expect(results['b']).toBeUndefined();
     });
 });

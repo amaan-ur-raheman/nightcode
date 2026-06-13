@@ -125,7 +125,11 @@ export const toolInputSchemas = {
             .describe('Timeout in milliseconds (default: 30000)'),
     }),
     replExecute: z.object({
-        command: z.string().describe('The command to execute in the persistent background REPL session'),
+        command: z
+            .string()
+            .describe(
+                'The command to execute in the persistent background REPL session',
+            ),
     }),
     patch: z.object({
         patch: z.string().describe('The unified diff patch to apply'),
@@ -360,6 +364,12 @@ export const toolInputSchemas = {
             .array(z.string())
             .optional()
             .describe('Optional tags for categorization'),
+        ttlMs: z
+            .number()
+            .optional()
+            .describe(
+                'Time-to-live in milliseconds. Memory expires after this duration. Omit for permanent.',
+            ),
     }),
     memoryGet: z.object({
         key: z.string().describe('Memory key to retrieve'),
@@ -373,6 +383,16 @@ export const toolInputSchemas = {
     memorySearch: z.object({
         query: z.string().describe('Search query to find matching memories'),
     }),
+    memoryFuzzySearch: z.object({
+        query: z
+            .string()
+            .describe('Fuzzy search query — tolerates typos and misspellings'),
+        maxDist: z
+            .number()
+            .default(2)
+            .describe('Maximum edit distance for fuzzy matching (default: 2)'),
+    }),
+    memoryStats: z.object({}),
     envManage: z.object({
         action: z
             .enum(['read', 'list', 'add', 'update', 'delete'])
@@ -597,51 +617,89 @@ export const toolInputSchemas = {
     }),
     queryKnowledgeGraph: z.object({
         nodeType: z
-            .enum(['file', 'function', 'class', 'interface', 'type', 'variable', 'module', 'dependency', 'config', 'api'])
+            .enum([
+                'file',
+                'function',
+                'class',
+                'interface',
+                'type',
+                'variable',
+                'module',
+                'dependency',
+                'config',
+                'api',
+            ])
             .optional()
             .describe('Filter by node type'),
         name: z
             .string()
             .optional()
-            .describe('Search nodes by name (substring match, case-insensitive)'),
+            .describe(
+                'Search nodes by name (substring match, case-insensitive)',
+            ),
         filePath: z
             .string()
             .optional()
             .describe('Filter by file path (substring match)'),
-        exported: z
-            .boolean()
-            .optional()
-            .describe('Filter by exported status'),
+        exported: z.boolean().optional().describe('Filter by exported status'),
         limit: z
             .number()
             .default(50)
             .describe('Maximum results to return (default 50)'),
     }),
     getKnowledgeNeighbors: z.object({
-        nodeId: z
-            .string()
-            .describe('ID of the node to find neighbors for'),
+        nodeId: z.string().describe('ID of the node to find neighbors for'),
         maxDepth: z
             .number()
             .default(1)
             .describe('Maximum traversal depth (default 1, max 5)'),
     }),
     addKnowledgeNode: z.object({
-        id: z.string().describe('Unique node ID (e.g. "function:src/utils.ts#helper")'),
+        id: z
+            .string()
+            .describe('Unique node ID (e.g. "function:src/utils.ts#helper")'),
         type: z
-            .enum(['file', 'function', 'class', 'interface', 'type', 'variable', 'module', 'dependency', 'config', 'api'])
+            .enum([
+                'file',
+                'function',
+                'class',
+                'interface',
+                'type',
+                'variable',
+                'module',
+                'dependency',
+                'config',
+                'api',
+            ])
             .describe('Node type'),
         name: z.string().describe('Human-readable name'),
         filePath: z.string().optional().describe('Relative file path'),
-        description: z.string().optional().describe('Brief description of this node'),
+        description: z
+            .string()
+            .optional()
+            .describe('Brief description of this node'),
     }),
     addKnowledgeEdge: z.object({
         source: z.string().describe('Source node ID'),
         target: z.string().describe('Target node ID'),
         type: z
-            .enum(['imports', 'exports', 'calls', 'depends-on', 'defines', 'extends', 'implements', 'uses', 'references', 'configures'])
+            .enum([
+                'imports',
+                'exports',
+                'calls',
+                'depends-on',
+                'defines',
+                'extends',
+                'implements',
+                'uses',
+                'references',
+                'configures',
+            ])
             .describe('Edge type'),
-        filePath: z.string().optional().describe('File where this relationship exists'),
+        filePath: z
+            .string()
+            .optional()
+            .describe('File where this relationship exists'),
     }),
     detectKnowledgeCycles: z.object({}),
     getKnowledgeStats: z.object({}),
@@ -674,6 +732,111 @@ export const toolInputSchemas = {
             .string()
             .optional()
             .describe('New file path for the node (if moving)'),
+    }),
+    validateCode: z.object({
+        files: z
+            .array(z.string())
+            .optional()
+            .describe(
+                'Optional list of file paths to validate. If omitted, validates all files modified since the last check.',
+            ),
+        typecheck: z
+            .boolean()
+            .optional()
+            .describe(
+                'Run type checking (default: true if project has a typechecker)',
+            ),
+        lint: z
+            .boolean()
+            .optional()
+            .describe('Run linting (default: true if project has a linter)'),
+        test: z
+            .boolean()
+            .optional()
+            .describe(
+                'Run tests (default: false — tests are slow, enable explicitly)',
+            ),
+        autoFix: z
+            .boolean()
+            .optional()
+            .describe(
+                'Attempt to auto-fix lint issues with --fix (default: true)',
+            ),
+    }),
+    checkExternalChanges: z.object({
+        since: z
+            .number()
+            .optional()
+            .describe(
+                'Optional timestamp (ms) to only return changes after this time. Omit to get all recent changes.',
+            ),
+        clearAfterQuery: z
+            .boolean()
+            .optional()
+            .describe('Clear the change list after querying (default: false)'),
+    }),
+    reviewPr: z.object({
+        url: z
+            .string()
+            .describe(
+                'GitHub PR URL (e.g. https://github.com/owner/repo/pull/123)',
+            ),
+        focus: z
+            .string()
+            .optional()
+            .describe(
+                "Optional focus area, e.g. 'security', 'performance', 'correctness'",
+            ),
+        model: z
+            .string()
+            .optional()
+            .describe(
+                'Model to use for the review. Defaults to same model as main agent.',
+            ),
+    }),
+    semanticSearch: z.object({
+        query: z
+            .string()
+            .describe(
+                'Search query — keywords, symbol names, or concepts to find in the codebase',
+            ),
+        nodeType: z
+            .enum([
+                'file',
+                'function',
+                'class',
+                'interface',
+                'type',
+                'variable',
+                'module',
+                'dependency',
+                'config',
+                'api',
+            ])
+            .optional()
+            .describe('Filter results by node type'),
+        limit: z
+            .number()
+            .default(20)
+            .describe('Maximum results to return (default 20)'),
+        filePath: z
+            .string()
+            .optional()
+            .describe('Filter results by file path (substring match)'),
+    }),
+    profileCode: z.object({
+        filter: z
+            .string()
+            .optional()
+            .describe(
+                'Optional benchmark name or pattern to filter (e.g. "fibonacci", "hash"). Runs all benchmarks if omitted.',
+            ),
+        command: z
+            .string()
+            .optional()
+            .describe(
+                'Custom benchmark command to run instead of auto-detecting (e.g. "npm run bench", "cargo bench -- my_bench")',
+            ),
     }),
 } as const;
 
@@ -794,6 +957,16 @@ export const readOnlyToolContracts = {
         description: 'Search memory entries by key or value content.',
         inputSchema: toolInputSchemas.memorySearch,
     }),
+    memoryFuzzySearch: tool({
+        description:
+            'Fuzzy search memory entries that tolerate typos and misspellings. Uses Levenshtein distance to find close matches.',
+        inputSchema: toolInputSchemas.memoryFuzzySearch,
+    }),
+    memoryStats: tool({
+        description:
+            'Get statistics about stored memories: total count, tags, most accessed entry, oldest/newest entry.',
+        inputSchema: toolInputSchemas.memoryStats,
+    }),
     askQuestion: tool({
         description:
             'Ask the user a question with predefined choices or free-text input. Returns the user answers as a string array.',
@@ -859,6 +1032,31 @@ export const readOnlyToolContracts = {
             'Generate a step-by-step migration plan for renaming or moving a node. Returns ordered steps with file paths, descriptions, and priorities for each change needed across the codebase.',
         inputSchema: toolInputSchemas.suggestMigration,
     }),
+    validateCode: tool({
+        description:
+            'Run validation checks (typecheck, lint, tests) on modified files. Auto-detects the project type and runs the appropriate tools. Optionally auto-fixes lint issues. Call after making code changes to verify correctness.',
+        inputSchema: toolInputSchemas.validateCode,
+    }),
+    checkExternalChanges: tool({
+        description:
+            'Check for files that were modified outside this session (e.g. git pull, external editor, npm install). Returns a list of changed files and warns the AI to re-read them before editing. Call this periodically or when you suspect external changes.',
+        inputSchema: toolInputSchemas.checkExternalChanges,
+    }),
+    reviewPr: tool({
+        description:
+            'Review a GitHub Pull Request by URL. Fetches the PR diff, metadata, and changed files, then produces a structured code review. Requires a GitHub PR URL. Set GITHUB_TOKEN env var for private repos.',
+        inputSchema: toolInputSchemas.reviewPr,
+    }),
+    semanticSearch: tool({
+        description:
+            'Search the codebase using a local search index built from the Knowledge Graph. Finds functions, classes, interfaces, types, and variables by name or concept. Returns ranked results with file paths and line numbers. Build the Knowledge Graph first with buildKnowledgeGraph if no results appear.',
+        inputSchema: toolInputSchemas.semanticSearch,
+    }),
+    profileCode: tool({
+        description:
+            'Run benchmarks and profile code performance. Auto-detects the project benchmark tool (vitest bench, cargo bench, go test -bench, pytest-benchmark) or accepts a custom command. Reports ops/sec, timing, and identifies hotspots.',
+        inputSchema: toolInputSchemas.profileCode,
+    }),
 } as const;
 
 export const buildToolContracts = {
@@ -878,7 +1076,8 @@ export const buildToolContracts = {
         inputSchema: toolInputSchemas.bash,
     }),
     replExecute: tool({
-        description: 'Execute a command in the persistent background REPL sandbox session.',
+        description:
+            'Execute a command in the persistent background REPL sandbox session.',
         inputSchema: toolInputSchemas.replExecute,
     }),
     patch: tool({
