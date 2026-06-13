@@ -110,7 +110,11 @@ function Dialog({ currentDialog, close }: DialogProps) {
             onMouseDown={() => close()}
         >
             <box
-                width={Math.min(60, dimensions.width - 4)}
+                width={
+                    currentDialog.width
+                        ? Math.min(currentDialog.width, dimensions.width - 4)
+                        : Math.min(60, dimensions.width - 4)
+                }
                 height="auto"
                 backgroundColor={colors.dialogSurface}
                 paddingX={4}

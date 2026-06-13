@@ -13,6 +13,8 @@ import type { ImageAttachment } from '@/hooks/use-chat';
 import type { ConfirmationManager } from '@/lib/tools/dangerous-ops';
 import type { QuestionManager } from '@/lib/tools/question-manager';
 
+import { usePtySession } from '@/lib/pty-session';
+
 type SessionShellProps = {
     children?: ReactNode;
     onSubmit: (text: string) => void;
@@ -57,6 +59,7 @@ export function SessionShell({
     questionManager,
 }: SessionShellProps) {
     const { mode } = usePromptConfig();
+    const { active } = usePtySession();
     const [hasPendingConfirmation, setHasPendingConfirmation] = useState(false);
     const [hasPendingQuestion, setHasPendingQuestion] = useState(false);
 
@@ -150,13 +153,17 @@ export function SessionShell({
                     flexShrink={0}
                     marginLeft="auto"
                 >
+                    {active ? <KeyHint keyName="ctrl+p" label="terminal" /> : null}
                     {canRetry ? (
                         <KeyHint keyName="ctrl+r" label="retry" />
                     ) : null}
                     <KeyHint keyName="ctrl+b" label="branch" />
                     <KeyHint keyName="ctrl+t" label="files" />
                     <KeyHint keyName="tab" label="agents" />
+                    <KeyHint keyName="ctrl+g" label="git" />
                     <KeyHint keyName="ctrl+o" label="orchestrate" />
+                    <KeyHint keyName="ctrl+k" label="graph" />
+                    <KeyHint keyName="ctrl+h" label="timeline" />
                 </box>
             </box>
         </box>

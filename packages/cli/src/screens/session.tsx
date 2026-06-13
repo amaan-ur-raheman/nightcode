@@ -20,13 +20,18 @@ import { useCoalescedMessages } from '@/hooks/use-coalesced-messages';
 import { useTheme } from '@/providers/theme';
 import { orchestratorManager } from '@/lib/orchestrator-manager';
 import { useFileTree } from '@/providers/file-tree';
+import { useDialog } from '@/providers/dialog';
 
 import { SessionShell } from '@/components/session-shell';
 import { FileTree } from '@/components/file-tree';
+import { CommitDialogContent, GraphViewer, TimelineDialogContent } from '@/components/dialog';
+import { timelineManager } from '@/lib/timeline-manager';
 import { FileDiffPanel } from '@/components/file-diff-panel';
 import { BranchIndicator } from '@/components/branch-indicator';
 import { UserMessage, ErrorMessage, BotMessage } from '@/components/messages';
 import { QuestionOverlay } from '@/components/question-overlay';
+import { SymbolOutline } from '@/components/symbol-outline';
+import { CodePanel } from '@/components/code-panel';
 
 type SessionData = InferResponseType<
     (typeof apiClient.sessions)[':id']['$get'],
@@ -103,6 +108,8 @@ const MAX_VISIBLE_MESSAGES = 200;
 
 import { lastSession, writeLastSession } from '@/index';
 
+import { usePtySession } from '@/lib/pty-session';
+
 function SessionChat({
     session,
     initialPrompt,
@@ -121,6 +128,9 @@ function SessionChat({
     const { mode, model } = usePromptConfig();
     const { colors } = useTheme();
     const { isTopLayer } = useKeyboardLayer();
+    const dialog = useDialog();
+    const pty = usePtySession();
+    const toast = useToast();
     const {
         messages,
         submit,
@@ -165,7 +175,8 @@ function SessionChat({
     }, [abort]);
 
     // Let the user cancel a reply even before the first streamed chunks arrived
-    useKeyboard((key) => {
+    const keyHandlerRef = useRef<((key: any) => void) | undefined>(undefined);
+    keyHandlerRef.current = (key) => {
         if (key.name === 'escape' && isTopLayer('base') && isLoading) {
             key.preventDefault();
             interrupt();
@@ -178,9 +189,76 @@ function SessionChat({
             key.preventDefault();
             createBranch();
         }
-    });
+        if (key.name === 'g' && key.ctrl && isTopLayer('base') && !isLoading) {
+            key.preventDefault();
+            dialog.open({
+                title: 'Git Commit Planner',
+                children: (
+                    <CommitDialogContent
+                        sessionId={session.id}
+                        model={model}
+                    />
+                ),
+            });
+        }
+        if (key.name === 'k' && key.ctrl && isTopLayer('base') && !isLoading) {
+            key.preventDefault();
+            dialog.open({
+                title: 'Workspace Knowledge Graph',
+                width: 94,
+                children: (
+                    <GraphViewer
+                        onClose={dialog.close}
+                        onSelectFile={(filePath, line) => {
+                            setSelectedFile(filePath);
+                            if (line !== undefined) {
+                                setHighlightedLine(line);
+                            }
+                            dialog.close();
+                        }}
+                    />
+                ),
+            });
+        }
+        if (key.name === 'p' && key.ctrl && isTopLayer('base') && pty.active) {
+            key.preventDefault();
+            pty.attach();
+        }
+        if (key.name === 'h' && key.ctrl && isTopLayer('base') && !isLoading) {
+            key.preventDefault();
+            dialog.open({
+                title: 'Session Playback Timeline',
+                width: 94,
+                children: (
+                    <TimelineDialogContent
+                        sessionId={session.id}
+                        messages={messages}
+                        onRollback={async (commitHash) => {
+                            const timeline = await timelineManager.loadTimeline(session.id);
+                            const snapshot = Object.values(timeline.snapshots).find(
+                                (s) => s.commitHash === commitHash
+                            );
+                            if (snapshot) {
+                                const branch = branches.find((b) => b.id === snapshot.messageId);
+                                if (branch) {
+                                    await switchBranch(branch.id);
+                                }
+                            }
+                            dialog.close();
+                            toast.show({
+                                message: 'Workspace rolled back successfully to checkpoint.',
+                                variant: 'success',
+                            });
+                        }}
+                    />
+                ),
+            });
+        }
+    };
 
-    const toast = useToast();
+    useKeyboard((key) => {
+        keyHandlerRef.current?.(key);
+    });
 
     useSelectionHandler((selection) => {
         const text = selection.getSelectedText();
@@ -276,7 +354,12 @@ function SessionChat({
         });
     }, [initialPrompt, submit]);
 
-    const { showFileTree, selectedFile, setSelectedFile } = useFileTree();
+    const { showFileTree, selectedFile, setSelectedFile, diffMode } = useFileTree();
+    const [highlightedLine, setHighlightedLine] = useState<number | undefined>();
+
+    useEffect(() => {
+        setHighlightedLine(undefined);
+    }, [selectedFile]);
 
     return (
         <box flexDirection="row" width="100%" height="100%">
@@ -288,7 +371,20 @@ function SessionChat({
                 />
             )}
             {showFileTree && selectedFile ? (
-                <FileDiffPanel filePath={selectedFile} />
+                diffMode ? (
+                    <FileDiffPanel filePath={selectedFile} />
+                ) : (
+                    <box flexDirection="row" flexGrow={1} height="100%">
+                        <SymbolOutline
+                            filePath={selectedFile}
+                            onSelectSymbol={(sym) => setHighlightedLine(sym.line)}
+                        />
+                        <CodePanel
+                            filePath={selectedFile}
+                            highlightedLine={highlightedLine}
+                        />
+                    </box>
+                )
             ) : (
                 <box flexDirection="column" flexGrow={1}>
                     <SessionShell

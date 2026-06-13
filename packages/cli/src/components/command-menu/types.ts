@@ -16,6 +16,7 @@ export type CommandContext = {
     dialog: DialogContextValue;
     navigate: (path: string) => void;
     mode: ModeType;
+    model: string;
     setMode: (mode: ModeType) => void;
     setModel: (model: string) => void;
     setInputValue: (value: string) => void;

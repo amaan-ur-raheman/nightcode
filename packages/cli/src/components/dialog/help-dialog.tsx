@@ -52,6 +52,7 @@ export function HelpDialogContent() {
         { key: '@', desc: 'Mention a file' },
         { key: 'Ctrl+T', desc: 'Toggle file tree' },
         { key: 'Ctrl+O', desc: 'View orchestrations' },
+        { key: 'Ctrl+H', desc: 'View visual playback timeline' },
         { key: 'Ctrl+Z', desc: 'Undo last change' },
         { key: '[/]', desc: 'Resize file tree' },
         { key: 'j/k', desc: 'Navigate file tree' },

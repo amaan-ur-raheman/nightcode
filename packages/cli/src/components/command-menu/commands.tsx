@@ -25,7 +25,6 @@ import type { Command } from '@/components/command-menu/types';
 import {
     AgentsDialogContent,
     AuditDialogContent,
-    ConfirmDialog,
     HelpDialogContent,
     ImportDialogContent,
     McpDialogContent,
@@ -37,7 +36,10 @@ import {
     SnapshotDialogContent,
     SkillsDialogContent,
     ThemeDialogContent,
+    CommitDialogContent,
+    TimelineDialogContent,
 } from '@/components/dialog';
+import { timelineManager } from '@/lib/timeline-manager';
 
 export const COMMANDS: Command[] = [
     {
@@ -50,6 +52,45 @@ export const COMMANDS: Command[] = [
             ctx.dialog.open({
                 title: 'Help',
                 children: <HelpDialogContent />,
+            });
+        },
+    },
+    {
+        name: 'history',
+        description: 'Show visual playback timeline and rollback checkpoints',
+        value: '/history',
+        shortcut: 'Ctrl+H',
+        category: 'session',
+        action: (ctx) => {
+            if (!ctx.sessionId) {
+                ctx.toast.show({
+                    message: 'No active session',
+                    variant: 'error',
+                });
+                return;
+            }
+            ctx.dialog.open({
+                title: 'Session Playback Timeline',
+                width: 94,
+                children: (
+                    <TimelineDialogContent
+                        sessionId={ctx.sessionId}
+                        onRollback={async (commitHash) => {
+                            const timeline = await timelineManager.loadTimeline(ctx.sessionId!);
+                            const snapshot = Object.values(timeline.snapshots).find(
+                                (s) => s.commitHash === commitHash
+                            );
+                            if (snapshot && snapshot.messageId !== 'main') {
+                                await ctx.switchBranch(snapshot.messageId);
+                            }
+                            ctx.dialog.close();
+                            ctx.toast.show({
+                                message: 'Workspace rolled back successfully to checkpoint.',
+                                variant: 'success',
+                            });
+                        }}
+                    />
+                ),
             });
         },
     },
@@ -68,22 +109,10 @@ export const COMMANDS: Command[] = [
         value: '/clear',
         category: 'session',
         action: (ctx) => {
-            ctx.dialog.open({
-                title: 'Confirm Clear',
-                children: (
-                    <ConfirmDialog
-                        message="Clear all messages in this session?"
-                        onConfirm={() => {
-                            ctx.clearMessages();
-                            ctx.dialog.close();
-                            ctx.toast.show({
-                                message: 'Chat cleared',
-                                variant: 'success',
-                            });
-                        }}
-                        onCancel={() => ctx.dialog.close()}
-                    />
-                ),
+            ctx.clearMessages();
+            ctx.toast.show({
+                message: 'Chat cleared',
+                variant: 'success',
             });
         },
     },
@@ -222,21 +251,10 @@ export const COMMANDS: Command[] = [
         value: '/logout',
         category: 'account',
         action: (ctx) => {
-            ctx.dialog.open({
-                title: 'Confirm Logout',
-                children: (
-                    <ConfirmDialog
-                        message="Are you sure you want to sign out?"
-                        onConfirm={() => {
-                            clearAuth();
-                            ctx.toast.show({
-                                message: 'Signed out',
-                                variant: 'success',
-                            });
-                        }}
-                        onCancel={() => ctx.dialog.close()}
-                    />
-                ),
+            clearAuth();
+            ctx.toast.show({
+                message: 'Signed out',
+                variant: 'success',
             });
         },
     },
@@ -340,16 +358,7 @@ export const COMMANDS: Command[] = [
         value: '/exit',
         category: 'session',
         action: (ctx) => {
-            ctx.dialog.open({
-                title: 'Confirm Exit',
-                children: (
-                    <ConfirmDialog
-                        message="Are you sure you want to quit?"
-                        onConfirm={() => ctx.exit()}
-                        onCancel={() => ctx.dialog.close()}
-                    />
-                ),
-            });
+            ctx.exit();
         },
     },
     {
@@ -462,6 +471,31 @@ export const COMMANDS: Command[] = [
         category: 'settings',
         action: (ctx) => {
             ctx.openDiffMode();
+        },
+    },
+    {
+        name: 'commit',
+        description: 'Open visual git staging & AI commit planner',
+        value: '/commit',
+        shortcut: 'Ctrl+G',
+        category: 'settings',
+        action: (ctx) => {
+            if (!ctx.sessionId) {
+                ctx.toast.show({
+                    message: 'No active session',
+                    variant: 'error',
+                });
+                return;
+            }
+            ctx.dialog.open({
+                title: 'Git Commit Planner',
+                children: (
+                    <CommitDialogContent
+                        sessionId={ctx.sessionId}
+                        model={ctx.model}
+                    />
+                ),
+            });
         },
     },
     {
@@ -655,7 +689,7 @@ export const COMMANDS: Command[] = [
         action: (ctx) => {
             ctx.dialog.open({
                 title: 'Orchestration',
-                children: <OrchestrationDialogContent />,
+                children: <OrchestrationDialogContent sessionId={ctx.sessionId} />,
             });
         },
     },
