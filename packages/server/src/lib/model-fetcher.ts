@@ -1,4 +1,8 @@
-import { registerLocalModel, type DynamicModel, type SupportedProvider } from '@nightcode/shared';
+import {
+    registerLocalModel,
+    type DynamicModel,
+    type SupportedProvider,
+} from '@nightcode/shared';
 
 type ProviderFetcher = (apiKey?: string) => Promise<DynamicModel[]>;
 
@@ -392,6 +396,16 @@ const FETCHERS: Array<{ provider: SupportedProvider; fetch: ProviderFetcher }> =
         { provider: 'gemini', fetch: (key) => fetchGemini(key) },
         { provider: 'kilo', fetch: fetchKilo },
         { provider: 'local', fetch: fetchLocalOllama },
+        {
+            provider: 'lightningai',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Lightning AI',
+                    'https://lightning.ai/api',
+                    key ?? process.env.LIGHTNINGAI_API_KEY ?? '',
+                    'lightningai',
+                ),
+        },
     ];
 
 export async function fetchAllModels(

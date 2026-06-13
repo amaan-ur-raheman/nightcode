@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
+
+// Mock the auth module before any imports to prevent top-level env var check
+vi.mock('../../lib/auth', () => ({
+    authenticateOAuthRequest: vi
+        .fn()
+        .mockResolvedValue({ userId: 'test-user' }),
+}));
+
 import models from '../models';
 
 vi.mock('../../lib/model-fetcher', () => ({

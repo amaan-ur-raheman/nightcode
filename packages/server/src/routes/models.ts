@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { fetchAllModels, clearModelCache } from '../lib/model-fetcher';
 import type { AuthenticatedEnv } from '../middleware/require-auth';
+import { requireAuth } from '../middleware/require-auth';
 
 const REFRESH_COOLDOWN_MS = 30_000; // 30 seconds between refreshes
 let lastRefreshTime = 0;
@@ -28,7 +29,7 @@ const app = new Hono<AuthenticatedEnv>()
         const result = await fetchAllModels(apiKeys);
         return c.json(result);
     })
-    .post('/refresh', async (c) => {
+    .post('/refresh', requireAuth, async (c) => {
         const now = Date.now();
         if (now - lastRefreshTime < REFRESH_COOLDOWN_MS) {
             return c.json(

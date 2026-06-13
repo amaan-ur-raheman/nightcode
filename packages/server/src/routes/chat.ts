@@ -36,8 +36,81 @@ import { generateSessionTitle } from '../lib/generate-session-title';
 import { withFallback } from '../lib/fallback';
 import { serverDebug } from '../lib/debug';
 
-const MAX_SESSION_MESSAGES = 50;
 const MAX_STREAM_RETRIES = 3;
+
+/**
+ * Model context windows (max input tokens). Used to compute dynamic token budget.
+ * Budget = contextWindow * 0.80 (leave room for system prompt + tools + output).
+ * Falls back to 100K for unknown models.
+ */
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+    // Claude models
+    'claude-opus-4-20250514': 200_000,
+    'claude-sonnet-4-20250514': 200_000,
+    'claude-3-5-haiku-20241022': 200_000,
+    // GPT models
+    'gpt-4o': 128_000,
+    'gpt-4o-mini': 128_000,
+    'gpt-4-turbo': 128_000,
+    o1: 200_000,
+    'o1-mini': 128_000,
+    o3: 200_000,
+    'o3-mini': 200_000,
+    // Gemini models
+    'gemini-2.5-pro': 1_000_000,
+    'gemini-2.5-flash': 1_000_000,
+    'gemini-2.0-flash': 1_000_000,
+    // DeepSeek
+    'deepseek-chat': 64_000,
+    'deepseek-reasoner': 64_000,
+};
+
+const DEFAULT_CONTEXT_WINDOW = 100_000;
+const CONTEXT_BUDGET_RATIO = 0.8;
+
+function getContextBudget(modelId: string): number {
+    // Try exact match first, then prefix match
+    const exact = MODEL_CONTEXT_WINDOWS[modelId];
+    if (exact) return Math.floor(exact * CONTEXT_BUDGET_RATIO);
+
+    // Prefix match for provider-prefixed IDs (e.g. "anthropic/claude-sonnet-4-20250514")
+    const baseId = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
+    const base = MODEL_CONTEXT_WINDOWS[baseId];
+    if (base) return Math.floor(base * CONTEXT_BUDGET_RATIO);
+
+    return Math.floor(DEFAULT_CONTEXT_WINDOW * CONTEXT_BUDGET_RATIO);
+}
+
+/**
+ * Estimate tokens for a single UIMessage by summing text in all parts.
+ */
+function estimateMessageTokens(message: NightCodeUIMessage): number {
+    let total = 0;
+    for (const part of message.parts) {
+        if (part.type === 'text') {
+            total += Math.ceil((part as { text: string }).text.length / 4);
+        } else if (
+            part.type === 'dynamic-tool' ||
+            part.type.startsWith('tool-')
+        ) {
+            const toolPart = part as any;
+            if (toolPart.input && typeof toolPart.input === 'object') {
+                total += Math.ceil(JSON.stringify(toolPart.input).length / 4);
+            }
+            if (
+                toolPart.state === 'output-available' &&
+                toolPart.output != null
+            ) {
+                total += Math.ceil(JSON.stringify(toolPart.output).length / 4);
+            }
+            if (toolPart.state === 'output-error' && toolPart.errorText) {
+                total += Math.ceil(toolPart.errorText.length / 4);
+            }
+        }
+    }
+    // Add overhead for message structure (role, id, metadata)
+    return total + 20;
+}
 
 const mcpToolSchema = z.object({
     name: z.string(),
@@ -214,19 +287,50 @@ const app = new Hono<AuthenticatedEnv>().post(
             };
         });
 
-        // Sliding window: truncate session history to prevent context overflow
+        // Token-budget truncation: keep messages within context window
+        // Dynamic budget based on model's context window (80% of max)
+        const contextBudget = getContextBudget(model);
         // Always preserve the first user message as a context anchor
         const firstUserIdx = mergedMessages.findIndex((m) => m.role === 'user');
+        const totalTokens = mergedMessages.reduce(
+            (sum, m) => sum + estimateMessageTokens(m),
+            0,
+        );
         console.log(
-            `[chat:${reqId}]   Previous messages in session: ${previousMessage.length}, merged: ${mergedMessages.length}, truncation threshold: ${MAX_SESSION_MESSAGES}`,
+            `[chat:${reqId}]   Previous messages in session: ${previousMessage.length}, merged: ${mergedMessages.length}, total tokens: ~${totalTokens}, budget: ${contextBudget} (model: ${model})`,
         );
         let truncatedMessages: NightCodeUIMessage[] = mergedMessages;
-        if (mergedMessages.length > MAX_SESSION_MESSAGES) {
+        if (totalTokens > contextBudget) {
             const firstUserMessage =
                 firstUserIdx >= 0 ? mergedMessages[firstUserIdx] : null;
-            const tail = mergedMessages.slice(
-                mergedMessages.length - MAX_SESSION_MESSAGES + 1,
-            );
+            const firstUserTokens = firstUserMessage
+                ? estimateMessageTokens(firstUserMessage)
+                : 0;
+
+            // Reserve budget for first message + context anchor
+            const availableBudget = contextBudget - firstUserTokens - 200; // 200 for anchor overhead
+
+            // Walk backwards from end, accumulating messages until budget exhausted
+            let tokenSum = 0;
+            let cutoffIndex = mergedMessages.length;
+            for (let i = mergedMessages.length - 1; i >= 0; i--) {
+                const msg = mergedMessages[i];
+                if (!msg) continue;
+                const msgTokens = estimateMessageTokens(msg);
+                if (tokenSum + msgTokens > availableBudget) {
+                    cutoffIndex = i + 1;
+                    break;
+                }
+                tokenSum += msgTokens;
+                cutoffIndex = i;
+            }
+
+            // Ensure we don't skip past the first user message
+            if (firstUserMessage && cutoffIndex <= firstUserIdx) {
+                cutoffIndex = firstUserIdx + 1;
+            }
+
+            const tail = mergedMessages.slice(cutoffIndex);
             truncatedMessages = firstUserMessage
                 ? [firstUserMessage, ...tail]
                 : tail;
@@ -246,7 +350,7 @@ const app = new Hono<AuthenticatedEnv>().post(
                         parts: [
                             {
                                 type: 'text' as const,
-                                text: `[Context: Earlier conversation history (${mergedMessages.length - truncatedMessages.length} messages) was truncated to stay within context limits. The original user goal was: "${firstUserText}"]`,
+                                text: `[Context: Earlier conversation history (${mergedMessages.length - truncatedMessages.length} messages, ~${totalTokens - tokenSum - firstUserTokens} tokens) was truncated to stay within context limits. The original user goal was: "${firstUserText}"]`,
                             },
                         ],
                     } as NightCodeUIMessage;
