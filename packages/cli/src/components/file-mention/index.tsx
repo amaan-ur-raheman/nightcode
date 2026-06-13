@@ -78,3 +78,83 @@ export function FileMentionMenu({
         </scrollbox>
     );
 }
+
+export interface SymbolCandidate {
+    name: string;
+    kind: string;
+    line: number;
+}
+
+type SymbolMentionMenuProps = {
+    candidates: SymbolCandidate[];
+    selectedIndex: number;
+    scrollRef: RefObject<ScrollBoxRenderable | null>;
+    onSelect: (index: number) => void;
+    onExecute: (index: number) => void;
+};
+
+export function SymbolMentionMenu({
+    candidates,
+    selectedIndex,
+    scrollRef,
+    onSelect,
+    onExecute,
+}: SymbolMentionMenuProps) {
+    const { colors } = useTheme();
+    const visibleHeight = Math.min(candidates.length, MAX_VISIBLE_MENTIONS);
+
+    if (candidates.length === 0) {
+        return (
+            <box paddingX={1}>
+                <text attributes={TextAttributes.DIM}>
+                    No matching symbols
+                </text>
+            </box>
+        );
+    }
+
+    return (
+        <scrollbox ref={scrollRef} height={visibleHeight}>
+            {candidates.map((candidate, index) => {
+                const isSelected = index === selectedIndex;
+                return (
+                    <box
+                        key={`${candidate.name}-${candidate.line}-${index}`}
+                        flexDirection="row"
+                        paddingX={1}
+                        height={1}
+                        overflow="hidden"
+                        backgroundColor={
+                            isSelected ? colors.selection : undefined
+                        }
+                        onMouseMove={() => onSelect(index)}
+                        onMouseDown={() => onExecute(index)}
+                    >
+                        <box flexGrow={1} flexShrink={1} overflow="hidden">
+                            <text
+                                selectable={false}
+                                fg={isSelected ? 'black' : 'white'}
+                            >
+                                {candidate.name}
+                            </text>
+                        </box>
+                        <box width={14} alignItems="flex-end" flexShrink={0} flexDirection="row" gap={1}>
+                            <text
+                                selectable={false}
+                                fg={isSelected ? 'black' : 'gray'}
+                            >
+                                {candidate.kind}
+                            </text>
+                            <text
+                                selectable={false}
+                                fg={isSelected ? 'black' : colors.dimSeparator}
+                            >
+                                L{candidate.line}
+                            </text>
+                        </box>
+                    </box>
+                );
+            })}
+        </scrollbox>
+    );
+}

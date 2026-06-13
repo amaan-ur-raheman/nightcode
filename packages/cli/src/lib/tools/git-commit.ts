@@ -1,12 +1,33 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { runGit } from './utils';
+import {
+    getGitState,
+    createFeatureBranch,
+    preCommitSecretScan,
+} from '../git-workflow';
 
 export async function gitCommitTool(input: unknown) {
     const { message, files } = toolInputSchemas.gitCommit.parse(input);
 
     try {
-        if (files && files.length > 0) {
-            const addResult = await runGit(process.cwd(), ['add', ...files]);
+        const cwd = process.cwd();
+        const filesToStage = files && files.length > 0 ? files : [];
+
+        // Auto-create feature branch if on main
+        let branchNote = '';
+        const state = await getGitState();
+        if (state.isOnMain && state.isDirty) {
+            try {
+                const newBranch = await createFeatureBranch(message);
+                branchNote = `\nCreated feature branch: ${newBranch}`;
+            } catch {
+                // Branch creation failed — continue with commit on current branch
+            }
+        }
+
+        // Stage files if provided
+        if (filesToStage.length > 0) {
+            const addResult = await runGit(cwd, ['add', ...filesToStage]);
             if (addResult.exitCode !== 0) {
                 return {
                     success: false,
@@ -15,7 +36,23 @@ export async function gitCommitTool(input: unknown) {
             }
         }
 
-        const result = await runGit(process.cwd(), ['commit', '-m', message]);
+        // Pre-commit secret scan on staged files
+        const scanResult = await preCommitSecretScan(filesToStage);
+        if (scanResult.blocked) {
+            // Unstage files if secrets found
+            await runGit(cwd, ['reset', 'HEAD', ...filesToStage]).catch(() => {});
+            const details = scanResult.matches
+                .filter((m) => m.severity === 'high')
+                .map((m) => `  ${m.file}:${m.line} — ${m.type}`)
+                .join('\n');
+            return {
+                success: false,
+                output: `Commit blocked: high-severity secrets detected:\n${details}\n\nRemove secrets before committing.`,
+            };
+        }
+
+        // Make the commit
+        const result = await runGit(cwd, ['commit', '-m', message]);
         if (result.exitCode !== 0) {
             return {
                 success: false,
@@ -26,7 +63,20 @@ export async function gitCommitTool(input: unknown) {
         const hashMatch = result.stdout.match(/\[[\w]+\s+([0-9a-f]+)\]/);
         const commitHash = hashMatch ? hashMatch[1] : undefined;
 
-        return { success: true, output: result.stdout, commitHash };
+        // Append warnings for medium/low severity secrets
+        let warnings = '';
+        if (scanResult.medium > 0 || scanResult.low > 0) {
+            const warnParts: string[] = [];
+            if (scanResult.medium > 0) warnParts.push(`${scanResult.medium} medium`);
+            if (scanResult.low > 0) warnParts.push(`${scanResult.low} low`);
+            warnings = `\nWarning: ${warnParts.join(', ')} severity patterns detected — review recommended.`;
+        }
+
+        return {
+            success: true,
+            output: result.stdout + branchNote + warnings,
+            commitHash,
+        };
     } catch (err) {
         return { success: false, output: (err as Error).message };
     }
