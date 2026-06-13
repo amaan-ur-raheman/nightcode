@@ -71,12 +71,18 @@ describe('TimelineManager', () => {
 
         vi.stubGlobal('Bun', { spawn: mockSpawn });
 
-        const commitSha = await timelineManager.takeSnapshot('test-session', 'msg-2', 'msg-1');
+        const commitSha = await timelineManager.takeSnapshot(
+            'test-session',
+            'msg-2',
+            'msg-1',
+        );
         expect(commitSha).toBe('generated-commit-sha');
 
         const loaded = await timelineManager.loadTimeline('test-session');
         expect(loaded.snapshots['msg-2']).toBeDefined();
-        expect(loaded.snapshots['msg-2']?.commitHash).toBe('generated-commit-sha');
+        expect(loaded.snapshots['msg-2']?.commitHash).toBe(
+            'generated-commit-sha',
+        );
         expect(loaded.snapshots['msg-2']?.parentMessageId).toBe('msg-1');
 
         vi.unstubAllGlobals();

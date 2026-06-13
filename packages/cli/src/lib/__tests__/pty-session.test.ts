@@ -11,10 +11,15 @@ describe('PtySessionManager', () => {
                         read: async () => {
                             if (done) return { done: true, value: undefined };
                             done = true;
-                            return { done: false, value: new TextEncoder().encode('stdout-content') };
-                        }
+                            return {
+                                done: false,
+                                value: new TextEncoder().encode(
+                                    'stdout-content',
+                                ),
+                            };
+                        },
                     };
-                }
+                },
             },
             stderr: {
                 getReader: () => {
@@ -23,10 +28,15 @@ describe('PtySessionManager', () => {
                         read: async () => {
                             if (done) return { done: true, value: undefined };
                             done = true;
-                            return { done: false, value: new TextEncoder().encode('stderr-content') };
-                        }
+                            return {
+                                done: false,
+                                value: new TextEncoder().encode(
+                                    'stderr-content',
+                                ),
+                            };
+                        },
                     };
-                }
+                },
             },
             stdin: {
                 write: vi.fn(),
@@ -49,8 +59,12 @@ describe('PtySessionManager', () => {
 
     it('handles keyboard attachment', () => {
         const mockProc = {
-            stdout: { getReader: () => ({ read: async () => ({ done: true }) }) },
-            stderr: { getReader: () => ({ read: async () => ({ done: true }) }) },
+            stdout: {
+                getReader: () => ({ read: async () => ({ done: true }) }),
+            },
+            stderr: {
+                getReader: () => ({ read: async () => ({ done: true }) }),
+            },
             exited: Promise.resolve(0),
         };
 
