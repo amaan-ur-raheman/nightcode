@@ -1,3 +1,80 @@
+// ─── Command Safety (merged from bash-safety.ts) ────────────────────────────
+
+const BLOCKED_COMMANDS = [
+    'rm -rf /',
+    'rm -rf /*',
+    'rm -rf ~',
+    'rm -rf ~/',
+    'mkfs',
+    'dd if=',
+    ':(){',
+    'shutdown',
+    'reboot',
+    'halt',
+    'poweroff',
+    'init 0',
+    'init 6',
+];
+
+const DANGEROUS_FLAGS = [
+    '--force',
+    '-f',
+    '--no-preserve-root',
+    '--recursive',
+    '-r',
+];
+
+const SUSPICIOUS_PATTERNS: RegExp[] = [
+    /rm\s+(-[rRf]+\s+)*[\/~]/,
+    />\s*\/dev\/sd/,
+    /chmod\s+777/,
+    /curl\s+.*\|\s*sh/,
+    /wget\s+.*\|\s*sh/,
+];
+
+export interface SafetyCheckResult {
+    safe: boolean;
+    blocked: boolean;
+    warning?: string;
+}
+
+export function checkCommandSafety(command: string): SafetyCheckResult {
+    for (const blocked of BLOCKED_COMMANDS) {
+        if (command.includes(blocked)) {
+            return {
+                safe: false,
+                blocked: true,
+                warning: `Blocked: command contains '${blocked}'`,
+            };
+        }
+    }
+
+    const words = command.split(/\s+/);
+    for (const flag of DANGEROUS_FLAGS) {
+        if (words.includes(flag)) {
+            return {
+                safe: true,
+                blocked: false,
+                warning: `Warning: '${flag}' flag detected`,
+            };
+        }
+    }
+
+    for (const pattern of SUSPICIOUS_PATTERNS) {
+        if (pattern.test(command)) {
+            return {
+                safe: true,
+                blocked: false,
+                warning: 'Warning: suspicious pattern detected',
+            };
+        }
+    }
+
+    return { safe: true, blocked: false };
+}
+
+// ─── Confirmation System ────────────────────────────────────────────────────
+
 export type ConfirmationLevel = 'none' | 'warn' | 'confirm';
 
 export interface ConfirmationRequest {
@@ -115,7 +192,10 @@ export function getConfirmationLevel(
     if (toolName === 'gitBranch') {
         const action = input?.action;
         if (action === 'checkout') {
-            return { level: 'confirm', reason: 'Git checkout (switches branch)' };
+            return {
+                level: 'confirm',
+                reason: 'Git checkout (switches branch)',
+            };
         }
         if (action === 'delete') {
             return { level: 'confirm', reason: 'Git branch delete' };
@@ -142,7 +222,9 @@ export function formatToolInput(toolName: string, input: any): string {
         case 'gitBranch': {
             const action = input?.action ?? '';
             const branch = input?.name;
-            return branch ? `Action: ${action} | Branch: ${branch}` : `Action: ${action}`;
+            return branch
+                ? `Action: ${action} | Branch: ${branch}`
+                : `Action: ${action}`;
         }
         default:
             return JSON.stringify(input, null, 2);
@@ -219,6 +301,7 @@ export class ConfirmationManager {
         details: string,
         accessPath?: string,
         patterns?: string[],
+        timeoutMs = 60_000, // 60 seconds
     ): Promise<boolean> {
         const patternKey = `${toolName}:${accessPath ?? details}`;
         if (this._alwaysAllowed.has(patternKey)) {
@@ -237,6 +320,15 @@ export class ConfirmationManager {
                 resolve,
             });
             this._notify();
+
+            // Auto-reject after timeout to prevent hanging
+            setTimeout(() => {
+                if (this._pending.has(id)) {
+                    this._pending.delete(id);
+                    resolve(false);
+                    this._notify();
+                }
+            }, timeoutMs);
         });
     }
 

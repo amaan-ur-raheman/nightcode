@@ -33,7 +33,9 @@ export async function impactAnalysisTool(input: unknown) {
     }
 
     if (report.transitiveConsumers.length > 0) {
-        lines.push(`Transitive Consumers (${report.transitiveConsumers.length}):`);
+        lines.push(
+            `Transitive Consumers (${report.transitiveConsumers.length}):`,
+        );
         for (const consumer of report.transitiveConsumers) {
             lines.push(
                 `    → [${consumer.type}] ${consumer.name} (${consumer.filePath ?? 'unknown'})`,
@@ -125,7 +127,11 @@ export async function suggestMigrationTool(input: unknown) {
 
     for (const step of steps) {
         const priority =
-            step.priority === 'critical' ? '🔴' : step.priority === 'recommended' ? '🟡' : '⚪';
+            step.priority === 'critical'
+                ? '🔴'
+                : step.priority === 'recommended'
+                  ? '🟡'
+                  : '⚪';
         lines.push(`${priority} Step ${step.step}: [${step.action}]`);
         lines.push(`   ${step.description}`);
         if (step.filePath) {

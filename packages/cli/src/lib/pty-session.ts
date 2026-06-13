@@ -42,7 +42,8 @@ export class PtySessionManager extends EventEmitter {
                     const chunk = decoderStdout.decode(value);
                     this.stdoutBuffer += chunk;
                     if (this.stdoutBuffer.length > MAX_BUFFER_SIZE) {
-                        this.stdoutBuffer = this.stdoutBuffer.slice(-TRIM_BUFFER_SIZE);
+                        this.stdoutBuffer =
+                            this.stdoutBuffer.slice(-TRIM_BUFFER_SIZE);
                     }
                     this.appendOutput(chunk);
                 }
@@ -61,7 +62,8 @@ export class PtySessionManager extends EventEmitter {
                     const chunk = decoderStderr.decode(value);
                     this.stderrBuffer += chunk;
                     if (this.stderrBuffer.length > MAX_BUFFER_SIZE) {
-                        this.stderrBuffer = this.stderrBuffer.slice(-TRIM_BUFFER_SIZE);
+                        this.stderrBuffer =
+                            this.stderrBuffer.slice(-TRIM_BUFFER_SIZE);
                     }
                     this.appendOutput(chunk);
                 }
@@ -138,7 +140,11 @@ export class PtySessionManager extends EventEmitter {
                     this.combinedBuffer = this.combinedBuffer.slice(0, -1);
                     this.notifyStateChange();
                 }
-            } else if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) <= 126) {
+            } else if (
+                data.length === 1 &&
+                data.charCodeAt(0) >= 32 &&
+                data.charCodeAt(0) <= 126
+            ) {
                 this.appendOutput(data);
             }
         } catch (e) {

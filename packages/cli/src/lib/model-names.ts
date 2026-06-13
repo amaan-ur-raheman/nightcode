@@ -74,6 +74,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
     gemini: 'Google Gemini',
     kilo: 'Kilo Gateway',
     local: 'Local Ollama',
+    lightningai: 'Lightning AI',
 };
 
 /**
@@ -124,6 +125,7 @@ export function extractProvider(modelId: string): string {
         'google',
         'kilo',
         'local',
+        'lightningai',
     ];
     if (knownProviders.includes(prefix)) return prefix;
     // NIM models: "nvidia/...", "deepseek-ai/...", "qwen/..."

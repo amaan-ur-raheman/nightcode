@@ -6,7 +6,15 @@ import { generateDiff, formatDiff } from '../diff-utils';
 import { undoManager } from '../undo-manager';
 import { globCache } from '../glob-cache';
 
-export async function editFileTool(input: unknown) {
+interface EditFileError {
+    error: string;
+    suggestion?: string;
+    retryable?: boolean;
+}
+
+export async function editFileTool(
+    input: unknown,
+): Promise<{ success: true; path: string; diff: string } | EditFileError> {
     const { path, oldString, newString } =
         toolInputSchemas.editFile.parse(input);
     const { cwd, resolved } = resolveInsideCwd(path);
@@ -18,9 +26,33 @@ export async function editFileTool(input: unknown) {
         idx += oldString.length;
     }
 
-    if (occurrences === 0) throw new Error('oldString not found in file');
-    if (occurrences > 1)
-        throw new Error(`oldString is ambiguous; found ${occurrences} matches`);
+    if (occurrences === 0) {
+        return {
+            error: 'oldString not found in file',
+            suggestion:
+                'Read the file first to verify the exact text, including whitespace and indentation.',
+            retryable: true,
+        };
+    }
+
+    if (occurrences > 1) {
+        // Find line numbers for each occurrence
+        const lines = content.split('\n');
+        const matchLines: number[] = [];
+        for (let lineNum = 1; lineNum <= lines.length; lineNum++) {
+            const line = lines[lineNum - 1];
+            if (line && line.includes(oldString)) {
+                matchLines.push(lineNum);
+            }
+        }
+
+        return {
+            error: `oldString is ambiguous; found ${occurrences} matches${matchLines.length > 0 ? ` on lines ${matchLines.join(', ')}` : ''}`,
+            suggestion:
+                'Include more surrounding context to make the match unique, or use line numbers to identify the correct location.',
+            retryable: true,
+        };
+    }
 
     const newContent = content.replace(oldString, () => newString);
     const diff = generateDiff(content, newContent);

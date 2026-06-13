@@ -14,6 +14,7 @@ import {
     type MigrationStep,
 } from '@nightcode/shared';
 import { debug } from './debug';
+import { searchIndex } from './search-index';
 
 const KG_DIR = join(homedir(), '.nightcode', 'knowledge');
 const GRAPH_FILE = join(KG_DIR, 'graph.json');
@@ -50,7 +51,15 @@ const IGNORE_DIRS = new Set([
 
 const MAX_FILE_SIZE = 512 * 1024; // 512KB
 const MAX_FILES = 5000;
-const ALLOWED_DOTFILES = new Set(['.env', '.env.example', '.env.local', '.env.development', '.env.production', '.eslintrc.js', '.prettierrc']);
+const ALLOWED_DOTFILES = new Set([
+    '.env',
+    '.env.example',
+    '.env.local',
+    '.env.development',
+    '.env.production',
+    '.eslintrc.js',
+    '.prettierrc',
+]);
 
 class KnowledgeGraphManager {
     private graph: KnowledgeGraph | null = null;
@@ -96,7 +105,10 @@ class KnowledgeGraphManager {
 
     async buildFromProject(
         projectRoot: string,
-        options: { includePatterns?: string[]; excludePatterns?: string[] } = {},
+        options: {
+            includePatterns?: string[];
+            excludePatterns?: string[];
+        } = {},
     ): Promise<{
         stats: KnowledgeStats;
         durationMs: number;
@@ -140,7 +152,13 @@ class KnowledgeGraphManager {
                 });
 
                 // Extract exports, imports, classes, functions
-                await this.extractFromFile(graph, filePath, relPath, fileId, content);
+                await this.extractFromFile(
+                    graph,
+                    filePath,
+                    relPath,
+                    fileId,
+                    content,
+                );
 
                 filesScanned++;
             } catch {
@@ -250,15 +268,29 @@ class KnowledgeGraphManager {
             // Also try relative path
             const relPrismaPath = relative(
                 projectRoot,
-                join(projectRoot, 'packages', 'database', 'prisma', 'schema.prisma'),
+                join(
+                    projectRoot,
+                    'packages',
+                    'database',
+                    'prisma',
+                    'schema.prisma',
+                ),
             );
             try {
                 const altPrismaContent = await readFile(
-                    join(projectRoot, 'packages', 'database', 'prisma', 'schema.prisma'),
+                    join(
+                        projectRoot,
+                        'packages',
+                        'database',
+                        'prisma',
+                        'schema.prisma',
+                    ),
                     'utf-8',
                 );
                 let altMatch;
-                while ((altMatch = modelRegex.exec(altPrismaContent)) !== null) {
+                while (
+                    (altMatch = modelRegex.exec(altPrismaContent)) !== null
+                ) {
                     const modelName = altMatch[1]!;
                     const modelId = `model:${modelName}`;
                     if (!graph.nodes.has(modelId)) {
@@ -287,6 +319,10 @@ class KnowledgeGraphManager {
         this.graph = graph;
         await this.save();
 
+        // Rebuild the search index from the new graph
+        searchIndex.buildFromGraph(graph);
+        await searchIndex.save();
+
         return {
             stats: graph.getStats(),
             durationMs,
@@ -311,7 +347,11 @@ class KnowledgeGraphManager {
 
             for (const entry of entries) {
                 if (IGNORE_DIRS.has(entry.name)) continue;
-                if (entry.name.startsWith('.') && !ALLOWED_DOTFILES.has(entry.name)) continue;
+                if (
+                    entry.name.startsWith('.') &&
+                    !ALLOWED_DOTFILES.has(entry.name)
+                )
+                    continue;
 
                 const fullPath = join(currentDir, entry.name);
                 const relPath = relative(dir, fullPath);
@@ -332,12 +372,20 @@ class KnowledgeGraphManager {
 
                     // Check include patterns
                     if (includePatterns.length > 0) {
-                        if (!includePatterns.some((p) => entry.name.includes(p) || ext === p)) {
+                        if (
+                            !includePatterns.some(
+                                (p) => entry.name.includes(p) || ext === p,
+                            )
+                        ) {
                             continue;
                         }
                     }
 
-                    if (SOURCE_EXTENSIONS.has(`.${ext}`) || entry.name === 'Makefile' || entry.name === 'Dockerfile') {
+                    if (
+                        SOURCE_EXTENSIONS.has(`.${ext}`) ||
+                        entry.name === 'Makefile' ||
+                        entry.name === 'Dockerfile'
+                    ) {
                         results.push(fullPath);
                     }
                 }
@@ -359,7 +407,8 @@ class KnowledgeGraphManager {
 
         // Extract exports
         const exportDefaultRegex = /^export\s+default\s+/m;
-        const namedExportRegex = /^export\s+(?:const|let|var|function|class|interface|type|enum|default)\s+(\w+)/gm;
+        const namedExportRegex =
+            /^export\s+(?:const|let|var|function|class|interface|type|enum|default)\s+(\w+)/gm;
 
         let match: RegExpExecArray | null;
 
@@ -368,7 +417,9 @@ class KnowledgeGraphManager {
             const name = match[1]!;
             if (name === 'default') continue;
             const nodeId = `${this.getNodeType(name, content, match.index)}:${relPath}#${name}`;
-            const lineNum = content.substring(0, match.index).split('\n').length;
+            const lineNum = content
+                .substring(0, match.index)
+                .split('\n').length;
 
             if (!graph.nodes.has(nodeId)) {
                 graph.addNode({
@@ -417,7 +468,9 @@ class KnowledgeGraphManager {
         const importRegex = /(?:from\s+['"]([^'"]+)['"])/gm;
         while ((match = importRegex.exec(content)) !== null) {
             const importPath = match[1]!;
-            const lineNum = content.substring(0, match.index).split('\n').length;
+            const lineNum = content
+                .substring(0, match.index)
+                .split('\n').length;
 
             // Resolve the import target
             const targetFile = this.resolveImport(importPath, relPath);
@@ -464,7 +517,8 @@ class KnowledgeGraphManager {
         }
 
         // Extract class declarations and their extends/implements
-        const classRegex = /^export\s+(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w\s,]+))?\s*\{/gm;
+        const classRegex =
+            /^export\s+(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w\s,]+))?\s*\{/gm;
         while ((match = classRegex.exec(content)) !== null) {
             const className = match[1]!;
             const extendsClass = match[2];
@@ -485,7 +539,9 @@ class KnowledgeGraphManager {
 
             if (implementsInterfaces) {
                 const sourceId = `class:${relPath}#${className}`;
-                for (const iface of implementsInterfaces.split(',').map((s) => s.trim())) {
+                for (const iface of implementsInterfaces
+                    .split(',')
+                    .map((s) => s.trim())) {
                     if (iface) {
                         const targetId = `interface:*#${iface}`;
                         if (graph.nodes.has(sourceId)) {
@@ -515,9 +571,23 @@ class KnowledgeGraphManager {
             const callName = callMatch[1]!;
             if (
                 knownSymbols.has(callName) &&
-                !['if', 'for', 'while', 'switch', 'catch', 'return', 'import', 'export', 'new', 'typeof', 'instanceof'].includes(callName)
+                ![
+                    'if',
+                    'for',
+                    'while',
+                    'switch',
+                    'catch',
+                    'return',
+                    'import',
+                    'export',
+                    'new',
+                    'typeof',
+                    'instanceof',
+                ].includes(callName)
             ) {
-                const lineNum = content.substring(0, callMatch.index).split('\n').length;
+                const lineNum = content
+                    .substring(0, callMatch.index)
+                    .split('\n').length;
                 const sourceId = `file:${relPath}`;
                 const targetNode = Array.from(graph.nodes.values()).find(
                     (n) => n.name === callName && n.filePath === relPath,
@@ -568,7 +638,9 @@ class KnowledgeGraphManager {
             while ((match = interfaceRegex.exec(content)) !== null) {
                 const name = match[1]!;
                 const nodeId = `interface:${relPath}#${name}`;
-                const lineNum = content.substring(0, match.index).split('\n').length;
+                const lineNum = content
+                    .substring(0, match.index)
+                    .split('\n').length;
 
                 if (!graph.nodes.has(nodeId)) {
                     graph.addNode({
@@ -656,9 +728,7 @@ class KnowledgeGraphManager {
         return graph.getNeighbors(nodeId);
     }
 
-    async query(
-        filter: KnowledgeQuery,
-    ): Promise<KnowledgeNode[]> {
+    async query(filter: KnowledgeQuery): Promise<KnowledgeNode[]> {
         const graph = await this.load();
         return graph.query(filter);
     }

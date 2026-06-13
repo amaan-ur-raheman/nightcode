@@ -71,21 +71,40 @@ export function truncate(value: string, limit: number) {
         : value;
 }
 
+const GIT_TIMEOUT_MS = 30_000; // 30 seconds
+
 export async function runGit(cwd: string, args: string[]) {
     const proc = Bun.spawn(['git', ...args], {
         cwd,
         stdout: 'pipe',
         stderr: 'pipe',
     });
-    const [stdout, stderr] = await Promise.all([
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            proc.kill();
+            reject(
+                new Error(
+                    `Git command timed out after ${GIT_TIMEOUT_MS / 1000}s: git ${args.join(' ')}`,
+                ),
+            );
+        }, GIT_TIMEOUT_MS);
+    });
+
+    const readPromise = Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
-    ]);
-    return {
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: await proc.exited,
-    };
+    ]).then(async ([stdout, stderr]) => {
+        if (timer) clearTimeout(timer);
+        return {
+            stdout: stdout.trim(),
+            stderr: stderr.trim(),
+            exitCode: await proc.exited,
+        };
+    });
+
+    return Promise.race([readPromise, timeoutPromise]);
 }
 
 interface CacheEntry {

@@ -40,7 +40,9 @@ export async function gitCommitTool(input: unknown) {
         const scanResult = await preCommitSecretScan(filesToStage);
         if (scanResult.blocked) {
             // Unstage files if secrets found
-            await runGit(cwd, ['reset', 'HEAD', ...filesToStage]).catch(() => {});
+            await runGit(cwd, ['reset', 'HEAD', ...filesToStage]).catch(
+                () => {},
+            );
             const details = scanResult.matches
                 .filter((m) => m.severity === 'high')
                 .map((m) => `  ${m.file}:${m.line} — ${m.type}`)
@@ -67,7 +69,8 @@ export async function gitCommitTool(input: unknown) {
         let warnings = '';
         if (scanResult.medium > 0 || scanResult.low > 0) {
             const warnParts: string[] = [];
-            if (scanResult.medium > 0) warnParts.push(`${scanResult.medium} medium`);
+            if (scanResult.medium > 0)
+                warnParts.push(`${scanResult.medium} medium`);
             if (scanResult.low > 0) warnParts.push(`${scanResult.low} low`);
             warnings = `\nWarning: ${warnParts.join(', ')} severity patterns detected — review recommended.`;
         }

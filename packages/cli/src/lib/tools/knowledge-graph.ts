@@ -1,7 +1,6 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { knowledgeGraphManager } from '../knowledge-graph';
 
-
 export async function buildKnowledgeGraphTool(input: unknown) {
     const { includePatterns, excludePatterns } =
         toolInputSchemas.buildKnowledgeGraph.parse(input);
@@ -82,7 +81,9 @@ export async function getKnowledgeNeighborsTool(input: unknown) {
                 output: `Node "${nodeId}" not found. Use queryKnowledgeGraph to find valid node IDs.`,
             };
         }
-        return { output: `Node "${node.name}" (${node.type}) has no connections.` };
+        return {
+            output: `Node "${node.name}" (${node.type}) has no connections.`,
+        };
     }
 
     const lines = [`Connections for ${nodeId}:`, ''];
@@ -104,7 +105,9 @@ export async function getKnowledgeNeighborsTool(input: unknown) {
             lines.push('');
             lines.push(`Reachable within depth ${depth}:`);
             for (const node of traversed) {
-                lines.push(`  [${node.type}] ${node.name} (${node.filePath ?? 'unknown'})`);
+                lines.push(
+                    `  [${node.type}] ${node.name} (${node.filePath ?? 'unknown'})`,
+                );
             }
         }
     }
