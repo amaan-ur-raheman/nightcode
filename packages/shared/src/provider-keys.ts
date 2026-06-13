@@ -1,5 +1,5 @@
 import type { SupportedProvider } from './models';
-import { SUPPORTED_CHAT_MODELS } from './models';
+import { SUPPORTED_CHAT_MODELS, findSupportedChatModel } from './models';
 
 /**
  * Maps each provider to its OS keychain account name.
@@ -18,6 +18,7 @@ export const PROVIDER_KEYCHAIN_NAMES: Record<SupportedProvider, string> = {
     deepseek: 'deepseek-api-key',
     gemini: 'google-api-key',
     kilo: 'kilo-api-key',
+    local: 'local-api-key',
 };
 
 /**
@@ -36,6 +37,7 @@ export const PROVIDER_ENV_VARS: Record<SupportedProvider, string> = {
     deepseek: 'DEEPSEEK_API_KEY',
     gemini: 'GOOGLE_API_KEY',
     kilo: 'KILO_API_KEY',
+    local: 'LOCAL_API_KEY',
 };
 
 /**
@@ -53,6 +55,7 @@ const PROVIDER_PREFIXES: Record<string, SupportedProvider> = {
     'google/': 'gemini',
     'opencode/': 'opencode',
     'kilo/': 'kilo',
+    'local/': 'local',
 };
 
 /**
@@ -63,7 +66,7 @@ export function resolveProviderForModel(modelId: string): SupportedProvider {
     // Try matching against hardcoded models first — this ensures NIM models
     // like "nvidia/google/gemma-4-31b-it" resolve correctly via the model
     // registry rather than prefix matching.
-    const model = SUPPORTED_CHAT_MODELS.find((m) => m.id === modelId);
+    const model = findSupportedChatModel(modelId);
     if (model) {
         return model.provider;
     }

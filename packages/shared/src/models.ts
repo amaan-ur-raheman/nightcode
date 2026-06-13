@@ -35,7 +35,8 @@ export type SupportedProvider =
     | 'cerebras'
     | 'deepseek'
     | 'gemini'
-    | 'kilo';
+    | 'kilo'
+    | 'local';
 
 type SupportedChatModelDefinition = {
     id: string;
@@ -441,11 +442,31 @@ export const SUPPORTED_CHAT_MODELS = [
     },
 ] as const satisfies readonly SupportedChatModelDefinition[];
 
-export type SupportedChatModel = (typeof SUPPORTED_CHAT_MODELS)[number];
-export type SupportedChatModelId = SupportedChatModel['id'];
+export const REGISTERED_LOCAL_MODELS: SupportedChatModelDefinition[] = [];
 
-export function findSupportedChatModel(modelId: string) {
-    return SUPPORTED_CHAT_MODELS.find((model) => model.id === modelId);
+export function registerLocalModel(modelId: string) {
+    if (!modelId.startsWith('local/')) return;
+    if (REGISTERED_LOCAL_MODELS.some((m) => m.id === modelId)) return;
+    REGISTERED_LOCAL_MODELS.push({
+        id: modelId,
+        provider: 'local',
+        pricing: {
+            inputUsdPerMillionTokens: 0.1,
+            outputUsdPerMillionTokens: 0.1,
+        },
+    });
+}
+
+export type SupportedChatModel =
+    | (typeof SUPPORTED_CHAT_MODELS)[number]
+    | SupportedChatModelDefinition;
+
+export type SupportedChatModelId = string;
+
+export function findSupportedChatModel(modelId: string): SupportedChatModel | undefined {
+    const staticModel = SUPPORTED_CHAT_MODELS.find((model) => model.id === modelId);
+    if (staticModel) return staticModel;
+    return REGISTERED_LOCAL_MODELS.find((model) => model.id === modelId);
 }
 
 export const DEFAULT_CHAT_MODEL_ID: SupportedChatModelId =

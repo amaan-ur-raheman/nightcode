@@ -124,6 +124,9 @@ export const toolInputSchemas = {
             .default(30_000)
             .describe('Timeout in milliseconds (default: 30000)'),
     }),
+    replExecute: z.object({
+        command: z.string().describe('The command to execute in the persistent background REPL session'),
+    }),
     patch: z.object({
         patch: z.string().describe('The unified diff patch to apply'),
     }),
@@ -578,6 +581,100 @@ export const toolInputSchemas = {
             ),
     }),
     listSkills: z.object({}),
+    buildKnowledgeGraph: z.object({
+        includePatterns: z
+            .array(z.string())
+            .optional()
+            .describe(
+                "Optional file patterns to include (e.g. ['ts', 'tsx', 'json']). If omitted, scans all source files.",
+            ),
+        excludePatterns: z
+            .array(z.string())
+            .optional()
+            .describe(
+                'Optional patterns to exclude (e.g. ["test", "spec", "__mocks__"]).',
+            ),
+    }),
+    queryKnowledgeGraph: z.object({
+        nodeType: z
+            .enum(['file', 'function', 'class', 'interface', 'type', 'variable', 'module', 'dependency', 'config', 'api'])
+            .optional()
+            .describe('Filter by node type'),
+        name: z
+            .string()
+            .optional()
+            .describe('Search nodes by name (substring match, case-insensitive)'),
+        filePath: z
+            .string()
+            .optional()
+            .describe('Filter by file path (substring match)'),
+        exported: z
+            .boolean()
+            .optional()
+            .describe('Filter by exported status'),
+        limit: z
+            .number()
+            .default(50)
+            .describe('Maximum results to return (default 50)'),
+    }),
+    getKnowledgeNeighbors: z.object({
+        nodeId: z
+            .string()
+            .describe('ID of the node to find neighbors for'),
+        maxDepth: z
+            .number()
+            .default(1)
+            .describe('Maximum traversal depth (default 1, max 5)'),
+    }),
+    addKnowledgeNode: z.object({
+        id: z.string().describe('Unique node ID (e.g. "function:src/utils.ts#helper")'),
+        type: z
+            .enum(['file', 'function', 'class', 'interface', 'type', 'variable', 'module', 'dependency', 'config', 'api'])
+            .describe('Node type'),
+        name: z.string().describe('Human-readable name'),
+        filePath: z.string().optional().describe('Relative file path'),
+        description: z.string().optional().describe('Brief description of this node'),
+    }),
+    addKnowledgeEdge: z.object({
+        source: z.string().describe('Source node ID'),
+        target: z.string().describe('Target node ID'),
+        type: z
+            .enum(['imports', 'exports', 'calls', 'depends-on', 'defines', 'extends', 'implements', 'uses', 'references', 'configures'])
+            .describe('Edge type'),
+        filePath: z.string().optional().describe('File where this relationship exists'),
+    }),
+    detectKnowledgeCycles: z.object({}),
+    getKnowledgeStats: z.object({}),
+    impactAnalysis: z.object({
+        nodeId: z
+            .string()
+            .describe(
+                'ID of the node to assess impact for (e.g. "function:src/utils.ts#helper")',
+            ),
+    }),
+    breakingChangeCheck: z.object({
+        nodeId: z
+            .string()
+            .describe('ID of the node whose exports are being modified'),
+        keptExports: z
+            .array(z.string())
+            .describe(
+                'List of export names that will be preserved after the change',
+            ),
+    }),
+    suggestMigration: z.object({
+        nodeId: z
+            .string()
+            .describe('ID of the node to generate a migration plan for'),
+        newName: z
+            .string()
+            .optional()
+            .describe('New name for the node (if renaming)'),
+        newFilePath: z
+            .string()
+            .optional()
+            .describe('New file path for the node (if moving)'),
+    }),
 } as const;
 
 export const readOnlyToolContracts = {
@@ -712,6 +809,56 @@ export const readOnlyToolContracts = {
             'List all available skills with their names and descriptions. Call this first to discover what skills exist before using useSkill.',
         inputSchema: toolInputSchemas.listSkills,
     }),
+    buildKnowledgeGraph: tool({
+        description:
+            'Scan the project codebase and build a semantic knowledge graph of files, functions, classes, imports, exports, dependencies, and their relationships. Call this first to understand the project architecture. Results are cached locally and can be refreshed.',
+        inputSchema: toolInputSchemas.buildKnowledgeGraph,
+    }),
+    queryKnowledgeGraph: tool({
+        description:
+            'Search the knowledge graph for nodes matching filters (type, name, file path, exported status). Use to find specific symbols, files, or dependencies in the codebase.',
+        inputSchema: toolInputSchemas.queryKnowledgeGraph,
+    }),
+    getKnowledgeNeighbors: tool({
+        description:
+            'Get all connected nodes (imports, exports, calls, dependencies) for a given node. Useful for understanding what a file/function depends on and what depends on it.',
+        inputSchema: toolInputSchemas.getKnowledgeNeighbors,
+    }),
+    addKnowledgeNode: tool({
+        description:
+            'Manually add a node to the knowledge graph for custom relationships not auto-detected.',
+        inputSchema: toolInputSchemas.addKnowledgeNode,
+    }),
+    addKnowledgeEdge: tool({
+        description:
+            'Manually add an edge (relationship) between two nodes in the knowledge graph.',
+        inputSchema: toolInputSchemas.addKnowledgeEdge,
+    }),
+    detectKnowledgeCycles: tool({
+        description:
+            'Detect circular dependencies and import cycles in the knowledge graph. Returns arrays of node IDs forming cycles.',
+        inputSchema: toolInputSchemas.detectKnowledgeCycles,
+    }),
+    getKnowledgeStats: tool({
+        description:
+            'Get summary statistics of the knowledge graph: total nodes/edges, breakdown by type, files scanned, and build metadata.',
+        inputSchema: toolInputSchemas.getKnowledgeStats,
+    }),
+    impactAnalysis: tool({
+        description:
+            'Analyze the impact of changing a node in the knowledge graph. Returns all direct and transitive consumers, affected files, and a risk level assessment. Use before making breaking changes to understand the blast radius.',
+        inputSchema: toolInputSchemas.impactAnalysis,
+    }),
+    breakingChangeCheck: tool({
+        description:
+            'Check if modifying a node (removing exports) would break consumers. Compare current exports against a list of exports that will be kept, and get a report of what will break and which files are affected.',
+        inputSchema: toolInputSchemas.breakingChangeCheck,
+    }),
+    suggestMigration: tool({
+        description:
+            'Generate a step-by-step migration plan for renaming or moving a node. Returns ordered steps with file paths, descriptions, and priorities for each change needed across the codebase.',
+        inputSchema: toolInputSchemas.suggestMigration,
+    }),
 } as const;
 
 export const buildToolContracts = {
@@ -729,6 +876,10 @@ export const buildToolContracts = {
     bash: tool({
         description: 'Run a shell command in the current project directory.',
         inputSchema: toolInputSchemas.bash,
+    }),
+    replExecute: tool({
+        description: 'Execute a command in the persistent background REPL sandbox session.',
+        inputSchema: toolInputSchemas.replExecute,
     }),
     patch: tool({
         description: 'Apply a unified diff patch to the project.',
