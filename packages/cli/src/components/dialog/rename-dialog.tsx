@@ -123,7 +123,9 @@ export function RenameDialogContent() {
                         ref={oldNameRef}
                         placeholder="e.g. myFunction"
                         focused={focusedIndex === 0}
-                        onContentChange={() => setOldName(oldNameRef.current?.value ?? '')}
+                        onContentChange={() =>
+                            setOldName(oldNameRef.current?.value ?? '')
+                        }
                     />
                 </box>
             </box>
@@ -141,7 +143,9 @@ export function RenameDialogContent() {
                         ref={newNameRef}
                         placeholder="e.g. renamedFunction"
                         focused={focusedIndex === 1}
-                        onContentChange={() => setNewName(newNameRef.current?.value ?? '')}
+                        onContentChange={() =>
+                            setNewName(newNameRef.current?.value ?? '')
+                        }
                     />
                 </box>
             </box>
@@ -159,7 +163,9 @@ export function RenameDialogContent() {
                         ref={globPatternRef}
                         focused={focusedIndex === 2}
                         value={globPattern}
-                        onContentChange={() => setGlobPattern(globPatternRef.current?.value ?? '')}
+                        onContentChange={() =>
+                            setGlobPattern(globPatternRef.current?.value ?? '')
+                        }
                     />
                 </box>
             </box>

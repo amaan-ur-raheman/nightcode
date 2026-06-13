@@ -106,9 +106,7 @@ export function SymbolMentionMenu({
     if (candidates.length === 0) {
         return (
             <box paddingX={1}>
-                <text attributes={TextAttributes.DIM}>
-                    No matching symbols
-                </text>
+                <text attributes={TextAttributes.DIM}>No matching symbols</text>
             </box>
         );
     }
@@ -138,7 +136,13 @@ export function SymbolMentionMenu({
                                 {candidate.name}
                             </text>
                         </box>
-                        <box width={14} alignItems="flex-end" flexShrink={0} flexDirection="row" gap={1}>
+                        <box
+                            width={14}
+                            alignItems="flex-end"
+                            flexShrink={0}
+                            flexDirection="row"
+                            gap={1}
+                        >
                             <text
                                 selectable={false}
                                 fg={isSelected ? 'black' : 'gray'}

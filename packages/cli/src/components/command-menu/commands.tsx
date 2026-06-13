@@ -24,6 +24,7 @@ import { orchestratorManager } from '@/lib/orchestrator-manager';
 import type { Command } from '@/components/command-menu/types';
 import {
     AgentsDialogContent,
+    ApiKeyDialogContent,
     AuditDialogContent,
     HelpDialogContent,
     ImportDialogContent,
@@ -76,16 +77,19 @@ export const COMMANDS: Command[] = [
                     <TimelineDialogContent
                         sessionId={ctx.sessionId}
                         onRollback={async (commitHash) => {
-                            const timeline = await timelineManager.loadTimeline(ctx.sessionId!);
-                            const snapshot = Object.values(timeline.snapshots).find(
-                                (s) => s.commitHash === commitHash
+                            const timeline = await timelineManager.loadTimeline(
+                                ctx.sessionId!,
                             );
+                            const snapshot = Object.values(
+                                timeline.snapshots,
+                            ).find((s) => s.commitHash === commitHash);
                             if (snapshot && snapshot.messageId !== 'main') {
                                 await ctx.switchBranch(snapshot.messageId);
                             }
                             ctx.dialog.close();
                             ctx.toast.show({
-                                message: 'Workspace rolled back successfully to checkpoint.',
+                                message:
+                                    'Workspace rolled back successfully to checkpoint.',
                                 variant: 'success',
                             });
                         }}
@@ -443,6 +447,18 @@ export const COMMANDS: Command[] = [
         },
     },
     {
+        name: 'apikeys',
+        description: 'Manage API keys for providers',
+        value: '/apikeys',
+        category: 'settings',
+        action: (ctx) => {
+            ctx.dialog.open({
+                title: 'API Keys',
+                children: <ApiKeyDialogContent />,
+            });
+        },
+    },
+    {
         name: 'confirmations',
         description: 'Toggle confirmation prompts for dangerous operations',
         value: '/confirmations',
@@ -689,7 +705,9 @@ export const COMMANDS: Command[] = [
         action: (ctx) => {
             ctx.dialog.open({
                 title: 'Orchestration',
-                children: <OrchestrationDialogContent sessionId={ctx.sessionId} />,
+                children: (
+                    <OrchestrationDialogContent sessionId={ctx.sessionId} />
+                ),
             });
         },
     },

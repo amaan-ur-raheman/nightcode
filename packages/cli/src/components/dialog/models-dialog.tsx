@@ -162,7 +162,8 @@ export function ModelsDialogContent({
             });
         }
         return filterModels(view.models, view.query).map((m) => {
-            const name = m.displayName || deriveModelDisplayName(m.id, m.provider);
+            const name =
+                m.displayName || deriveModelDisplayName(m.id, m.provider);
             return {
                 key: m.id,
                 label: m.provider === 'local' ? `[Local] ${name}` : name,

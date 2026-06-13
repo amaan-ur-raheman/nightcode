@@ -196,8 +196,15 @@ export function FileTree({
 }: FileTreeProps) {
     const { colors } = useTheme();
     const { isTopLayer } = useKeyboardLayer();
-    const { fileTreeWidth, growTree, shrinkTree, closeFileTree, diffMode, activePane, setActivePane } =
-        useFileTree();
+    const {
+        fileTreeWidth,
+        growTree,
+        shrinkTree,
+        closeFileTree,
+        diffMode,
+        activePane,
+        setActivePane,
+    } = useFileTree();
     const [flatItems, setFlatItems] = useState<FlatItem[]>([]);
     const [isValid, setIsValid] = useState<boolean | null>(null);
     const [gitStatus, setGitStatus] = useState<Map<string, GitStatusDetails>>(
@@ -237,29 +244,36 @@ export function FileTree({
         void refreshGitStatus();
     }, [refreshGitStatus]);
 
-    const toggleStaged = useCallback(async (filePath: string) => {
-        const relPath = relative(rootPath, filePath);
-        const statusResult = await runGitRaw(rootPath, ['status', '--porcelain', relPath]);
-        if (statusResult.exitCode !== 0) return;
-        const line = statusResult.stdout;
-        let isStaged = false;
-        if (line && line.length >= 2) {
-            const x = line[0];
-            if (x !== ' ' && x !== '?') {
-                isStaged = true;
+    const toggleStaged = useCallback(
+        async (filePath: string) => {
+            const relPath = relative(rootPath, filePath);
+            const statusResult = await runGitRaw(rootPath, [
+                'status',
+                '--porcelain',
+                relPath,
+            ]);
+            if (statusResult.exitCode !== 0) return;
+            const line = statusResult.stdout;
+            let isStaged = false;
+            if (line && line.length >= 2) {
+                const x = line[0];
+                if (x !== ' ' && x !== '?') {
+                    isStaged = true;
+                }
             }
-        }
 
-        let cmd: string[];
-        if (isStaged) {
-            cmd = ['restore', '--staged', relPath];
-        } else {
-            cmd = ['add', relPath];
-        }
+            let cmd: string[];
+            if (isStaged) {
+                cmd = ['restore', '--staged', relPath];
+            } else {
+                cmd = ['add', relPath];
+            }
 
-        await runGitRaw(rootPath, cmd);
-        await refreshGitStatus();
-    }, [rootPath, refreshGitStatus]);
+            await runGitRaw(rootPath, cmd);
+            await refreshGitStatus();
+        },
+        [rootPath, refreshGitStatus],
+    );
 
     // Expand a directory: insert its children into flatItems after it
     const expandDir = useCallback(async (dirPath: string, depth: number) => {
@@ -481,7 +495,9 @@ export function FileTree({
                     let stageBox = '';
                     let stageBoxColor = undefined;
                     if (status) {
-                        stageBoxColor = status.staged ? colors.success : colors.dimSeparator;
+                        stageBoxColor = status.staged
+                            ? colors.success
+                            : colors.dimSeparator;
                         if (status.staged && status.unstaged) {
                             stageBox = '◧ ';
                         } else if (status.staged) {
@@ -504,7 +520,11 @@ export function FileTree({
                         fg = colors.primary;
                     }
 
-                    const focusMarker = isFocused ? (isActive ? '▸ ' : '◦ ') : '  ';
+                    const focusMarker = isFocused
+                        ? isActive
+                            ? '▸ '
+                            : '◦ '
+                        : '  ';
 
                     return (
                         <text

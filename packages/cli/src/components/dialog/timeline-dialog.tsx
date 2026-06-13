@@ -3,7 +3,11 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
-import { timelineManager, type Snapshot, type TimelineData } from '@/lib/timeline-manager';
+import {
+    timelineManager,
+    type Snapshot,
+    type TimelineData,
+} from '@/lib/timeline-manager';
 import { Spinner } from '@/components/spinner';
 import { apiClient } from '@/lib/api-client';
 
@@ -54,7 +58,8 @@ export function TimelineDialogContent({
                     });
                     if (res.ok) {
                         const sessionData = await res.json();
-                        const fetchedMessages = sessionData.messages as unknown as any[];
+                        const fetchedMessages =
+                            sessionData.messages as unknown as any[];
                         currentMessages = fetchedMessages;
                         setMessagesList(fetchedMessages);
                     }
@@ -72,7 +77,11 @@ export function TimelineDialogContent({
                     }
                 }
                 // Sort by timestamp descending
-                list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                list.sort(
+                    (a, b) =>
+                        new Date(b.timestamp).getTime() -
+                        new Date(a.timestamp).getTime(),
+                );
                 setSnapshots(list);
             } catch (e) {
                 // ignore
@@ -93,7 +102,9 @@ export function TimelineDialogContent({
         }
         let ignore = false;
         const fetchDiff = async () => {
-            const diff = await timelineManager.getDiff(activeSnapshot.commitHash);
+            const diff = await timelineManager.getDiff(
+                activeSnapshot.commitHash,
+            );
             if (!ignore) {
                 setDiffContent(diff);
                 setDiffScrollTop(0);
@@ -112,7 +123,9 @@ export function TimelineDialogContent({
         if (!activeSnapshot) return;
         setLoading(true);
         try {
-            const success = await timelineManager.rollbackTo(activeSnapshot.commitHash);
+            const success = await timelineManager.rollbackTo(
+                activeSnapshot.commitHash,
+            );
             if (success) {
                 onRollback(activeSnapshot.commitHash);
             }
@@ -128,7 +141,11 @@ export function TimelineDialogContent({
         if (!isTopLayer('timeline') || loading) return;
 
         if (confirmRollback) {
-            if (key.name === 'y' || key.name === 'return' || key.name === 'enter') {
+            if (
+                key.name === 'y' ||
+                key.name === 'return' ||
+                key.name === 'enter'
+            ) {
                 key.preventDefault();
                 setConfirmRollback(false);
                 handleConfirmRollback();
@@ -164,7 +181,9 @@ export function TimelineDialogContent({
         if (key.name === 'up') {
             key.preventDefault();
             if (columnFocus === 'list') {
-                setSelectedIndex((prev) => (prev > 0 ? prev - 1 : snapshots.length - 1));
+                setSelectedIndex((prev) =>
+                    prev > 0 ? prev - 1 : snapshots.length - 1,
+                );
             } else {
                 const newTop = Math.max(0, diffScrollTop - 1);
                 setDiffScrollTop(newTop);
@@ -175,7 +194,9 @@ export function TimelineDialogContent({
         } else if (key.name === 'down') {
             key.preventDefault();
             if (columnFocus === 'list') {
-                setSelectedIndex((prev) => (prev < snapshots.length - 1 ? prev + 1 : 0));
+                setSelectedIndex((prev) =>
+                    prev < snapshots.length - 1 ? prev + 1 : 0,
+                );
             } else {
                 const newTop = diffScrollTop + 1;
                 setDiffScrollTop(newTop);
@@ -192,7 +213,14 @@ export function TimelineDialogContent({
 
     if (loading) {
         return (
-            <box flexDirection="column" gap={1} padding={2} alignItems="center" justifyContent="center" height={15}>
+            <box
+                flexDirection="column"
+                gap={1}
+                padding={2}
+                alignItems="center"
+                justifyContent="center"
+                height={15}
+            >
                 <Spinner mode="BUILD" />
                 <text fg={colors.text}>Processing time travel...</text>
             </box>
@@ -201,8 +229,17 @@ export function TimelineDialogContent({
 
     if (confirmRollback && activeSnapshot) {
         return (
-            <box flexDirection="column" gap={1} padding={2} alignItems="center" justifyContent="center" height={15}>
-                <text fg={colors.error} attributes={TextAttributes.BOLD}>Confirm Rollback</text>
+            <box
+                flexDirection="column"
+                gap={1}
+                padding={2}
+                alignItems="center"
+                justifyContent="center"
+                height={15}
+            >
+                <text fg={colors.error} attributes={TextAttributes.BOLD}>
+                    Confirm Rollback
+                </text>
                 <text fg={colors.text}>
                     Are you sure you want to rollback workspace files to commit:
                 </text>
@@ -210,11 +247,16 @@ export function TimelineDialogContent({
                     {activeSnapshot.commitHash.substring(0, 10)}
                 </text>
                 <text fg={colors.text} attributes={TextAttributes.DIM}>
-                    (This will overwrite any uncommitted changes in your directory!)
+                    (This will overwrite any uncommitted changes in your
+                    directory!)
                 </text>
                 <box marginTop={1} flexDirection="row" gap={2}>
-                    <text fg={colors.success} attributes={TextAttributes.BOLD}>[y] Yes</text>
-                    <text fg={colors.error} attributes={TextAttributes.BOLD}>[n] No</text>
+                    <text fg={colors.success} attributes={TextAttributes.BOLD}>
+                        [y] Yes
+                    </text>
+                    <text fg={colors.error} attributes={TextAttributes.BOLD}>
+                        [n] No
+                    </text>
                 </box>
             </box>
         );
@@ -222,10 +264,20 @@ export function TimelineDialogContent({
 
     if (snapshots.length === 0) {
         return (
-            <box flexDirection="column" gap={1} padding={2} alignItems="center" justifyContent="center" height={12}>
-                <text fg={colors.error} attributes={TextAttributes.BOLD}>No Snapshots Available</text>
+            <box
+                flexDirection="column"
+                gap={1}
+                padding={2}
+                alignItems="center"
+                justifyContent="center"
+                height={12}
+            >
+                <text fg={colors.error} attributes={TextAttributes.BOLD}>
+                    No Snapshots Available
+                </text>
                 <text fg={colors.text} attributes={TextAttributes.DIM}>
-                    Snapshots are automatically created when the assistant completes replies.
+                    Snapshots are automatically created when the assistant
+                    completes replies.
                 </text>
                 <text fg={colors.text} attributes={TextAttributes.DIM}>
                     Try sending a message first to generate a checkpoint.
@@ -241,12 +293,19 @@ export function TimelineDialogContent({
     return (
         <box flexDirection="column" width={width} height={18} gap={1}>
             {/* Header */}
-            <box flexDirection="row" justifyContent="space-between" paddingBottom={1} border={['bottom']} borderColor={colors.dimSeparator}>
+            <box
+                flexDirection="row"
+                justifyContent="space-between"
+                paddingBottom={1}
+                border={['bottom']}
+                borderColor={colors.dimSeparator}
+            >
                 <text fg={colors.text} attributes={TextAttributes.DIM}>
                     Snapshots: {snapshots.length}
                 </text>
                 <text fg={colors.primary}>
-                    Left/Right: switch view | Up/Down: navigate | r: rollback to checkpoint
+                    Left/Right: switch view | Up/Down: navigate | r: rollback to
+                    checkpoint
                 </text>
             </box>
 
@@ -254,25 +313,76 @@ export function TimelineDialogContent({
             <box flexDirection="row" flexGrow={1} gap={1} width="100%">
                 {/* Snapshots List */}
                 <box flexDirection="column" width={listWidth} height="100%">
-                    <text fg={columnFocus === 'list' ? colors.primary : colors.text} attributes={TextAttributes.BOLD}>
+                    <text
+                        fg={
+                            columnFocus === 'list'
+                                ? colors.primary
+                                : colors.text
+                        }
+                        attributes={TextAttributes.BOLD}
+                    >
                         Checkpoints
                     </text>
-                    <box border={['top', 'bottom', 'left', 'right']} borderColor={columnFocus === 'list' ? colors.primary : colors.dimSeparator} flexGrow={1} padding={1} flexDirection="column">
+                    <box
+                        border={['top', 'bottom', 'left', 'right']}
+                        borderColor={
+                            columnFocus === 'list'
+                                ? colors.primary
+                                : colors.dimSeparator
+                        }
+                        flexGrow={1}
+                        padding={1}
+                        flexDirection="column"
+                    >
                         <scrollbox flexGrow={1}>
                             {snapshots.map((s, idx) => {
                                 const isSelected = idx === selectedIndex;
-                                const originalMsg = messagesList.find((m) => m.id === s.messageId);
-                                const rawText = originalMsg?.parts.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('') || '';
-                                const cleanText = rawText.replace(/\s+/g, ' ').slice(0, 25);
-                                const label = cleanText || `Snapshot ${s.commitHash.substring(0, 6)}`;
-                                const prefix = originalMsg?.role === 'assistant' ? '🤖' : '👤';
+                                const originalMsg = messagesList.find(
+                                    (m) => m.id === s.messageId,
+                                );
+                                const rawText =
+                                    originalMsg?.parts
+                                        .filter((p: any) => p.type === 'text')
+                                        .map((p: any) => p.text)
+                                        .join('') || '';
+                                const cleanText = rawText
+                                    .replace(/\s+/g, ' ')
+                                    .slice(0, 25);
+                                const label =
+                                    cleanText ||
+                                    `Snapshot ${s.commitHash.substring(0, 6)}`;
+                                const prefix =
+                                    originalMsg?.role === 'assistant'
+                                        ? '🤖'
+                                        : '👤';
 
                                 return (
-                                    <box key={s.messageId} flexDirection="row" gap={1}>
-                                        <text fg={isSelected ? colors.success : colors.text}>
+                                    <box
+                                        key={s.messageId}
+                                        flexDirection="row"
+                                        gap={1}
+                                    >
+                                        <text
+                                            fg={
+                                                isSelected
+                                                    ? colors.success
+                                                    : colors.text
+                                            }
+                                        >
                                             {isSelected ? '▶' : ' '}
                                         </text>
-                                        <text fg={isSelected ? colors.success : colors.text} attributes={isSelected ? TextAttributes.BOLD : undefined}>
+                                        <text
+                                            fg={
+                                                isSelected
+                                                    ? colors.success
+                                                    : colors.text
+                                            }
+                                            attributes={
+                                                isSelected
+                                                    ? TextAttributes.BOLD
+                                                    : undefined
+                                            }
+                                        >
                                             {prefix} {label}
                                         </text>
                                     </box>
@@ -284,19 +394,45 @@ export function TimelineDialogContent({
 
                 {/* Diff Viewer */}
                 <box flexDirection="column" width={diffWidth} height="100%">
-                    <text fg={columnFocus === 'diff' ? colors.primary : colors.text} attributes={TextAttributes.BOLD}>
-                        Details & Diff ({activeSnapshot?.commitHash.substring(0, 8)})
+                    <text
+                        fg={
+                            columnFocus === 'diff'
+                                ? colors.primary
+                                : colors.text
+                        }
+                        attributes={TextAttributes.BOLD}
+                    >
+                        Details & Diff (
+                        {activeSnapshot?.commitHash.substring(0, 8)})
                     </text>
-                    <box border={['top', 'bottom', 'left', 'right']} borderColor={columnFocus === 'diff' ? colors.primary : colors.dimSeparator} flexGrow={1} padding={1} flexDirection="column">
+                    <box
+                        border={['top', 'bottom', 'left', 'right']}
+                        borderColor={
+                            columnFocus === 'diff'
+                                ? colors.primary
+                                : colors.dimSeparator
+                        }
+                        flexGrow={1}
+                        padding={1}
+                        flexDirection="column"
+                    >
                         <scrollbox ref={diffScrollRef} flexGrow={1}>
-                            <text fg={colors.text}>{diffContent || 'No diff output.'}</text>
+                            <text fg={colors.text}>
+                                {diffContent || 'No diff output.'}
+                            </text>
                         </scrollbox>
                     </box>
                 </box>
             </box>
 
             {/* Footer */}
-            <box flexDirection="row" justifyContent="space-between" paddingTop={1} border={['top']} borderColor={colors.dimSeparator}>
+            <box
+                flexDirection="row"
+                justifyContent="space-between"
+                paddingTop={1}
+                border={['top']}
+                borderColor={colors.dimSeparator}
+            >
                 <text fg={colors.text} attributes={TextAttributes.DIM}>
                     r: rollback | esc: close
                 </text>

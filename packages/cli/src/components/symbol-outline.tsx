@@ -19,7 +19,11 @@ interface SymbolOutlineProps {
     width?: number;
 }
 
-export function SymbolOutline({ filePath, onSelectSymbol, width = 30 }: SymbolOutlineProps) {
+export function SymbolOutline({
+    filePath,
+    onSelectSymbol,
+    width = 30,
+}: SymbolOutlineProps) {
     const { colors } = useTheme();
     const { isTopLayer } = useKeyboardLayer();
     const { activePane, setActivePane } = useFileTree();
@@ -94,7 +98,11 @@ export function SymbolOutline({ filePath, onSelectSymbol, width = 30 }: SymbolOu
         } else if (key.name === 'left' || key.name === 'h') {
             key.preventDefault();
             setActivePane('file-tree');
-        } else if (key.name === 'right' || key.name === 'l' || key.name === 'return') {
+        } else if (
+            key.name === 'right' ||
+            key.name === 'l' ||
+            key.name === 'return'
+        ) {
             key.preventDefault();
             if (symbols[focusedIndex]) {
                 onSelectSymbol?.(symbols[focusedIndex]!);
@@ -164,9 +172,15 @@ export function SymbolOutline({ filePath, onSelectSymbol, width = 30 }: SymbolOu
                             const isFocused = i === focusedIndex;
                             let fg = colors.text;
                             if (isFocused) {
-                                fg = isActive ? colors.selection : colors.dimSeparator;
+                                fg = isActive
+                                    ? colors.selection
+                                    : colors.dimSeparator;
                             }
-                            const focusMarker = isFocused ? (isActive ? '▸ ' : '◦ ') : '  ';
+                            const focusMarker = isFocused
+                                ? isActive
+                                    ? '▸ '
+                                    : '◦ '
+                                : '  ';
 
                             return (
                                 <text
@@ -180,9 +194,14 @@ export function SymbolOutline({ filePath, onSelectSymbol, width = 30 }: SymbolOu
                                     }}
                                 >
                                     {focusMarker}
-                                    <em fg={colors.info}>{getSymbolIcon(sym.kind)}</em>
+                                    <em fg={colors.info}>
+                                        {getSymbolIcon(sym.kind)}
+                                    </em>
                                     {sym.name}
-                                    <em fg={colors.dimSeparator}> ({sym.line})</em>
+                                    <em fg={colors.dimSeparator}>
+                                        {' '}
+                                        ({sym.line})
+                                    </em>
                                 </text>
                             );
                         })}

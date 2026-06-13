@@ -20,7 +20,9 @@ type FileTreeContextValue = {
     diffMode: boolean;
     openDiffMode: () => void;
     activePane: 'file-tree' | 'symbol-outline' | 'code-panel';
-    setActivePane: (pane: 'file-tree' | 'symbol-outline' | 'code-panel') => void;
+    setActivePane: (
+        pane: 'file-tree' | 'symbol-outline' | 'code-panel',
+    ) => void;
 };
 
 const FileTreeContext = createContext<FileTreeContextValue | null>(null);
@@ -30,7 +32,9 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
     const [selectedFile, setSelectedFile] = useState<string | undefined>();
     const [fileTreeWidth, setFileTreeWidth] = useState(DEFAULT_WIDTH);
     const [diffMode, setDiffMode] = useState(false);
-    const [activePane, setActivePane] = useState<'file-tree' | 'symbol-outline' | 'code-panel'>('file-tree');
+    const [activePane, setActivePane] = useState<
+        'file-tree' | 'symbol-outline' | 'code-panel'
+    >('file-tree');
 
     const toggleFileTree = useCallback(() => {
         setShowFileTree((prev) => {

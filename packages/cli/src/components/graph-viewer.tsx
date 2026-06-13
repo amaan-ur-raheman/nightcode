@@ -35,7 +35,9 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
                 const loaded = await knowledgeGraphManager.load();
                 setGraph(loaded);
                 // Select first node (preferably a file or class)
-                const allNodes = Array.from(loaded.nodes.values()) as KnowledgeNode[];
+                const allNodes = Array.from(
+                    loaded.nodes.values(),
+                ) as KnowledgeNode[];
                 const defaultNode =
                     allNodes.find((n) => n.type === 'file') ??
                     allNodes.find((n) => n.type === 'class') ??
@@ -60,7 +62,8 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
         }
         const loadNeighbors = async () => {
             try {
-                const list = await knowledgeGraphManager.getNeighbors(currentNodeId);
+                const list =
+                    await knowledgeGraphManager.getNeighbors(currentNodeId);
                 setNeighbors(list);
                 setIncomingIndex(0);
                 setOutgoingIndex(0);
@@ -83,10 +86,17 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
     }, [push, pop]);
 
     // Filter neighbors
-    const incomingNeighbors = neighbors.filter((n) => n.direction === 'incoming');
-    const outgoingNeighbors = neighbors.filter((n) => n.direction === 'outgoing');
+    const incomingNeighbors = neighbors.filter(
+        (n) => n.direction === 'incoming',
+    );
+    const outgoingNeighbors = neighbors.filter(
+        (n) => n.direction === 'outgoing',
+    );
 
-    const currentNode = currentNodeId && graph ? graph.nodes.get(currentNodeId) as KnowledgeNode : null;
+    const currentNode =
+        currentNodeId && graph
+            ? (graph.nodes.get(currentNodeId) as KnowledgeNode)
+            : null;
 
     const handleRebuild = async () => {
         setLoading(true);
@@ -94,7 +104,9 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
             await knowledgeGraphManager.buildFromProject(process.cwd());
             const loaded = await knowledgeGraphManager.load();
             setGraph(loaded);
-            const allNodes = Array.from(loaded.nodes.values()) as KnowledgeNode[];
+            const allNodes = Array.from(
+                loaded.nodes.values(),
+            ) as KnowledgeNode[];
             const defaultNode =
                 allNodes.find((n) => n.type === 'file') ??
                 allNodes.find((n) => n.type === 'class') ??
@@ -141,38 +153,64 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
             key.preventDefault();
             if (columnFocus === 'outgoing') {
                 setColumnFocus('center');
-            } else if (columnFocus === 'center' && incomingNeighbors.length > 0) {
+            } else if (
+                columnFocus === 'center' &&
+                incomingNeighbors.length > 0
+            ) {
                 setColumnFocus('incoming');
             }
         } else if (key.name === 'right') {
             key.preventDefault();
             if (columnFocus === 'incoming') {
                 setColumnFocus('center');
-            } else if (columnFocus === 'center' && outgoingNeighbors.length > 0) {
+            } else if (
+                columnFocus === 'center' &&
+                outgoingNeighbors.length > 0
+            ) {
                 setColumnFocus('outgoing');
             }
         } else if (key.name === 'up') {
             key.preventDefault();
             if (columnFocus === 'incoming' && incomingNeighbors.length > 0) {
-                setIncomingIndex((prev) => (prev > 0 ? prev - 1 : incomingNeighbors.length - 1));
-            } else if (columnFocus === 'outgoing' && outgoingNeighbors.length > 0) {
-                setOutgoingIndex((prev) => (prev > 0 ? prev - 1 : outgoingNeighbors.length - 1));
+                setIncomingIndex((prev) =>
+                    prev > 0 ? prev - 1 : incomingNeighbors.length - 1,
+                );
+            } else if (
+                columnFocus === 'outgoing' &&
+                outgoingNeighbors.length > 0
+            ) {
+                setOutgoingIndex((prev) =>
+                    prev > 0 ? prev - 1 : outgoingNeighbors.length - 1,
+                );
             }
         } else if (key.name === 'down') {
             key.preventDefault();
             if (columnFocus === 'incoming' && incomingNeighbors.length > 0) {
-                setIncomingIndex((prev) => (prev < incomingNeighbors.length - 1 ? prev + 1 : 0));
-            } else if (columnFocus === 'outgoing' && outgoingNeighbors.length > 0) {
-                setOutgoingIndex((prev) => (prev < outgoingNeighbors.length - 1 ? prev + 1 : 0));
+                setIncomingIndex((prev) =>
+                    prev < incomingNeighbors.length - 1 ? prev + 1 : 0,
+                );
+            } else if (
+                columnFocus === 'outgoing' &&
+                outgoingNeighbors.length > 0
+            ) {
+                setOutgoingIndex((prev) =>
+                    prev < outgoingNeighbors.length - 1 ? prev + 1 : 0,
+                );
             }
         }
 
         // Action Keys
         if (key.name === 'return' || key.name === 'enter') {
             key.preventDefault();
-            if (columnFocus === 'incoming' && incomingNeighbors[incomingIndex]) {
+            if (
+                columnFocus === 'incoming' &&
+                incomingNeighbors[incomingIndex]
+            ) {
                 handleCenterChange(incomingNeighbors[incomingIndex].node.id);
-            } else if (columnFocus === 'outgoing' && outgoingNeighbors[outgoingIndex]) {
+            } else if (
+                columnFocus === 'outgoing' &&
+                outgoingNeighbors[outgoingIndex]
+            ) {
                 handleCenterChange(outgoingNeighbors[outgoingIndex].node.id);
             } else if (columnFocus === 'center') {
                 handleOpenFile(currentNode);
@@ -182,9 +220,15 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
         // File jump shortcuts: 'o' or 'f'
         if (key.name === 'o' || key.name === 'f') {
             key.preventDefault();
-            if (columnFocus === 'incoming' && incomingNeighbors[incomingIndex]) {
+            if (
+                columnFocus === 'incoming' &&
+                incomingNeighbors[incomingIndex]
+            ) {
                 handleOpenFile(incomingNeighbors[incomingIndex].node);
-            } else if (columnFocus === 'outgoing' && outgoingNeighbors[outgoingIndex]) {
+            } else if (
+                columnFocus === 'outgoing' &&
+                outgoingNeighbors[outgoingIndex]
+            ) {
                 handleOpenFile(outgoingNeighbors[outgoingIndex].node);
             } else if (columnFocus === 'center') {
                 handleOpenFile(currentNode);
@@ -198,9 +242,18 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
 
     if (loading) {
         return (
-            <box flexDirection="column" gap={1} padding={2} alignItems="center" justifyContent="center" height={15}>
+            <box
+                flexDirection="column"
+                gap={1}
+                padding={2}
+                alignItems="center"
+                justifyContent="center"
+                height={15}
+            >
                 <Spinner mode="BUILD" />
-                <text fg={colors.text}>Processing Workspace Knowledge Graph...</text>
+                <text fg={colors.text}>
+                    Processing Workspace Knowledge Graph...
+                </text>
             </box>
         );
     }
@@ -236,7 +289,10 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
                     gap={1}
                 >
                     <box flexDirection="row" gap={1}>
-                        <text fg={colors.success} attributes={TextAttributes.BOLD}>
+                        <text
+                            fg={colors.success}
+                            attributes={TextAttributes.BOLD}
+                        >
                             Press 'b'
                         </text>
                         <text fg={colors.text}>
@@ -258,12 +314,19 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
     return (
         <box flexDirection="column" width={width} height={18} gap={1}>
             {/* Header info */}
-            <box flexDirection="row" justifyContent="space-between" paddingBottom={1} border={['bottom']} borderColor={colors.dimSeparator}>
+            <box
+                flexDirection="row"
+                justifyContent="space-between"
+                paddingBottom={1}
+                border={['bottom']}
+                borderColor={colors.dimSeparator}
+            >
                 <text fg={colors.text} attributes={TextAttributes.DIM}>
                     Total Nodes: {graph.nodes.size} | Edges: {graph.edges.size}
                 </text>
                 <text fg={colors.primary}>
-                    Left/Right: switch column | Up/Down: select neighbor | Enter: re-center / open code
+                    Left/Right: switch column | Up/Down: select neighbor |
+                    Enter: re-center / open code
                 </text>
             </box>
 
@@ -271,25 +334,73 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
             <box flexDirection="row" flexGrow={1} gap={1} width="100%">
                 {/* Incoming Column */}
                 <box flexDirection="column" width={sideColWidth} height="100%">
-                    <text fg={columnFocus === 'incoming' ? colors.primary : colors.text} attributes={TextAttributes.BOLD}>
+                    <text
+                        fg={
+                            columnFocus === 'incoming'
+                                ? colors.primary
+                                : colors.text
+                        }
+                        attributes={TextAttributes.BOLD}
+                    >
                         Incoming Connections ({incomingNeighbors.length})
                     </text>
-                    <box border={['top', 'bottom', 'left', 'right']} borderColor={columnFocus === 'incoming' ? colors.primary : colors.dimSeparator} flexGrow={1} padding={1} flexDirection="column">
+                    <box
+                        border={['top', 'bottom', 'left', 'right']}
+                        borderColor={
+                            columnFocus === 'incoming'
+                                ? colors.primary
+                                : colors.dimSeparator
+                        }
+                        flexGrow={1}
+                        padding={1}
+                        flexDirection="column"
+                    >
                         <scrollbox flexGrow={1}>
                             {incomingNeighbors.length === 0 ? (
-                                <text fg={colors.text} attributes={TextAttributes.DIM}>No incoming imports/calls</text>
+                                <text
+                                    fg={colors.text}
+                                    attributes={TextAttributes.DIM}
+                                >
+                                    No incoming imports/calls
+                                </text>
                             ) : (
                                 incomingNeighbors.map((n, idx) => {
-                                    const isSelected = columnFocus === 'incoming' && idx === incomingIndex;
+                                    const isSelected =
+                                        columnFocus === 'incoming' &&
+                                        idx === incomingIndex;
                                     return (
-                                        <box key={n.node.id} flexDirection="row" gap={1}>
-                                            <text fg={isSelected ? colors.success : colors.text}>
+                                        <box
+                                            key={n.node.id}
+                                            flexDirection="row"
+                                            gap={1}
+                                        >
+                                            <text
+                                                fg={
+                                                    isSelected
+                                                        ? colors.success
+                                                        : colors.text
+                                                }
+                                            >
                                                 {isSelected ? '▶' : ' '}
                                             </text>
-                                            <text fg={isSelected ? colors.success : colors.text} attributes={isSelected ? TextAttributes.BOLD : undefined}>
+                                            <text
+                                                fg={
+                                                    isSelected
+                                                        ? colors.success
+                                                        : colors.text
+                                                }
+                                                attributes={
+                                                    isSelected
+                                                        ? TextAttributes.BOLD
+                                                        : undefined
+                                                }
+                                            >
                                                 {n.node.name}
                                             </text>
-                                            <text fg={colors.text} attributes={TextAttributes.DIM}>
+                                            <text
+                                                fg={colors.text}
+                                                attributes={TextAttributes.DIM}
+                                            >
                                                 ({n.edge.type})
                                             </text>
                                         </box>
@@ -301,40 +412,97 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
                 </box>
 
                 {/* Unicode connector arrow (Left to Center) */}
-                <box flexDirection="column" justifyContent="center" height="100%" paddingX={1}>
+                <box
+                    flexDirection="column"
+                    justifyContent="center"
+                    height="100%"
+                    paddingX={1}
+                >
                     <text fg={colors.dimSeparator}>───▶</text>
                 </box>
 
                 {/* Center Focused Node */}
-                <box flexDirection="column" width={centerColWidth} height="100%">
-                    <text fg={columnFocus === 'center' ? colors.primary : colors.text} attributes={TextAttributes.BOLD}>
+                <box
+                    flexDirection="column"
+                    width={centerColWidth}
+                    height="100%"
+                >
+                    <text
+                        fg={
+                            columnFocus === 'center'
+                                ? colors.primary
+                                : colors.text
+                        }
+                        attributes={TextAttributes.BOLD}
+                    >
                         Focused Symbol
                     </text>
-                    <box border={['top', 'bottom', 'left', 'right']} borderColor={columnFocus === 'center' ? colors.primary : colors.dimSeparator} flexGrow={1} padding={1} flexDirection="column" gap={1}>
+                    <box
+                        border={['top', 'bottom', 'left', 'right']}
+                        borderColor={
+                            columnFocus === 'center'
+                                ? colors.primary
+                                : colors.dimSeparator
+                        }
+                        flexGrow={1}
+                        padding={1}
+                        flexDirection="column"
+                        gap={1}
+                    >
                         {currentNode ? (
                             <>
                                 <box flexDirection="row" gap={1}>
-                                    <text fg={colors.primary} attributes={TextAttributes.BOLD}>
+                                    <text
+                                        fg={colors.primary}
+                                        attributes={TextAttributes.BOLD}
+                                    >
                                         {currentNode.name}
                                     </text>
-                                    <text fg={colors.text} attributes={TextAttributes.DIM}>
+                                    <text
+                                        fg={colors.text}
+                                        attributes={TextAttributes.DIM}
+                                    >
                                         [{currentNode.type}]
                                     </text>
                                 </box>
                                 {currentNode.filePath && (
                                     <box flexDirection="column">
-                                        <text fg={colors.text} attributes={TextAttributes.DIM}>File:</text>
-                                        <text fg={colors.text}>{currentNode.filePath}:{currentNode.startLine ?? 1}</text>
+                                        <text
+                                            fg={colors.text}
+                                            attributes={TextAttributes.DIM}
+                                        >
+                                            File:
+                                        </text>
+                                        <text fg={colors.text}>
+                                            {currentNode.filePath}:
+                                            {currentNode.startLine ?? 1}
+                                        </text>
                                     </box>
                                 )}
                                 {currentNode.description && (
                                     <box flexDirection="column" marginTop={1}>
-                                        <text fg={colors.text} attributes={TextAttributes.DIM}>Description:</text>
-                                        <text fg={colors.text}>{currentNode.description}</text>
+                                        <text
+                                            fg={colors.text}
+                                            attributes={TextAttributes.DIM}
+                                        >
+                                            Description:
+                                        </text>
+                                        <text fg={colors.text}>
+                                            {currentNode.description}
+                                        </text>
                                     </box>
                                 )}
-                                <box marginTop="auto" flexDirection="column" border={['top']} borderColor={colors.dimSeparator} paddingTop={1}>
-                                    <text fg={colors.success} attributes={TextAttributes.DIM}>
+                                <box
+                                    marginTop="auto"
+                                    flexDirection="column"
+                                    border={['top']}
+                                    borderColor={colors.dimSeparator}
+                                    paddingTop={1}
+                                >
+                                    <text
+                                        fg={colors.success}
+                                        attributes={TextAttributes.DIM}
+                                    >
                                         Press 'o' or 'f' to open code file
                                     </text>
                                 </box>
@@ -346,31 +514,84 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
                 </box>
 
                 {/* Unicode connector arrow (Center to Right) */}
-                <box flexDirection="column" justifyContent="center" height="100%" paddingX={1}>
+                <box
+                    flexDirection="column"
+                    justifyContent="center"
+                    height="100%"
+                    paddingX={1}
+                >
                     <text fg={colors.dimSeparator}>───▶</text>
                 </box>
 
                 {/* Outgoing Column */}
                 <box flexDirection="column" width={sideColWidth} height="100%">
-                    <text fg={columnFocus === 'outgoing' ? colors.primary : colors.text} attributes={TextAttributes.BOLD}>
+                    <text
+                        fg={
+                            columnFocus === 'outgoing'
+                                ? colors.primary
+                                : colors.text
+                        }
+                        attributes={TextAttributes.BOLD}
+                    >
                         Outgoing Connections ({outgoingNeighbors.length})
                     </text>
-                    <box border={['top', 'bottom', 'left', 'right']} borderColor={columnFocus === 'outgoing' ? colors.primary : colors.dimSeparator} flexGrow={1} padding={1} flexDirection="column">
+                    <box
+                        border={['top', 'bottom', 'left', 'right']}
+                        borderColor={
+                            columnFocus === 'outgoing'
+                                ? colors.primary
+                                : colors.dimSeparator
+                        }
+                        flexGrow={1}
+                        padding={1}
+                        flexDirection="column"
+                    >
                         <scrollbox flexGrow={1}>
                             {outgoingNeighbors.length === 0 ? (
-                                <text fg={colors.text} attributes={TextAttributes.DIM}>No outgoing dependencies</text>
+                                <text
+                                    fg={colors.text}
+                                    attributes={TextAttributes.DIM}
+                                >
+                                    No outgoing dependencies
+                                </text>
                             ) : (
                                 outgoingNeighbors.map((n, idx) => {
-                                    const isSelected = columnFocus === 'outgoing' && idx === outgoingIndex;
+                                    const isSelected =
+                                        columnFocus === 'outgoing' &&
+                                        idx === outgoingIndex;
                                     return (
-                                        <box key={n.node.id} flexDirection="row" gap={1}>
-                                            <text fg={isSelected ? colors.success : colors.text}>
+                                        <box
+                                            key={n.node.id}
+                                            flexDirection="row"
+                                            gap={1}
+                                        >
+                                            <text
+                                                fg={
+                                                    isSelected
+                                                        ? colors.success
+                                                        : colors.text
+                                                }
+                                            >
                                                 {isSelected ? '▶' : ' '}
                                             </text>
-                                            <text fg={isSelected ? colors.success : colors.text} attributes={isSelected ? TextAttributes.BOLD : undefined}>
+                                            <text
+                                                fg={
+                                                    isSelected
+                                                        ? colors.success
+                                                        : colors.text
+                                                }
+                                                attributes={
+                                                    isSelected
+                                                        ? TextAttributes.BOLD
+                                                        : undefined
+                                                }
+                                            >
                                                 {n.node.name}
                                             </text>
-                                            <text fg={colors.text} attributes={TextAttributes.DIM}>
+                                            <text
+                                                fg={colors.text}
+                                                attributes={TextAttributes.DIM}
+                                            >
                                                 ({n.edge.type})
                                             </text>
                                         </box>
@@ -383,7 +604,13 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
             </box>
 
             {/* Footer tips */}
-            <box flexDirection="row" justifyContent="space-between" paddingTop={1} border={['top']} borderColor={colors.dimSeparator}>
+            <box
+                flexDirection="row"
+                justifyContent="space-between"
+                paddingTop={1}
+                border={['top']}
+                borderColor={colors.dimSeparator}
+            >
                 <text fg={colors.text} attributes={TextAttributes.DIM}>
                     b: build knowledge / rebuild | o/f: open file | esc: close
                 </text>
