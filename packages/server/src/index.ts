@@ -53,7 +53,6 @@ app.use('/billing/credits', requireAuth);
 app.use('/subagent/*', requireAuth);
 app.use('/orchestrator/*', requireAuth);
 app.use('/export/*', requireAuth);
-app.use('/models/*', requireAuth);
 app.use('/api-keys/*', requireAuth);
 
 const routes = app
