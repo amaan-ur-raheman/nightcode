@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Hono } from 'hono';
 import { generateText, type LanguageModelUsage } from 'ai';
 import { zValidator } from '@hono/zod-validator';
+import { db } from '@nightcode/database/client';
 
 import { modeSchema, type ModeType } from '@nightcode/shared';
 import { buildSystemPrompt } from '../system-prompt';
@@ -16,6 +17,30 @@ const decomposeSchema = z.object({
     model: z.string().min(1, 'Model ID is required'),
     mode: modeSchema,
     strategy: z.enum(['balanced', 'speed', 'quality']).default('balanced'),
+});
+
+const syncNodesSchema = z.object({
+    nodes: z.array(
+        z.object({
+            id: z.string(),
+            graphId: z.string(),
+            type: z.string(),
+            description: z.string(),
+            dependencies: z.array(z.string()),
+            status: z.string(),
+            result: z.string().optional().nullable(),
+            error: z.string().optional().nullable(),
+            files: z.array(z.string()).optional(),
+        })
+    ),
+});
+
+const updateNodeSchema = z.object({
+    status: z.string().optional(),
+    result: z.string().optional().nullable(),
+    error: z.string().optional().nullable(),
+    description: z.string().optional(),
+    files: z.array(z.string()).optional(),
 });
 
 const app = new Hono<AuthenticatedEnv>().post(
@@ -160,7 +185,111 @@ const app = new Hono<AuthenticatedEnv>().post(
 
         // Return raw text — client extracts JSON array from it
         return c.text(text);
-    },
-);
+    })
+    .post(
+    '/sessions/:sessionId/graphs/:graphId/nodes',
+    zValidator('json', syncNodesSchema, (result, c) => {
+        if (!result.success)
+            return c.json({ error: 'Invalid request body' }, 400);
+    }),
+    async (c) => {
+        const sessionId = c.req.param('sessionId');
+        const graphId = c.req.param('graphId');
+        const { nodes } = c.req.valid('json');
+        const userId = c.get('userId');
+
+        const session = await db.session.findFirst({
+            where: { id: sessionId, userId },
+        });
+        if (!session) {
+            return c.json({ error: 'Session not found' }, 404);
+        }
+
+        // Delete existing nodes for this graph first
+        await db.taskNode.deleteMany({
+            where: { sessionId, graphId },
+        });
+
+        // Bulk create the new nodes
+        const created = await Promise.all(
+            nodes.map((node) =>
+                db.taskNode.create({
+                    data: {
+                        graphId,
+                        sessionId,
+                        labelId: node.id,
+                        type: node.type,
+                        description: node.description,
+                        dependencies: node.dependencies,
+                        status: node.status,
+                        result: node.result ?? null,
+                        error: node.error ?? null,
+                        files: node.files ?? [],
+                    },
+                })
+            )
+        );
+
+        return c.json({ success: true, count: created.length });
+    })
+    .put(
+    '/sessions/:sessionId/graphs/:graphId/nodes/:nodeId',
+    zValidator('json', updateNodeSchema, (result, c) => {
+        if (!result.success)
+            return c.json({ error: 'Invalid request body' }, 400);
+    }),
+    async (c) => {
+        const sessionId = c.req.param('sessionId');
+        const graphId = c.req.param('graphId');
+        const nodeId = c.req.param('nodeId');
+        const userId = c.get('userId');
+
+        const session = await db.session.findFirst({
+            where: { id: sessionId, userId },
+        });
+        if (!session) {
+            return c.json({ error: 'Session not found' }, 404);
+        }
+
+        const updateData = c.req.valid('json');
+
+        const existing = await db.taskNode.findFirst({
+            where: { sessionId, graphId, labelId: nodeId },
+        });
+
+        if (!existing) {
+            return c.json({ error: 'Task node not found' }, 404);
+        }
+
+        const updated = await db.taskNode.update({
+            where: { id: existing.id },
+            data: {
+                status: updateData.status ?? undefined,
+                result: updateData.result !== undefined ? updateData.result : undefined,
+                error: updateData.error !== undefined ? updateData.error : undefined,
+                description: updateData.description ?? undefined,
+                files: updateData.files ?? undefined,
+            },
+        });
+
+        return c.json(updated);
+    })
+    .get('/sessions/:sessionId/nodes', async (c) => {
+    const sessionId = c.req.param('sessionId');
+    const userId = c.get('userId');
+
+    const session = await db.session.findFirst({
+        where: { id: sessionId, userId },
+    });
+    if (!session) {
+        return c.json({ error: 'Session not found' }, 404);
+    }
+
+    const nodes = await db.taskNode.findMany({
+        where: { sessionId },
+        orderBy: { createdAt: 'asc' },
+    });
+    return c.json(nodes);
+});
 
 export default app;

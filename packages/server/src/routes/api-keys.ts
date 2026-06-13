@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { keychain } from '@nightcode/shared';
+import type { AuthenticatedEnv } from '../middleware/require-auth';
 
 /**
  * Simplified API keys route — status check only.
@@ -7,7 +8,7 @@ import { keychain } from '@nightcode/shared';
  * The server no longer stores or writes API keys.
  */
 
-const app = new Hono().get('/status', async (c) => {
+const app = new Hono<AuthenticatedEnv>().get('/status', async (c) => {
     try {
         if (!keychain.isAvailable()) {
             return c.json({ available: false });

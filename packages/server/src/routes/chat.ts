@@ -119,9 +119,18 @@ const app = new Hono<AuthenticatedEnv>().post(
             hasMcpTools: !!mcpTools?.length,
         });
 
-        const session = await db.session.findUnique({
-            where: { id, userId },
-        });
+        let session;
+        try {
+            session = await db.session.findUnique({
+                where: { id, userId },
+            });
+        } catch (dbError) {
+            console.error(
+                `[chat:${reqId}] DB error looking up session:`,
+                dbError,
+            );
+            return c.json({ error: 'Database error' }, 503);
+        }
 
         if (!session) {
             return c.json({ error: 'Session not found' }, 404);
@@ -139,7 +148,12 @@ const app = new Hono<AuthenticatedEnv>().post(
         }
         if (cachedBalance === null) {
             // Fire-and-forget refresh for next request
-            getAvailableCreditsBalance(userId).catch(() => {});
+            getAvailableCreditsBalance(userId).catch((err) => {
+                console.error(
+                    `[chat:${reqId}] Background credit refresh failed:`,
+                    err,
+                );
+            });
         }
 
         const startTime = Date.now();
@@ -314,13 +328,20 @@ const app = new Hono<AuthenticatedEnv>().post(
             async onFinish(event) {
                 // Always persist messages (including partial results from interrupted streams)
                 if (!hasPendingToolCalls(event.responseMessage)) {
-                    await db.session.update({
-                        where: { id, userId },
-                        data: {
-                            messages:
-                                event.messages as unknown as Prisma.InputJsonValue,
-                        },
-                    });
+                    try {
+                        await db.session.update({
+                            where: { id, userId },
+                            data: {
+                                messages:
+                                    event.messages as unknown as Prisma.InputJsonValue,
+                            },
+                        });
+                    } catch (saveError) {
+                        console.error(
+                            `[chat:${reqId}] Failed to save messages:`,
+                            saveError,
+                        );
+                    }
                 }
 
                 // Skip title generation and billing for aborted streams
@@ -359,8 +380,11 @@ const app = new Hono<AuthenticatedEnv>().post(
                                     data: { title },
                                 }),
                             )
-                            .catch(() => {
-                                /* non-critical */
+                            .catch((err) => {
+                                console.error(
+                                    `[chat:${reqId}] Title generation failed:`,
+                                    err,
+                                );
                             });
                     }
                 }

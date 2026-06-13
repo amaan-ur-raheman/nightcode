@@ -127,6 +127,7 @@ async function resolveSupportedChatModel(
         case 'deepseek':
         case 'gemini':
         case 'kilo':
+        case 'local':
             return resolveThirdPartyModel(model, subagent, apiKey);
         default:
             const _exhaustive: never = provider;
@@ -152,7 +153,8 @@ function normalizeModelId(modelId: string): string {
         modelId.startsWith('deepseek/') ||
         modelId.startsWith('gemini/') ||
         modelId.startsWith('google/') ||
-        modelId.startsWith('kilo/')
+        modelId.startsWith('kilo/') ||
+        modelId.startsWith('local/')
     ) {
         return modelId;
     }

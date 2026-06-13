@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { fetchAllModels, clearModelCache } from '../lib/model-fetcher';
+import type { AuthenticatedEnv } from '../middleware/require-auth';
 
 const REFRESH_COOLDOWN_MS = 30_000; // 30 seconds between refreshes
 let lastRefreshTime = 0;
@@ -21,7 +22,7 @@ function extractApiKeys(
     return undefined;
 }
 
-const app = new Hono()
+const app = new Hono<AuthenticatedEnv>()
     .get('/', async (c) => {
         const apiKeys = extractApiKeys(c.req.header('x-provider-keys'));
         const result = await fetchAllModels(apiKeys);

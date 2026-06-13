@@ -130,6 +130,13 @@ const KILO_PROVIDER: ProviderConfig = {
     models: [],
 };
 
+const LOCAL_PROVIDER: ProviderConfig = {
+    name: 'local',
+    baseUrl: 'http://localhost:11434/v1',
+    apiKey: 'ollama',
+    models: [],
+};
+
 const ALL_PROVIDERS: ProviderConfig[] = [
     NIM_PROVIDER,
     ANTHROPIC_PROVIDER,
@@ -143,6 +150,7 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     DEEPSEEK_PROVIDER,
     GEMINI_PROVIDER,
     KILO_PROVIDER,
+    LOCAL_PROVIDER,
 ];
 
 // Provider prefix mapping for dynamic model IDs
@@ -156,6 +164,7 @@ const PROVIDER_PREFIXES: Record<string, string> = {
     'gemini/': 'gemini',
     'google/': 'gemini',
     'kilo/': 'kilo',
+    'local/': 'local',
 };
 
 function findProviderForModel(modelId: string): ProviderConfig | undefined {
