@@ -25,8 +25,9 @@ import { StatusBar } from '@/components/status-bar';
 import { CommandMenu } from '@/components/command-menu';
 import type { Command } from '@/components/command-menu/types';
 import { useCommandMenu } from '@/components/command-menu/use-command-menu';
-import { FileMentionMenu } from '@/components/file-mention';
+import { FileMentionMenu, SymbolMentionMenu } from '@/components/file-mention';
 import { useFileMention } from '@/components/file-mention/use-file-mention';
+import { useSymbolMention } from '@/components/file-mention/use-symbol-mention';
 import { ShortcutsDialogContent } from '@/components/dialog/shortcuts-dialog';
 import type { ImageAttachment } from '@/hooks/use-chat';
 
@@ -75,8 +76,8 @@ export function InputBar({
     const dialog = useDialog();
     const { colors } = useTheme();
     const navigate = useNavigate();
-    const { mode, toggleMode, setModel, setMode } = usePromptConfig();
-    const { toggleFileTree, openDiffMode } = useFileTree();
+    const { mode, model, toggleMode, setModel, setMode } = usePromptConfig();
+    const { toggleFileTree, openDiffMode, selectedFile } = useFileTree();
 
     const {
         showCommandMenu,
@@ -100,6 +101,17 @@ export function InputBar({
         execute: executeMention,
         handleBackspace: handleMentionBackspace,
     } = useFileMention(textareaRef);
+
+    const {
+        showSymbolMenu,
+        candidates: symbolCandidates,
+        selectedIndex: symbolSelectedIndex,
+        scrollRef: symbolScrollRef,
+        setSelectedIndex: setSymbolSelectedIndex,
+        sync: syncSymbolMention,
+        execute: executeSymbolMention,
+        handleBackspace: handleSymbolMentionBackspace,
+    } = useSymbolMention(textareaRef, selectedFile);
 
     const handleSubmit = useCallback(() => {
         if (disabled) return;
@@ -146,6 +158,7 @@ export function InputBar({
                     dialog,
                     navigate,
                     mode,
+                    model,
                     setMode,
                     setModel,
                     setInputValue: (value: string) => {
@@ -175,6 +188,7 @@ export function InputBar({
             dialog,
             navigate,
             mode,
+            model,
             setMode,
             setModel,
             onClear,
@@ -198,14 +212,22 @@ export function InputBar({
         const textarea = textareaRef.current;
         if (!textarea) return;
         handleContentChange(textarea.plainText);
-        syncMention(textarea.plainText, textarea.cursorOffset);
-    }, [handleContentChange, syncMention]);
+        if (selectedFile) {
+            syncSymbolMention(textarea.plainText, textarea.cursorOffset);
+        } else {
+            syncMention(textarea.plainText, textarea.cursorOffset);
+        }
+    }, [handleContentChange, syncMention, syncSymbolMention, selectedFile]);
 
     const handleTextareaCursorChange = useCallback(() => {
         const textarea = textareaRef.current;
         if (!textarea) return;
-        syncMention(textarea.plainText, textarea.cursorOffset);
-    }, [syncMention]);
+        if (selectedFile) {
+            syncSymbolMention(textarea.plainText, textarea.cursorOffset);
+        } else {
+            syncMention(textarea.plainText, textarea.cursorOffset);
+        }
+    }, [syncMention, syncSymbolMention, selectedFile]);
 
     // Wire up the textarea submit handler once so it always reads the latest state
     useEffect(() => {
@@ -228,6 +250,14 @@ export function InputBar({
             const candidate = candidates[mentionSelectedIndex];
             if (candidate) {
                 executeMention(mentionSelectedIndex);
+            }
+            return;
+        }
+
+        if (showSymbolMenu) {
+            const candidate = symbolCandidates[symbolSelectedIndex];
+            if (candidate) {
+                executeSymbolMention(symbolSelectedIndex);
             }
             return;
         }
@@ -303,7 +333,8 @@ export function InputBar({
         if (
             !isTopLayer('base') &&
             !isTopLayer('command') &&
-            !isTopLayer('mention')
+            !isTopLayer('mention') &&
+            !isTopLayer('symbol-mention')
         )
             return;
 
@@ -358,7 +389,7 @@ export function InputBar({
             return;
         }
 
-        if (key.name === 'backspace' && !showMentionMenu) {
+        if (key.name === 'backspace' && !showMentionMenu && !showSymbolMenu) {
             const textarea = textareaRef.current;
             if (textarea && textarea.plainText.length === 0) {
                 if (imageAttachments.length > 0 && onRemoveImage) {
@@ -367,7 +398,7 @@ export function InputBar({
                     return;
                 }
             }
-            if (handleMentionBackspace()) {
+            if (handleMentionBackspace() || handleSymbolMentionBackspace()) {
                 key.preventDefault();
             }
         }
@@ -411,7 +442,7 @@ export function InputBar({
         }
 
         // Up/Down arrows - history navigation
-        if (key.name === 'up' && !showCommandMenu && !showMentionMenu) {
+        if (key.name === 'up' && !showCommandMenu && !showMentionMenu && !showSymbolMenu) {
             key.preventDefault();
             const textarea = textareaRef.current;
             if (textarea && history.length > 0) {
@@ -425,7 +456,7 @@ export function InputBar({
             return;
         }
 
-        if (key.name === 'down' && !showCommandMenu && !showMentionMenu) {
+        if (key.name === 'down' && !showCommandMenu && !showMentionMenu && !showSymbolMenu) {
             key.preventDefault();
             const textarea = textareaRef.current;
             if (textarea && history.length > 0) {
@@ -569,6 +600,24 @@ export function InputBar({
                                 scrollRef={mentionScrollRef}
                                 onSelect={setMentionSelectedIndex}
                                 onExecute={executeMention}
+                            />
+                        </box>
+                    )}
+                    {!showCommandMenu && !showMentionMenu && showSymbolMenu && (
+                        <box
+                            position="absolute"
+                            bottom="100%"
+                            left={0}
+                            width="100%"
+                            backgroundColor={colors.surface}
+                            zIndex={10}
+                        >
+                            <SymbolMentionMenu
+                                candidates={symbolCandidates}
+                                selectedIndex={symbolSelectedIndex}
+                                scrollRef={symbolScrollRef}
+                                onSelect={setSymbolSelectedIndex}
+                                onExecute={executeSymbolMention}
                             />
                         </box>
                     )}

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { compress } from 'hono/compress';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -18,6 +19,8 @@ import { requireAuth } from './middleware/require-auth';
 import { serverDebug } from './lib/debug';
 
 const app = new Hono();
+
+app.use(compress());
 
 app.use(async (c, next) => {
     const start = Date.now();
@@ -50,6 +53,8 @@ app.use('/billing/credits', requireAuth);
 app.use('/subagent/*', requireAuth);
 app.use('/orchestrator/*', requireAuth);
 app.use('/export/*', requireAuth);
+app.use('/models/*', requireAuth);
+app.use('/api-keys/*', requireAuth);
 
 const routes = app
     .route('/auth', auth)
@@ -68,4 +73,14 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3000;
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(`Invalid PORT: ${process.env.PORT}`);
 }
+
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught exception:', error);
+    process.exit(1);
+});
+
 export default { port, fetch: app.fetch, idleTimeout: 255 };

@@ -28,8 +28,12 @@ export async function getApiKeyStatus(): Promise<ApiKeyStatusResponse> {
         for (const [provider, keychainName] of Object.entries(
             PROVIDER_KEYCHAIN_NAMES,
         )) {
-            const key = await keychain.getKey(keychainName);
-            statuses[provider] = key !== null;
+            if (provider === 'local') {
+                statuses[provider] = true;
+            } else {
+                const key = await keychain.getKey(keychainName);
+                statuses[provider] = key !== null;
+            }
         }
         return { available: true, providers: statuses };
     } catch {
@@ -72,6 +76,7 @@ export async function setApiKey(
 export async function getApiKeyForProvider(
     provider: SupportedProvider,
 ): Promise<string | null> {
+    if (provider === 'local') return 'ollama';
     if (!keychain.isAvailable()) return null;
 
     const keychainName = PROVIDER_KEYCHAIN_NAMES[provider];

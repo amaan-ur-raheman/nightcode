@@ -7,20 +7,24 @@
         "./client": "./src/client.ts"
     },
     "scripts": {
-        "db:generate": "bunx prisma generate",
+        "db:generate": "bunx prisma generate --schema prisma/schema.prisma && bunx prisma generate --schema prisma/schema.sqlite.prisma",
         "db:migrate": "bunx prisma migrate dev",
+        "db:push:sqlite": "bunx prisma db push --schema prisma/schema.sqlite.prisma",
         "test": "vitest run",
         "test:watch": "vitest"
     },
     "devDependencies": {
+        "@types/better-sqlite3": "^7.6.13",
         "@types/pg": "^8.20.0",
         "@vitest/coverage-v8": "^4.1.8",
         "prisma": "^7.8.0",
         "vitest": "^4.1.8"
     },
     "dependencies": {
+        "@prisma/adapter-better-sqlite3": "^7.8.0",
         "@prisma/adapter-pg": "^7.8.0",
         "@prisma/client": "^7.8.0",
+        "better-sqlite3": "^12.10.0",
         "dotenv": "^17.4.2",
         "pg": "^8.21.0"
     }

@@ -2,6 +2,8 @@ export {
     SUPPORTED_CHAT_MODELS,
     DEFAULT_CHAT_MODEL_ID,
     findSupportedChatModel,
+    registerLocalModel,
+    REGISTERED_LOCAL_MODELS,
     type ModelPricing,
     type SupportedProvider,
     type SupportedChatModel,
@@ -44,8 +46,27 @@ export {
     getCriticalPath,
     getGraphStats,
     validateGraph,
+    checkGraphCompletion,
     type TaskStatus,
     type AgentRole,
     type TaskNode,
     type TaskGraph,
 } from './task-graph';
+
+export {
+    KnowledgeGraph,
+    type KnowledgeNode,
+    type KnowledgeNodeType,
+    type KnowledgeEdge,
+    type KnowledgeEdgeType,
+    type KnowledgeGraphData,
+    type KnowledgeQuery,
+    type KnowledgeStats,
+    type KnowledgeNeighbor,
+    type ImpactReport,
+    type BreakingChangeReport,
+    type MigrationStep,
+    type MigrationPriority,
+} from './knowledge-graph';
+
+export * from './knowledge-graph';

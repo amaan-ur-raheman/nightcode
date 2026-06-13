@@ -1,0 +1,38 @@
+services:
+    postgres:
+        image: postgres:16-alpine
+        environment:
+            POSTGRES_USER: nightcode
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Please set POSTGRES_PASSWORD in your environment or .env file}
+            POSTGRES_DB: nightcode
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U nightcode -d nightcode']
+            interval: 5s
+            timeout: 3s
+            retries: 5
+
+    server:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            target: production
+        ports:
+            - '${PORT:-3001}:3001'
+        env_file:
+            - .env
+        environment:
+            DATABASE_URL: postgresql://nightcode:${POSTGRES_PASSWORD:?Please set POSTGRES_PASSWORD}@postgres:5432/nightcode
+        depends_on:
+            postgres:
+                condition: service_healthy
+        restart: unless-stopped
+        healthcheck:
+            test: ['CMD', 'bun', '-e', "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+            interval: 10s
+            timeout: 5s
+            retries: 3
+
+volumes:
+    pgdata:

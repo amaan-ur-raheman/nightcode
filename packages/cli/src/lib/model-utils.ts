@@ -132,9 +132,9 @@ export function extractProvider(modelId: string): string {
     const model = findSupportedChatModel(modelId);
     if (model) return model.provider;
 
-    // Fallback prefix-based detection for unknown models
     if (modelId.startsWith('opencode/')) return 'opencode';
     if (modelId.startsWith('kilo/')) return 'kilo';
+    if (modelId.startsWith('local/')) return 'local';
     if (modelId.startsWith('claude-')) return 'anthropic';
     if (modelId.startsWith('gpt-') || modelId.startsWith('o3')) return 'openai';
     if (modelId.startsWith('llama-') || modelId.startsWith('mixtral-'))

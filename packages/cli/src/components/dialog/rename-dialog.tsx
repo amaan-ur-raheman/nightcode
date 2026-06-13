@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useKeyboard } from '@opentui/react';
+import { useKeyboardLayer } from '@/providers/keyboard-layer';
 import { executeLocalTool } from '@/lib/local-tools';
 import { useDialog } from '@/providers/dialog';
 import { useTheme } from '@/providers/theme';
-import { TextAttributes } from '@opentui/core';
+import { TextAttributes, InputRenderable } from '@opentui/core';
 
 interface ChangeEntry {
     file: string;
@@ -12,6 +14,7 @@ interface ChangeEntry {
 
 export function RenameDialogContent() {
     const { colors } = useTheme();
+    const { isTopLayer } = useKeyboardLayer();
     const { close: closeDialog } = useDialog();
     const [oldName, setOldName] = useState('');
     const [newName, setNewName] = useState('');
@@ -25,6 +28,32 @@ export function RenameDialogContent() {
     } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    const oldNameRef = useRef<InputRenderable>(null);
+    const newNameRef = useRef<InputRenderable>(null);
+    const globPatternRef = useRef<InputRenderable>(null);
+    const [focusedIndex, setFocusedIndex] = useState(0);
+
+    const canSubmit =
+        !loading && oldName.trim() !== '' && newName.trim() !== '';
+
+    useKeyboard((key) => {
+        if (!isTopLayer('dialog')) return;
+
+        if (key.name === 'tab' || key.name === 'down') {
+            key.preventDefault();
+            setFocusedIndex((prev) => (prev + 1) % 3);
+        } else if (key.name === 'up') {
+            key.preventDefault();
+            setFocusedIndex((prev) => (prev - 1 + 3) % 3);
+        } else if (key.name === 'escape') {
+            key.preventDefault();
+            closeDialog();
+        } else if (key.name === 'return' && key.ctrl) {
+            key.preventDefault();
+            if (canSubmit) void handleRename(true);
+        }
+    });
 
     const handleRename = async (apply: boolean) => {
         if (!oldName.trim() || !newName.trim()) {
@@ -79,9 +108,6 @@ export function RenameDialogContent() {
         );
     }
 
-    const canSubmit =
-        !loading && oldName.trim() !== '' && newName.trim() !== '';
-
     return (
         <box flexDirection="column" gap={1} width="100%">
             <box flexDirection="column" gap={0}>
@@ -94,9 +120,10 @@ export function RenameDialogContent() {
                     paddingX={1}
                 >
                     <input
-                        value={oldName}
-                        onChange={setOldName}
+                        ref={oldNameRef}
                         placeholder="e.g. myFunction"
+                        focused={focusedIndex === 0}
+                        onContentChange={() => setOldName(oldNameRef.current?.value ?? '')}
                     />
                 </box>
             </box>
@@ -111,9 +138,10 @@ export function RenameDialogContent() {
                     paddingX={1}
                 >
                     <input
-                        value={newName}
-                        onChange={setNewName}
+                        ref={newNameRef}
                         placeholder="e.g. renamedFunction"
+                        focused={focusedIndex === 1}
+                        onContentChange={() => setNewName(newNameRef.current?.value ?? '')}
                     />
                 </box>
             </box>
@@ -127,7 +155,12 @@ export function RenameDialogContent() {
                     borderColor={colors.dimSeparator}
                     paddingX={1}
                 >
-                    <input value={globPattern} onChange={setGlobPattern} />
+                    <input
+                        ref={globPatternRef}
+                        focused={focusedIndex === 2}
+                        value={globPattern}
+                        onContentChange={() => setGlobPattern(globPatternRef.current?.value ?? '')}
+                    />
                 </box>
             </box>
 

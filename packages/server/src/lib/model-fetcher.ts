@@ -1,4 +1,4 @@
-import type { DynamicModel, SupportedProvider } from '@nightcode/shared';
+import { registerLocalModel, type DynamicModel, type SupportedProvider } from '@nightcode/shared';
 
 type ProviderFetcher = (apiKey?: string) => Promise<DynamicModel[]>;
 
@@ -15,7 +15,7 @@ function deriveDisplayName(modelId: string): string {
     // "nvidia/nemotron-3-ultra-550b-a55b" → "Nemotron 3 Ultra 550B"
     const id = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
     return id
-        .replace(/[-_]/g, ' ')
+        .replace(/[-_:]/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase())
         .replace(/\s+/g, ' ')
         .trim();
@@ -77,7 +77,11 @@ async function fetchOpenRouter(): Promise<DynamicModel[]> {
                     ),
                 },
             }));
-    } catch {
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to fetch models from OpenRouter:',
+            err instanceof Error ? err.message : err,
+        );
         return [];
     }
 }
@@ -118,7 +122,11 @@ async function fetchNim(): Promise<DynamicModel[]> {
                     outputUsdPerMillionTokens: 0,
                 },
             }));
-    } catch {
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to fetch models from NVIDIA NIM:',
+            err instanceof Error ? err.message : err,
+        );
         return [];
     }
 }
@@ -153,7 +161,11 @@ async function fetchZen(): Promise<DynamicModel[]> {
                     outputUsdPerMillionTokens: 0,
                 },
             }));
-    } catch {
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to fetch models from OpenCode Zen:',
+            err instanceof Error ? err.message : err,
+        );
         return [];
     }
 }
@@ -199,7 +211,11 @@ async function fetchOpenAICompatible(
                     outputUsdPerMillionTokens: 0,
                 },
             }));
-    } catch {
+    } catch (err) {
+        console.error(
+            `[model-fetcher] Failed to fetch models from ${name}:`,
+            err instanceof Error ? err.message : err,
+        );
         return [];
     }
 }
@@ -250,7 +266,11 @@ async function fetchKilo(): Promise<DynamicModel[]> {
                     ),
                 },
             }));
-    } catch {
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to fetch models from Kilo:',
+            err instanceof Error ? err.message : err,
+        );
         return [];
     }
 }
@@ -281,7 +301,43 @@ async function fetchGemini(clientKey?: string): Promise<DynamicModel[]> {
                 provider: 'gemini' as SupportedProvider,
                 contextLength: m.inputTokenLimit as number | undefined,
             }));
-    } catch {
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to fetch models from Gemini:',
+            err instanceof Error ? err.message : err,
+        );
+        return [];
+    }
+}
+
+// ── Local Ollama (dynamic, local network check) ──
+
+async function fetchLocalOllama(): Promise<DynamicModel[]> {
+    try {
+        const res = await fetch('http://localhost:11434/api/tags', {
+            signal: AbortSignal.timeout(2000),
+        });
+        if (!res.ok) return [];
+        const data = (await res.json()) as any;
+        const models: any[] = data?.models ?? [];
+        return models.map((m) => {
+            const modelId = `local/${m.name}`;
+            registerLocalModel(modelId);
+            return {
+                id: modelId,
+                displayName: deriveDisplayName(m.name),
+                provider: 'local' as SupportedProvider,
+                pricing: {
+                    inputUsdPerMillionTokens: 0.1,
+                    outputUsdPerMillionTokens: 0.1,
+                },
+            };
+        });
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to fetch models from Local Ollama:',
+            err instanceof Error ? err.message : err,
+        );
         return [];
     }
 }
@@ -335,6 +391,7 @@ const FETCHERS: Array<{ provider: SupportedProvider; fetch: ProviderFetcher }> =
         },
         { provider: 'gemini', fetch: (key) => fetchGemini(key) },
         { provider: 'kilo', fetch: fetchKilo },
+        { provider: 'local', fetch: fetchLocalOllama },
     ];
 
 export async function fetchAllModels(

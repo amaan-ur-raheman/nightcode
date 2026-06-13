@@ -74,8 +74,8 @@ const ROLE_MODE_MAP: Record<AgentRole, 'BUILD' | 'PLAN'> = {
 };
 
 const WORKER_MAX_STEPS = 60;
-/** Per-worker wall-clock timeout (3 minutes). Prevents stuck workers from blocking slots. */
-const WORKER_TIMEOUT_MS = 3 * 60 * 1000;
+/** Per-worker wall-clock timeout (5 minutes). Prevents stuck workers from blocking slots. */
+const WORKER_TIMEOUT_MS = 5 * 60 * 1000;
 /** Max chars for immediate dependency results. */
 const DEP_RESULT_FULL_MAX = 3000;
 /** Max chars for transitive dependency results. */
@@ -87,10 +87,10 @@ const DEP_RESULT_SUMMARY_MAX = 500;
  */
 const MAX_TOTAL_WORKERS = 8;
 /**
- * Optimized task execution timeout: reduced from 5 minutes to 2 minutes
- * for faster failure detection and better resource utilization.
+ * Task execution timeout. Workers get 5 minutes by default,
+ * but tasks can override via maxDurationMs for complex operations.
  */
-const TASK_EXECUTION_TIMEOUT_MS = 2 * 60 * 1000;
+const TASK_EXECUTION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Build dependency results with compression and graceful degradation.
@@ -153,10 +153,15 @@ export async function runWorker(
 
     registerSubagent(agentId, task.description, WORKER_MAX_STEPS);
 
-    // Combine external signal with per-worker timeout
+    // Combine external signal with per-worker timeout and task-specific abort signal
     const workerTimeoutMs = task.maxDurationMs ?? WORKER_TIMEOUT_MS;
     const timeoutSignal = AbortSignal.timeout(workerTimeoutMs);
-    const combined = AbortSignal.any([signal, timeoutSignal]);
+    const taskSignal = orchestratorManager.getTaskSignal(graph.id, task.id);
+    const signals = [signal, timeoutSignal];
+    if (taskSignal) {
+        signals.push(taskSignal);
+    }
+    const combined = AbortSignal.any(signals);
 
     let startTime: number = 0;
     try {
@@ -208,6 +213,7 @@ export async function executeTaskGraph(
     }
 
     orchestratorManager.register(graph, controller);
+    void syncTaskNodesToDb(graph);
     const results: Map<string, string> = new Map();
     const activeWorkers = new Map<string, Promise<void>>();
 
@@ -223,6 +229,11 @@ export async function executeTaskGraph(
     function signalWorkerDone() {
         resolveAnyWorkerDone?.();
     }
+
+    // Subscribe to orchestratorManager updates to wake up the waiter when user edits tasks
+    const unsubUpdate = orchestratorManager.subscribe(() => {
+        signalWorkerDone();
+    });
 
     // Single listener to propagate real-time tool info from subagent-progress to all running TaskNodes.
     const unsub = onSubagentChange(() => {
@@ -262,7 +273,21 @@ export async function executeTaskGraph(
 
             const readyTasks = getReadyTasks(graph);
             if (readyTasks.length === 0 && activeWorkers.size === 0) {
-                break; // Nothing to run and nothing running
+                const hasPendingOrPaused = Object.values(graph.nodes).some(
+                    (n) => n.status === 'pending' || n.status === 'paused',
+                );
+                if (hasPendingOrPaused && !controller.signal.aborted) {
+                    await new Promise<void>((resolve) => {
+                        resolveAnyWorkerDone = resolve;
+                        controller.signal.addEventListener('abort', () => resolve(), {
+                            once: true,
+                        });
+                    });
+                    resolveAnyWorkerDone = null;
+                    continue;
+                } else {
+                    break; // Nothing to run and nothing running
+                }
             }
 
             // Critical path prioritization
@@ -304,6 +329,7 @@ export async function executeTaskGraph(
                     for (const r of remaining) {
                         r.status = 'cancelled';
                         r.completedAt = Date.now();
+                        void updateTaskNodeInDb(graph.id, r.id, { status: 'cancelled' });
                     }
                     debug.log(
                         'orchestrator',
@@ -327,6 +353,7 @@ export async function executeTaskGraph(
                 if (activeWorkers.has(task.id)) continue;
 
                 markTaskRunning(graph, task.id);
+                void updateTaskNodeInDb(graph.id, task.id, { status: 'running' });
                 debug.log(
                     'orchestrator',
                     `Starting worker: ${task.id} (${task.type}) — deps=[${task.dependencies.join(', ')}] ready=${readyTasks.map((t) => t.id).join(', ')}`,
@@ -336,6 +363,9 @@ export async function executeTaskGraph(
 
                 const workerAgentId = `worker-${task.id}`;
                 const workerStartedAt = Date.now();
+
+                const taskController = new AbortController();
+                orchestratorManager.registerTaskAbortController(graph.id, task.id, taskController);
 
                 const workerPromise = (async () => {
                     if (!acquireSlot()) {
@@ -365,6 +395,10 @@ export async function executeTaskGraph(
                         task.currentTool = null;
                         task.currentToolInput = null;
                         markTaskCompleted(graph, task.id, result);
+                        void updateTaskNodeInDb(graph.id, task.id, {
+                            status: 'completed',
+                            result,
+                        });
                         results.set(
                             task.id,
                             `### ${task.description}\n\n${result}`,
@@ -399,7 +433,25 @@ export async function executeTaskGraph(
                             error instanceof Error
                                 ? error.message
                                 : String(error);
-                        markTaskFailed(graph, task.id, msg);
+                        if (task.status === 'completed') {
+                            // Manually force-completed, do not overwrite
+                            return;
+                        }
+                        if (task.status === 'paused' || task.status === 'cancelled') {
+                            task.error = msg;
+                            task.completedAt = Date.now();
+                            graph.version++;
+                            void updateTaskNodeInDb(graph.id, task.id, {
+                                status: task.status,
+                                error: msg,
+                            });
+                        } else {
+                            markTaskFailed(graph, task.id, msg);
+                            void updateTaskNodeInDb(graph.id, task.id, {
+                                status: 'failed',
+                                error: msg,
+                            });
+                        }
                         debug.log(
                             'orchestrator',
                             `Task ${task.id} failed: ${msg}`,
@@ -415,6 +467,7 @@ export async function executeTaskGraph(
                     })
                     .finally(() => {
                         activeWorkers.delete(task.id);
+                        orchestratorManager.unregisterTaskAbortController(graph.id, task.id);
                         orchestratorManager.completeWorker(graph.id);
                         orchestratorManager.updateGraph(graph);
                         signalWorkerDone(); // Signal: something finished
@@ -453,6 +506,7 @@ export async function executeTaskGraph(
         throw error;
     } finally {
         unsub();
+        unsubUpdate();
     }
 
     orchestratorManager.updateGraph(graph);
@@ -495,4 +549,58 @@ export async function executeTaskGraph(
                 .join('\n\n---\n\n');
         })(),
     ].join('\n');
+}
+
+async function syncTaskNodesToDb(graph: TaskGraph) {
+    try {
+        const { lastSession } = await import('@/index');
+        const sessionId = lastSession.id;
+        if (!sessionId) return;
+
+        const { apiClient } = await import('@/lib/api-client');
+        await apiClient.orchestrator.sessions[':sessionId'].graphs[':graphId'].nodes.$post({
+            param: { sessionId, graphId: graph.id },
+            json: {
+                nodes: Object.values(graph.nodes).map((n) => ({
+                    id: n.id,
+                    graphId: graph.id,
+                    type: n.type,
+                    description: n.description,
+                    dependencies: n.dependencies,
+                    status: n.status,
+                    result: n.result,
+                    error: n.error,
+                    files: n.files,
+                })),
+            },
+        });
+    } catch (err) {
+        debug.log('orchestrator', `Failed to sync task nodes for graph ${graph.id} to DB: ${err}`);
+    }
+}
+
+async function updateTaskNodeInDb(
+    graphId: string,
+    nodeId: string,
+    update: {
+        status?: string;
+        result?: string | null;
+        error?: string | null;
+        description?: string;
+        files?: string[];
+    }
+) {
+    try {
+        const { lastSession } = await import('@/index');
+        const sessionId = lastSession.id;
+        if (!sessionId) return;
+
+        const { apiClient } = await import('@/lib/api-client');
+        await apiClient.orchestrator.sessions[':sessionId'].graphs[':graphId'].nodes[':nodeId'].$put({
+            param: { sessionId, graphId, nodeId },
+            json: update,
+        });
+    } catch (err) {
+        debug.log('orchestrator', `Failed to update task node ${nodeId} in DB: ${err}`);
+    }
 }

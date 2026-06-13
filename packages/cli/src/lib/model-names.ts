@@ -73,6 +73,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
     deepseek: 'DeepSeek',
     gemini: 'Google Gemini',
     kilo: 'Kilo Gateway',
+    local: 'Local Ollama',
 };
 
 /**
@@ -89,7 +90,7 @@ export function deriveModelDisplayName(
     // Derive from ID: "openrouter/anthropic/claude-3.5-sonnet" → "Claude 3.5 Sonnet"
     const id = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
     return id
-        .replace(/[-_]/g, ' ')
+        .replace(/[-_:]/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase())
         .replace(/\s+/g, ' ')
         .trim();
@@ -112,7 +113,6 @@ export function extractProvider(modelId: string): string {
     const parts = modelId.split('/');
     if (parts.length < 2) return '';
     const prefix = parts[0]!;
-    // Known provider prefixes
     const knownProviders = [
         'opencode',
         'openrouter',
@@ -123,6 +123,7 @@ export function extractProvider(modelId: string): string {
         'gemini',
         'google',
         'kilo',
+        'local',
     ];
     if (knownProviders.includes(prefix)) return prefix;
     // NIM models: "nvidia/...", "deepseek-ai/...", "qwen/..."
@@ -130,5 +131,9 @@ export function extractProvider(modelId: string): string {
 }
 
 export function getModelName(modelId: string): string {
-    return MODEL_NAMES[modelId] ?? deriveModelDisplayName(modelId);
+    const name = MODEL_NAMES[modelId] ?? deriveModelDisplayName(modelId);
+    if (modelId.startsWith('local/')) {
+        return `[Local] ${name}`;
+    }
+    return name;
 }

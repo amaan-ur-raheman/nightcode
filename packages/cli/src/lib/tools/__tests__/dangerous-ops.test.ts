@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
     getConfirmationLevel,
     formatToolInput,
+    getAccessPath,
+    getPatterns,
     ConfirmationManager,
 } from '../dangerous-ops';
 
@@ -55,6 +57,96 @@ describe('getConfirmationLevel', () => {
         });
         expect(result.level).toBe('confirm');
     });
+
+    it('returns confirm for git push (any)', () => {
+        const result = getConfirmationLevel('bash', {
+            command: 'git push origin main',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Push to remote repository');
+    });
+
+    it('returns confirm for git checkout', () => {
+        const result = getConfirmationLevel('bash', {
+            command: 'git checkout feature-branch',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Git checkout (switches branch)');
+    });
+
+    it('returns confirm for git add .', () => {
+        const result = getConfirmationLevel('bash', {
+            command: 'git add .',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Stage all changes');
+    });
+
+    it('returns confirm for git add -A', () => {
+        const result = getConfirmationLevel('bash', {
+            command: 'git add -A',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Stage all changes');
+    });
+
+    it('returns confirm for git add --all', () => {
+        const result = getConfirmationLevel('bash', {
+            command: 'git add --all',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Stage all changes');
+    });
+
+    it('returns confirm for git add -u', () => {
+        const result = getConfirmationLevel('bash', {
+            command: 'git add -u',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Stage all changes');
+    });
+
+    it('returns confirm for gitCommit tool', () => {
+        const result = getConfirmationLevel('gitCommit', {
+            message: 'Fix bug',
+            files: ['src/app.ts'],
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Git commit (creates a commit)');
+    });
+
+    it('returns confirm for gitBranch checkout action', () => {
+        const result = getConfirmationLevel('gitBranch', {
+            action: 'checkout',
+            name: 'feature',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Git checkout (switches branch)');
+    });
+
+    it('returns confirm for gitBranch delete action', () => {
+        const result = getConfirmationLevel('gitBranch', {
+            action: 'delete',
+            name: 'old-branch',
+        });
+        expect(result.level).toBe('confirm');
+        expect(result.reason).toBe('Git branch delete');
+    });
+
+    it('returns none for gitBranch list action', () => {
+        const result = getConfirmationLevel('gitBranch', {
+            action: 'list',
+        });
+        expect(result.level).toBe('none');
+    });
+
+    it('returns none for gitBranch create action', () => {
+        const result = getConfirmationLevel('gitBranch', {
+            action: 'create',
+            name: 'new-branch',
+        });
+        expect(result.level).toBe('none');
+    });
 });
 
 describe('formatToolInput', () => {
@@ -76,6 +168,80 @@ describe('formatToolInput', () => {
             content: 'text',
         });
         expect(result).toContain('f.ts');
+    });
+
+    it('formats gitCommit with message and files', () => {
+        const result = formatToolInput('gitCommit', {
+            message: 'Fix bug',
+            files: ['src/app.ts', 'src/utils.ts'],
+        });
+        expect(result).toBe('Message: "Fix bug" | Files: src/app.ts, src/utils.ts');
+    });
+
+    it('formats gitCommit with message only', () => {
+        const result = formatToolInput('gitCommit', {
+            message: 'Initial commit',
+        });
+        expect(result).toBe('Message: "Initial commit"');
+    });
+
+    it('formats gitBranch', () => {
+        const result = formatToolInput('gitBranch', {
+            action: 'checkout',
+            name: 'feature',
+        });
+        expect(result).toBe('Action: checkout | Branch: feature');
+    });
+});
+
+describe('getAccessPath', () => {
+    it('returns working directory for bash', () => {
+        expect(getAccessPath('bash', { workingDirectory: '/tmp' })).toBe(
+            '/tmp',
+        );
+    });
+
+    it('returns file path for deleteFile', () => {
+        expect(getAccessPath('deleteFile', { path: 'src/app.ts' })).toBe(
+            'src/app.ts',
+        );
+    });
+
+    it('returns branch name for gitBranch', () => {
+        expect(getAccessPath('gitBranch', { name: 'feature' })).toBe(
+            'feature',
+        );
+    });
+
+    it('returns undefined for unknown tool', () => {
+        expect(getAccessPath('readFile', { path: 'x.ts' })).toBe('x.ts');
+        expect(getAccessPath('gitLog', {})).toBeUndefined();
+    });
+});
+
+describe('getPatterns', () => {
+    it('returns file paths for gitCommit', () => {
+        expect(
+            getPatterns('gitCommit', { files: ['src/a.ts', 'src/b.ts'] }),
+        ).toEqual(['src/a.ts', 'src/b.ts']);
+    });
+
+    it('returns undefined for gitCommit without files', () => {
+        expect(getPatterns('gitCommit', {})).toBeUndefined();
+    });
+
+    it('returns branch pattern for gitBranch', () => {
+        expect(getPatterns('gitBranch', { name: 'feat' })).toEqual([
+            'branch:feat',
+        ]);
+    });
+
+    it('returns undefined for gitBranch list without name', () => {
+        expect(getPatterns('gitBranch', { action: 'list' })).toBeUndefined();
+    });
+
+    it('returns undefined for unknown tool', () => {
+        expect(getPatterns('gitLog', {})).toBeUndefined();
     });
 });
 

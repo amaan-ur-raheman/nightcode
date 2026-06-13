@@ -43,4 +43,9 @@ describe('getModelName', () => {
         const randomId = 'vendor/new-model-2026';
         expect(getModelName(randomId)).toBe('New Model 2026');
     });
+
+    it('returns friendly name with [Local] prefix for local models', () => {
+        expect(getModelName('local/llama3:latest')).toBe('[Local] Llama3 Latest');
+        expect(getModelName('local/mistral')).toBe('[Local] Mistral');
+    });
 });

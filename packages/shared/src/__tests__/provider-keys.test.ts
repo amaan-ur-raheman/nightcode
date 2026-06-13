@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
     PROVIDER_KEYCHAIN_NAMES,
     PROVIDER_ENV_VARS,

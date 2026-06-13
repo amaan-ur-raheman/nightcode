@@ -82,6 +82,16 @@ const ALL_PARALLEL_TOOLS = [
     'tokenCount',
     'undo',
     'renameSymbol',
+    'buildKnowledgeGraph',
+    'queryKnowledgeGraph',
+    'getKnowledgeNeighbors',
+    'addKnowledgeNode',
+    'addKnowledgeEdge',
+    'detectKnowledgeCycles',
+    'getKnowledgeStats',
+    'impactAnalysis',
+    'breakingChangeCheck',
+    'suggestMigration',
 ];
 
 const DEFAULT_CONFIG: BatchConfig = {

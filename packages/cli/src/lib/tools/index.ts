@@ -17,6 +17,7 @@ export { diffFilesTool } from './diff-files';
 export { writeFileTool } from './write-file';
 export { editFileTool } from './edit-file';
 export { bashTool } from './bash';
+export { replExecuteTool } from './repl-execute';
 export { patchTool } from './patch';
 export { searchReplaceTool } from './search-replace';
 export { deleteFileTool } from './delete-file';
@@ -55,6 +56,20 @@ export { secretScanTool } from './secret-scan';
 export { taskListTool } from './task-list';
 export { askQuestionTool } from './ask-question';
 export { useSkillTool, listSkillsTool } from './use-skill';
+export {
+    buildKnowledgeGraphTool,
+    queryKnowledgeGraphTool,
+    getKnowledgeNeighborsTool,
+    addKnowledgeNodeTool,
+    addKnowledgeEdgeTool,
+    detectKnowledgeCyclesTool,
+    getKnowledgeStatsTool,
+} from './knowledge-graph';
+export {
+    impactAnalysisTool,
+    breakingChangeCheckTool,
+    suggestMigrationTool,
+} from './impact-analysis';
 
 type ToolFn =
     | ((input: unknown) => Promise<unknown>)
@@ -93,6 +108,7 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     writeFile: () => import('./write-file').then((m) => m.writeFileTool),
     editFile: () => import('./edit-file').then((m) => m.editFileTool),
     bash: () => import('./bash').then((m) => m.bashTool),
+    replExecute: () => import('./repl-execute').then((m) => m.replExecuteTool),
     patch: () => import('./patch').then((m) => m.patchTool),
     searchReplace: () =>
         import('./search-replace').then((m) => m.searchReplaceTool),
@@ -135,6 +151,26 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     askQuestion: () => import('./ask-question').then((m) => m.askQuestionTool),
     useSkill: () => import('./use-skill').then((m) => m.useSkillTool),
     listSkills: () => import('./use-skill').then((m) => m.listSkillsTool),
+    buildKnowledgeGraph: () =>
+        import('./knowledge-graph').then((m) => m.buildKnowledgeGraphTool),
+    queryKnowledgeGraph: () =>
+        import('./knowledge-graph').then((m) => m.queryKnowledgeGraphTool),
+    getKnowledgeNeighbors: () =>
+        import('./knowledge-graph').then((m) => m.getKnowledgeNeighborsTool),
+    addKnowledgeNode: () =>
+        import('./knowledge-graph').then((m) => m.addKnowledgeNodeTool),
+    addKnowledgeEdge: () =>
+        import('./knowledge-graph').then((m) => m.addKnowledgeEdgeTool),
+    detectKnowledgeCycles: () =>
+        import('./knowledge-graph').then((m) => m.detectKnowledgeCyclesTool),
+    getKnowledgeStats: () =>
+        import('./knowledge-graph').then((m) => m.getKnowledgeStatsTool),
+    impactAnalysis: () =>
+        import('./impact-analysis').then((m) => m.impactAnalysisTool),
+    breakingChangeCheck: () =>
+        import('./impact-analysis').then((m) => m.breakingChangeCheckTool),
+    suggestMigration: () =>
+        import('./impact-analysis').then((m) => m.suggestMigrationTool),
     orchestrator: () =>
         import('./orchestrator').then((m) => m.orchestratorTool),
     getTaskStatus: () =>

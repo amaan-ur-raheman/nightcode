@@ -30,4 +30,16 @@ describe('Server Models', () => {
             resolveSubagentChatModel('unknown-model'),
         ).rejects.toThrow();
     });
+
+    it('resolves local models correctly', async () => {
+        const { resolveChatModel } = await import('../models');
+        const { registerLocalModel } = await import('@nightcode/shared');
+
+        registerLocalModel('local/llama3:latest');
+
+        const resolved = await resolveChatModel('local/llama3:latest');
+        expect(resolved.provider).toBe('local');
+        expect(resolved.modelId).toBe('local/llama3:latest');
+        expect(resolved.model).toBeDefined();
+    });
 });

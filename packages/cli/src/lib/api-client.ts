@@ -82,10 +82,48 @@ export const apiClient = hc<AppType>(
                 headers.set('Authorization', `Bearer ${token}`);
             }
 
-            let response = await fetch(input, { ...init, headers });
+            const MAX_RETRIES = 3;
+            const RETRY_DELAY_MS = 1000;
+            const method = (init?.method ?? 'GET').toUpperCase();
+            const isIdempotent = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+            let response: Response | null = null;
+            let lastError: Error | null = null;
+
+            const maxAttempts = isIdempotent ? MAX_RETRIES + 1 : 1;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                try {
+                    response = await fetch(input, { ...init, headers });
+                    // Retry on server errors (502, 503, 504) but not on client errors (4xx)
+                    if (
+                        isIdempotent &&
+                        response.status >= 502 &&
+                        response.status <= 504 &&
+                        attempt < MAX_RETRIES
+                    ) {
+                        await new Promise((r) =>
+                            setTimeout(r, RETRY_DELAY_MS * (attempt + 1)),
+                        );
+                        continue;
+                    }
+                    break;
+                } catch (err) {
+                    lastError =
+                        err instanceof Error ? err : new Error(String(err));
+                    if (isIdempotent && attempt < MAX_RETRIES) {
+                        await new Promise((r) =>
+                            setTimeout(r, RETRY_DELAY_MS * (attempt + 1)),
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            if (!response) {
+                throw lastError ?? new Error('Network request failed');
+            }
 
             // On 401, attempt token refresh before giving up
-            if (response.status === 401 && !orchestrationActive) {
+            if (response.status === 401) {
                 const refreshed = await tryRefreshToken();
 
                 if (refreshed) {
@@ -97,15 +135,19 @@ export const apiClient = hc<AppType>(
                             'Authorization',
                             `Bearer ${newAuth.token}`,
                         );
-                        response = await fetch(input, {
-                            ...init,
-                            headers: retryHeaders,
-                        });
+                        try {
+                            response = await fetch(input, {
+                                ...init,
+                                headers: retryHeaders,
+                            });
+                        } catch {
+                            // Fall through with the original 401 response
+                        }
                     }
                 }
 
-                // If still 401 after refresh attempt, clear auth and notify
-                if (response.status === 401) {
+                // If still 401 after refresh attempt, clear auth and notify if orchestration is NOT active
+                if (response.status === 401 && !orchestrationActive) {
                     clearAuth();
                     onAuthExpired?.();
                 }

@@ -132,6 +132,21 @@ async function scanFile(filePath: string, cwd: string): Promise<SecretMatch[]> {
     return matches;
 }
 
+/**
+ * Scan specific file paths for secrets. Used by git-workflow for pre-commit checks.
+ */
+export async function scanFilesForSecrets(
+    filePaths: string[],
+    cwd: string,
+): Promise<SecretMatch[]> {
+    const matches: SecretMatch[] = [];
+    for (const filePath of filePaths) {
+        const resolved = join(cwd, filePath);
+        matches.push(...(await scanFile(resolved, cwd)));
+    }
+    return matches;
+}
+
 export async function secretScanTool(input: unknown) {
     const { path: targetPath, recursive } =
         toolInputSchemas.secretScan.parse(input);

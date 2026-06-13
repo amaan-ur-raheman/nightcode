@@ -2,6 +2,7 @@ const js = require('@eslint/js');
 const ts = require('typescript-eslint');
 const react = require('eslint-plugin-react');
 const prettier = require('eslint-config-prettier');
+const noTextInText = require('./eslint-rules/no-text-in-text');
 
 module.exports = [
     {
@@ -22,6 +23,11 @@ module.exports = [
         files: ['**/*.ts', '**/*.tsx'],
         plugins: {
             react,
+            'no-text-in-text': {
+                rules: {
+                    'no-text-in-text': noTextInText,
+                },
+            },
         },
         languageOptions: {
             ecmaVersion: 'latest',
@@ -49,6 +55,7 @@ module.exports = [
             'no-case-declarations': 'warn',
             'no-control-regex': 'warn',
             'preserve-caught-error': 'off',
+            'no-text-in-text/no-text-in-text': 'error',
         },
     },
     prettier,

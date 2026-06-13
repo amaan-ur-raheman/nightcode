@@ -3,7 +3,8 @@ export type TaskStatus =
     | 'running'
     | 'completed'
     | 'failed'
-    | 'cancelled';
+    | 'cancelled'
+    | 'paused';
 export type AgentRole =
     | 'orchestrator'
     | 'coder'
@@ -187,7 +188,7 @@ function cancelDownstream(graph: TaskGraph, failedTaskId: string): void {
     }
 }
 
-function checkGraphCompletion(graph: TaskGraph): void {
+export function checkGraphCompletion(graph: TaskGraph): void {
     // L1: Skip if already in a terminal state (prevents redundant calls during batch cancel)
     if (graph.status !== 'running') return;
 

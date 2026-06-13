@@ -16,15 +16,8 @@ function ProgressBar({
     total: number;
     colors: any;
 }) {
-    const width = 20;
-    const progress = total > 0 ? completed / total : 0;
-    const filled = Math.round(progress * width);
-    const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
-
     return (
         <box>
-            <text fg={colors.success}>{bar.slice(0, filled)}</text>
-            <text fg={colors.dimSeparator}>{bar.slice(filled)}</text>
             <text fg={colors.dimSeparator}>
                 {' '}
                 {completed}/{total}

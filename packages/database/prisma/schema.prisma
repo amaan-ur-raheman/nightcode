@@ -1,6 +1,6 @@
 generator client {
     provider = "prisma-client"
-    output   = "../generated/prisma"
+    output   = "../generated/postgres"
 }
 
 datasource db {
@@ -8,18 +8,33 @@ datasource db {
 }
 
 model Session {
-    id        String   @id @default(cuid())
-    userId    String
-    title     String
-
-    messages  Json     @default("[]")
-
-    branches      Json   @default("[]")
-    activeBranchId String @default("main")
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    id             String     @id @default(cuid())
+    userId         String
+    title          String
+    messages       Json       @default("[]")
+    branches       Json       @default("[]")
+    activeBranchId String     @default("main")
+    createdAt      DateTime   @default(now())
+    updatedAt      DateTime   @updatedAt
+    taskNodes      TaskNode[]
 
     @@index([userId, id])
     @@index([userId, createdAt])
+}
+
+model TaskNode {
+    id           String   @id @default(cuid())
+    graphId      String
+    session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    sessionId    String
+    labelId      String // e.g. "implement-jwt"
+    type         String // coder, reviewer, tester, etc.
+    description  String
+    dependencies Json
+    status       String // pending, running, completed, failed, cancelled
+    result       String?
+    error        String?
+    files        Json
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
 }

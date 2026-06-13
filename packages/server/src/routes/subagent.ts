@@ -17,7 +17,7 @@ import {
     type ToolContracts,
 } from '@nightcode/shared';
 import { buildSubagentSystemPrompt } from '../system-prompt';
-import { resolveChatModel, resolveSubagentChatModel } from '../lib/models';
+import { resolveSubagentChatModel } from '../lib/models';
 import { getAvailableCreditsBalance, ingestAIUsage } from '../lib/polar';
 import { calculateCreditsForUsage } from '../lib/credits';
 import { withFallback } from '../lib/fallback';
@@ -59,7 +59,11 @@ const app = new Hono<AuthenticatedEnv>().post(
             `[subagent:${reqId}] → Request: model=${model} mode=${mode} messages=${messages.length}`,
         );
         const uniqueRoles = [
-            ...new Set(messages.map((m: any) => m.role ?? 'unknown')),
+            ...new Set(
+                (messages as Record<string, unknown>[]).map(
+                    (m) => m.role ?? 'unknown',
+                ),
+            ),
         ];
         console.log(
             `[subagent:${reqId}]   Message roles: [${uniqueRoles.join(',')}] total=${messages.length}`,

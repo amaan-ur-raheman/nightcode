@@ -13,9 +13,9 @@ let fetchPromise: Promise<ModelsApiResponse> | null = null;
  * Returns a map of provider name → API key for providers that have keys configured.
  */
 async function collectProviderApiKeys(): Promise<Record<string, string>> {
-    if (!keychain.isAvailable()) return {};
+    const keys: Record<string, string> = { local: 'ollama' };
+    if (!keychain.isAvailable()) return keys;
 
-    const keys: Record<string, string> = {};
     const entries = Object.entries(PROVIDER_KEYCHAIN_NAMES) as [
         SupportedProvider,
         string,
@@ -23,6 +23,7 @@ async function collectProviderApiKeys(): Promise<Record<string, string>> {
 
     const results = await Promise.allSettled(
         entries.map(async ([provider, keychainName]) => {
+            if (provider === 'local') return { provider, key: 'ollama' };
             const key = await keychain.getKey(keychainName);
             return { provider, key };
         }),

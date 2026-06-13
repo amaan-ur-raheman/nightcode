@@ -19,6 +19,8 @@ type FileTreeContextValue = {
     shrinkTree: () => void;
     diffMode: boolean;
     openDiffMode: () => void;
+    activePane: 'file-tree' | 'symbol-outline' | 'code-panel';
+    setActivePane: (pane: 'file-tree' | 'symbol-outline' | 'code-panel') => void;
 };
 
 const FileTreeContext = createContext<FileTreeContextValue | null>(null);
@@ -28,12 +30,16 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
     const [selectedFile, setSelectedFile] = useState<string | undefined>();
     const [fileTreeWidth, setFileTreeWidth] = useState(DEFAULT_WIDTH);
     const [diffMode, setDiffMode] = useState(false);
+    const [activePane, setActivePane] = useState<'file-tree' | 'symbol-outline' | 'code-panel'>('file-tree');
 
     const toggleFileTree = useCallback(() => {
         setShowFileTree((prev) => {
             if (prev) {
                 setSelectedFile(undefined);
                 setDiffMode(false);
+                setActivePane('file-tree');
+            } else {
+                setActivePane('file-tree');
             }
             return !prev;
         });
@@ -43,10 +49,12 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
         setShowFileTree(false);
         setSelectedFile(undefined);
         setDiffMode(false);
+        setActivePane('file-tree');
     }, []);
 
     const clearSelectedFile = useCallback(() => {
         setSelectedFile(undefined);
+        setActivePane('file-tree');
     }, []);
 
     const growTree = useCallback(() => {
@@ -61,6 +69,7 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
         setShowFileTree(true);
         setDiffMode(true);
         setSelectedFile(undefined);
+        setActivePane('file-tree');
     }, []);
 
     return (
@@ -70,7 +79,14 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
                 toggleFileTree,
                 closeFileTree,
                 selectedFile,
-                setSelectedFile,
+                setSelectedFile: (path) => {
+                    setSelectedFile(path);
+                    if (path) {
+                        setActivePane('symbol-outline');
+                    } else {
+                        setActivePane('file-tree');
+                    }
+                },
                 clearSelectedFile,
                 fileTreeWidth,
                 setFileTreeWidth,
@@ -78,6 +94,8 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
                 shrinkTree,
                 diffMode,
                 openDiffMode,
+                activePane,
+                setActivePane,
             }}
         >
             {children}

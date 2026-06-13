@@ -30,6 +30,13 @@ const SHORT_TOOLS = new Set([
     'memorySearch',
     'keychainGet',
     'getTaskStatus',
+    'getKnowledgeNeighbors',
+    'queryKnowledgeGraph',
+    'detectKnowledgeCycles',
+    'getKnowledgeStats',
+    'impactAnalysis',
+    'breakingChangeCheck',
+    'suggestMigration',
 ]);
 
 const MUTATION_TOOLS = new Set([
@@ -51,6 +58,9 @@ const MUTATION_TOOLS = new Set([
     'envManage',
     'secretScan',
     'cancelTask',
+    'buildKnowledgeGraph',
+    'addKnowledgeNode',
+    'addKnowledgeEdge',
 ]);
 
 const LONG_RUNNING_TOOLS = new Set([
@@ -83,6 +93,13 @@ export function getToolExecutionPolicy(
             timeoutMs:
                 (getNumericInputField(input, 'timeout') ?? 30_000) +
                 COMMAND_TIMEOUT_GRACE_MS,
+            longRunning: true,
+        };
+    }
+
+    if (toolName === 'replExecute') {
+        return {
+            timeoutMs: LONG_RUNNING_TIMEOUT_MS,
             longRunning: true,
         };
     }

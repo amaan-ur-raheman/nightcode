@@ -19,7 +19,7 @@ describe('Database Client', () => {
                 constructor(_opts: any) {}
             },
         }));
-        vi.doMock('../../generated/prisma/client.ts', () => ({
+        vi.doMock('../../generated/postgres/client.ts', () => ({
             PrismaClient: class {
                 constructor(_opts: any) {}
             },

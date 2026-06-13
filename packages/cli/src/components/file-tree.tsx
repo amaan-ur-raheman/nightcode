@@ -1,10 +1,11 @@
 import { readdir, stat, realpath } from 'fs/promises';
-import { join, resolve, sep } from 'path';
+import { join, resolve, sep, relative } from 'path';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useKeyboard } from '@opentui/react';
 
 import { useTheme } from '@/providers/theme';
 import { useFileTree } from '@/providers/file-tree';
+import { useKeyboardLayer } from '@/providers/keyboard-layer';
 import { IGNORE, runGit } from '@/lib/tools/utils';
 import type { ThemeColors } from '@/theme';
 import { TextAttributes } from '@opentui/core';
@@ -92,6 +93,12 @@ async function readDirNodes(dirPath: string): Promise<FileNode[]> {
 
 type GitStatusCode = 'M' | 'A' | 'D' | 'R' | '?';
 
+interface GitStatusDetails {
+    code: GitStatusCode;
+    staged: boolean;
+    unstaged: boolean;
+}
+
 function getGitStatusColor(code: GitStatusCode, colors: ThemeColors): string {
     switch (code) {
         case 'M':
@@ -126,34 +133,57 @@ function getGitStatusIndicator(code: GitStatusCode): string {
     }
 }
 
+async function runGitRaw(cwd: string, args: string[]) {
+    const proc = Bun.spawn(['git', ...args], {
+        cwd,
+        stdout: 'pipe',
+        stderr: 'pipe',
+    });
+    const [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+    ]);
+    return {
+        stdout,
+        stderr: stderr.trim(),
+        exitCode: await proc.exited,
+    };
+}
+
 function parseGitStatus(
     output: string,
     cwd: string,
-): Map<string, GitStatusCode> {
-    const statusMap = new Map<string, GitStatusCode>();
+): Map<string, GitStatusDetails> {
+    const statusMap = new Map<string, GitStatusDetails>();
 
     for (const line of output.split('\n')) {
         if (!line || line.length < 3) continue;
         const xy = line.slice(0, 2);
         const filePath = line.slice(3);
 
+        const x = xy[0];
+        const y = xy[1];
+
         let status: GitStatusCode;
-        if (xy[0] === '?') {
+        if (x === '?') {
             status = '?';
-        } else if (xy[0] === 'A' || xy[1] === 'A') {
+        } else if (x === 'A' || y === 'A') {
             status = 'A';
-        } else if (xy[0] === 'D' || xy[1] === 'D') {
+        } else if (x === 'D' || y === 'D') {
             status = 'D';
-        } else if (xy[0] === 'R' || xy[1] === 'R') {
+        } else if (x === 'R' || y === 'R') {
             status = 'R';
-        } else if (xy.includes('M') || xy.includes('m')) {
+        } else if (x === 'M' || y === 'M') {
             status = 'M';
         } else {
             continue;
         }
 
+        const staged = x !== ' ' && x !== '?';
+        const unstaged = y !== ' ' && y !== '?';
+
         const fullPath = join(cwd, filePath);
-        statusMap.set(fullPath, status);
+        statusMap.set(fullPath, { code: status, staged, unstaged });
     }
 
     return statusMap;
@@ -165,11 +195,12 @@ export function FileTree({
     onSelectFile,
 }: FileTreeProps) {
     const { colors } = useTheme();
-    const { fileTreeWidth, growTree, shrinkTree, closeFileTree, diffMode } =
+    const { isTopLayer } = useKeyboardLayer();
+    const { fileTreeWidth, growTree, shrinkTree, closeFileTree, diffMode, activePane, setActivePane } =
         useFileTree();
     const [flatItems, setFlatItems] = useState<FlatItem[]>([]);
     const [isValid, setIsValid] = useState<boolean | null>(null);
-    const [gitStatus, setGitStatus] = useState<Map<string, GitStatusCode>>(
+    const [gitStatus, setGitStatus] = useState<Map<string, GitStatusDetails>>(
         new Map(),
     );
     const [focusedIndex, setFocusedIndex] = useState(0);
@@ -190,27 +221,45 @@ export function FileTree({
         });
     }, [rootPath]);
 
+    const refreshGitStatus = useCallback(async () => {
+        try {
+            const result = await runGitRaw(rootPath, ['status', '--porcelain']);
+            if (result.exitCode === 0) {
+                setGitStatus(parseGitStatus(result.stdout, rootPath));
+            }
+        } catch {
+            // ignore
+        }
+    }, [rootPath]);
+
     // Fetch git status on mount
     useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const result = await runGit(rootPath, [
-                    'status',
-                    '--porcelain',
-                ]);
-                if (cancelled) return;
-                if (result.exitCode === 0 && result.stdout) {
-                    setGitStatus(parseGitStatus(result.stdout, rootPath));
-                }
-            } catch {
-                // Not a git repo or git not available — ignore
+        void refreshGitStatus();
+    }, [refreshGitStatus]);
+
+    const toggleStaged = useCallback(async (filePath: string) => {
+        const relPath = relative(rootPath, filePath);
+        const statusResult = await runGitRaw(rootPath, ['status', '--porcelain', relPath]);
+        if (statusResult.exitCode !== 0) return;
+        const line = statusResult.stdout;
+        let isStaged = false;
+        if (line && line.length >= 2) {
+            const x = line[0];
+            if (x !== ' ' && x !== '?') {
+                isStaged = true;
             }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [rootPath]);
+        }
+
+        let cmd: string[];
+        if (isStaged) {
+            cmd = ['restore', '--staged', relPath];
+        } else {
+            cmd = ['add', relPath];
+        }
+
+        await runGitRaw(rootPath, cmd);
+        await refreshGitStatus();
+    }, [rootPath, refreshGitStatus]);
 
     // Expand a directory: insert its children into flatItems after it
     const expandDir = useCallback(async (dirPath: string, depth: number) => {
@@ -291,6 +340,8 @@ export function FileTree({
 
     // Keyboard navigation
     useKeyboard((key) => {
+        if (!isTopLayer('base')) return;
+
         // [ / ] to resize tree
         if (key.name === '[') {
             key.preventDefault();
@@ -310,6 +361,8 @@ export function FileTree({
             return;
         }
 
+        if (activePane !== 'file-tree') return;
+
         if (visibleItems.length === 0) return;
 
         if (key.name === 'up' || key.name === 'k') {
@@ -328,7 +381,11 @@ export function FileTree({
                     expandDir(item.node.path, item.depth);
                 }
             } else if (item) {
-                onSelectFile?.(item.node.path);
+                if (selectedFile === item.node.path) {
+                    setActivePane('symbol-outline');
+                } else {
+                    onSelectFile?.(item.node.path);
+                }
             }
         } else if (key.name === 'left' || key.name === 'h') {
             key.preventDefault();
@@ -355,6 +412,12 @@ export function FileTree({
                 toggleDir(item.node.path, item.depth);
             } else if (item) {
                 onSelectFile?.(item.node.path);
+            }
+        } else if (key.name === 'space') {
+            key.preventDefault();
+            const item = visibleItems[focusedIndex];
+            if (item && !item.node.isDirectory) {
+                void toggleStaged(item.node.path);
             }
         }
     });
@@ -410,11 +473,23 @@ export function FileTree({
                         : '  ';
                     const status = gitStatus?.get(item.node.path);
                     const statusIndicator = status
-                        ? getGitStatusIndicator(status)
+                        ? getGitStatusIndicator(status.code)
                         : '  ';
                     const statusColor = status
-                        ? getGitStatusColor(status, colors)
+                        ? getGitStatusColor(status.code, colors)
                         : undefined;
+                    let stageBox = '';
+                    let stageBoxColor = undefined;
+                    if (status) {
+                        stageBoxColor = status.staged ? colors.success : colors.dimSeparator;
+                        if (status.staged && status.unstaged) {
+                            stageBox = '◧ ';
+                        } else if (status.staged) {
+                            stageBox = '☑ ';
+                        } else {
+                            stageBox = '☐ ';
+                        }
+                    }
                     const displayName = truncateName(
                         item.node.name,
                         item.depth,
@@ -422,8 +497,14 @@ export function FileTree({
                     );
 
                     let fg = colors.text;
-                    if (isFocused) fg = colors.selection;
-                    else if (isSelected) fg = colors.primary;
+                    const isActive = activePane === 'file-tree';
+                    if (isFocused) {
+                        fg = isActive ? colors.selection : colors.dimSeparator;
+                    } else if (isSelected) {
+                        fg = colors.primary;
+                    }
+
+                    const focusMarker = isFocused ? (isActive ? '▸ ' : '◦ ') : '  ';
 
                     return (
                         <text
@@ -439,9 +520,10 @@ export function FileTree({
                                 }
                             }}
                         >
-                            {isFocused ? '▸ ' : '  '}
+                            {focusMarker}
                             {indent}
                             {icon}
+                            <em fg={stageBoxColor}>{stageBox}</em>
                             <em fg={statusColor}>{statusIndicator}</em>
                             {displayName}
                             {item.node.isDirectory ? '/' : ''}
