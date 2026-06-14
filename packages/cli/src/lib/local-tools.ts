@@ -68,7 +68,6 @@ const FILE_MODIFYING_TOOLS = new Set([
     'patch',
     'deleteFile',
     'moveFile',
-    'createFile',
 ]);
 
 /**
@@ -135,7 +134,6 @@ function extractModifiedFilePath(
 
     switch (toolName) {
         case 'writeFile':
-        case 'createFile':
         case 'editFile': {
             const p = typeof inp?.path === 'string' ? inp.path : null;
             return p ? resolve(cwd, p) : null;
@@ -194,13 +192,16 @@ async function directExecute(
         // Cache the result for future identical calls
         toolOutputCache.set(toolName, input, result);
 
-        // Track file modifications for the auto-fix pipeline
+        // Track file modifications for the auto-fix pipeline and invalidate cache
         if (FILE_MODIFYING_TOOLS.has(toolName)) {
             const filePath = extractModifiedFilePath(toolName, input);
             if (filePath) {
                 autoFixPipeline.recordModification(filePath);
                 fileWatcher.recordInternalChange(filePath);
             }
+            toolOutputCache.clear();
+        } else if (toolName === 'bash' || toolName === 'gitCommit' || toolName === 'gitBranch') {
+            toolOutputCache.clear();
         }
 
         return result;

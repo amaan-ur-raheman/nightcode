@@ -45,10 +45,8 @@ const CACHEABLE_TOOLS = new Set([
     'impactAnalysis',
     'breakingChangeCheck',
     'suggestMigration',
-    'checkExternalChanges',
     'reviewPr',
     'semanticSearch',
-    'profileCode',
 ]);
 
 interface CacheEntry {

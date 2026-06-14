@@ -97,7 +97,6 @@ const MUTATION_TOOLS = new Set([
     'deleteFile',
     'moveFile',
     'createDirectory',
-    'createFile',
     'gitCommit',
     'gitBranch',
     'renameSymbol',
@@ -163,17 +162,7 @@ export function getToolExecutionPolicy(
             timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
             longRunning: true,
         };
-    }
-
-    if (toolName === 'runTests') {
-        return {
-            timeoutMs:
-                applyMultiplier(
-                    getNumericInputField(input, 'timeout') ?? 60_000,
-                ) + COMMAND_TIMEOUT_GRACE_MS,
-            longRunning: true,
-        };
-    }
+     }
 
     if (LONG_RUNNING_TOOLS.has(toolName)) {
         return {
@@ -196,7 +185,7 @@ export function getToolExecutionPolicy(
         };
     }
 
-    if (toolName === 'webFetch' || toolName === 'httpRequest') {
+    if (toolName === 'webFetch') {
         return {
             timeoutMs: applyMultiplier(MUTATION_TIMEOUT_MS),
             longRunning: false,

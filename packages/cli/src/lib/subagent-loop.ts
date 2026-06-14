@@ -15,7 +15,7 @@ import { getApiKeyForProvider } from './api-keys';
 import { resolveProviderForModel } from '@nightcode/shared';
 import { ErrorPatternTracker } from './error-pattern-tracker';
 
-const API_URL = process.env.API_URL ?? 'http://localhost:3000';
+const API_URL = process.env.API_URL ?? 'http://localhost:5959';
 
 /**
  * Generate a short human-readable summary of a tool's input.
@@ -31,7 +31,6 @@ function summarizeToolInput(toolName: string, input: any): string {
         case 'readFileAbsolute':
             return typeof input.path === 'string' ? truncate(input.path) : '';
         case 'writeFile':
-        case 'createFile':
             return typeof input.path === 'string' ? truncate(input.path) : '';
         case 'editFile':
         case 'searchReplace':
@@ -69,10 +68,6 @@ function summarizeToolInput(toolName: string, input: any): string {
         case 'replExecute':
             return typeof input.command === 'string'
                 ? truncate(input.command, 50)
-                : '';
-        case 'runTests':
-            return typeof input.pattern === 'string'
-                ? truncate(input.pattern)
                 : '';
         case 'webFetch':
             return typeof input.url === 'string' ? truncate(input.url, 50) : '';
@@ -757,7 +752,6 @@ function getOptimizedToolTimeout(
     if (mode === 'BUILD') {
         switch (toolName) {
             case 'bash':
-            case 'runTests':
                 return 120_000; // 2 minutes for long-running commands
             case 'writeFile':
             case 'editFile':

@@ -65,7 +65,7 @@ Defines all tool input schemas using Zod, conversation types, and mode-aware too
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | File Ops      | `readFile`, `writeFile`, `editFile`, `createFile`, `deleteFile`, `moveFile`, `createDirectory`                                                                              |
 | Search        | `glob`, `grep`, `codeSearch`, `getOutline`, `diffFiles`                                                                                                                     |
-| Shell         | `bash`, `runTests`                                                                                                                                                          |
+| Shell         | `bash`                                                                                                                                                                      |
 | Git           | `gitStatus`, `gitDiff`, `gitCommit`, `gitBranch`, `gitLog`, `gitBlame`, `gitStatusExtended`                                                                                 |
 | AI/Agents     | `spawnAgent`, `spawnTestWriter`, `spawnDebugger`, `spawnRefactor`, `spawnCodeReviewer`, `spawnResearcher`                                                                   |
 | Orchestration | `orchestrator`, `getTaskStatus`, `cancelTask`, `taskList`                                                                                                                   |

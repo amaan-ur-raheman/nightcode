@@ -23,10 +23,6 @@ export { searchReplaceTool } from './search-replace';
 export { deleteFileTool } from './delete-file';
 export { moveFileTool } from './move-file';
 export { createDirectoryTool } from './create-directory';
-export { runTestsTool } from './run-tests';
-export type { TestResult } from './run-tests';
-export { httpRequestTool } from './http-request';
-export { createFileTool } from './create-file';
 export { renameSymbolTool } from './rename-symbol';
 export { spawnAgentTool } from './spawn-agent';
 export {
@@ -123,9 +119,6 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     moveFile: () => import('./move-file').then((m) => m.moveFileTool),
     createDirectory: () =>
         import('./create-directory').then((m) => m.createDirectoryTool),
-    runTests: () => import('./run-tests').then((m) => m.runTestsTool),
-    httpRequest: () => import('./http-request').then((m) => m.httpRequestTool),
-    createFile: () => import('./create-file').then((m) => m.createFileTool),
     renameSymbol: () =>
         import('./rename-symbol').then((m) => m.renameSymbolTool),
     spawnAgent: () => import('./spawn-agent').then((m) => m.spawnAgentTool),
