@@ -1,9 +1,14 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
-import { SUPPORTED_CHAT_MODELS } from '@nightcode/shared';
+import {
+    SUPPORTED_CHAT_MODELS,
+    PROVIDER_KEYCHAIN_NAMES,
+    PROVIDER_ENV_VARS,
+    keychain,
+    type SupportedProvider,
+} from '@nightcode/shared';
 import { zen, isZenModel, isZenModelId } from './zen';
-import { requestQueue } from './request-queue';
 
 type ProviderConfig = {
     name: string;
@@ -257,26 +262,41 @@ function getProviderForDynamicModel(
     return undefined;
 }
 
-function wrapModelWithQueue(model: LanguageModelV3): LanguageModelV3 {
-    return {
-        ...model,
-        doGenerate: async (params: any): Promise<any> =>
-            await requestQueue.enqueue(
-                async () => model.doGenerate(params) as any,
-            ),
-        doStream: async (params: any): Promise<any> =>
-            await requestQueue.enqueue(
-                async () => model.doStream(params) as any,
-            ),
-    } as any;
+async function resolveProviderKey(
+    providerName: SupportedProvider,
+    clientKey?: string,
+): Promise<string> {
+    if (clientKey) return clientKey;
+
+    // First try the OS keychain
+    const keychainName = PROVIDER_KEYCHAIN_NAMES[providerName];
+    if (keychainName && keychain.isAvailable()) {
+        const key = await keychain.getKey(keychainName);
+        if (key) return key;
+    }
+
+    // Then try environment variables
+    const envVar = PROVIDER_ENV_VARS[providerName];
+    if (envVar && process.env[envVar]) {
+        return process.env[envVar]!;
+    }
+
+    // Finally try hardcoded config default in ALL_PROVIDERS
+    const provider = ALL_PROVIDERS.find((p) => p.name === providerName);
+    if (provider?.apiKey) {
+        return provider.apiKey;
+    }
+
+    return '';
 }
 
 /**
  * Resolve a provider client for the given model ID.
  *
- * API keys are now provided by the client via the `apiKey` parameter.
- * The server no longer reads keys from the OS keychain or env vars.
- * If no apiKey is provided, the server falls back to env vars for backward compatibility.
+ * API keys are resolved with the following priority:
+ * 1. Client-provided key via the `apiKey` parameter
+ * 2. Secure OS keychain (macOS/Linux)
+ * 3. Environment variables configured in .env
  */
 export async function getProviderClient(
     modelId: string,
@@ -291,9 +311,10 @@ export async function getProviderClient(
             );
         }
         try {
-            const model = await zen(modelId, apiKey);
+            const resolvedKey = await resolveProviderKey('opencode', apiKey);
+            const model = await zen(modelId, resolvedKey);
             circuitBreaker.recordSuccess(providerName);
-            return wrapModelWithQueue(model);
+            return model;
         } catch (error) {
             circuitBreaker.recordFailure(providerName);
             throw error;
@@ -309,11 +330,14 @@ export async function getProviderClient(
                 `Provider "${provider.name}" is temporarily unavailable due to repeated failures. Try again later.`,
             );
         }
-        const resolvedKey = apiKey || provider.apiKey || '';
+        const resolvedKey = await resolveProviderKey(
+            provider.name as SupportedProvider,
+            apiKey,
+        );
         if (!resolvedKey) {
             throw new Error(
                 `No API key provided for provider "${provider.name}". ` +
-                    `Configure the key in your client settings.`,
+                    `Configure the key in your client settings or environment.`,
             );
         }
         try {
@@ -323,7 +347,7 @@ export async function getProviderClient(
                     apiKey: resolvedKey,
                 });
                 circuitBreaker.recordSuccess(provider.name);
-                return wrapModelWithQueue(googleProvider(actualModelId));
+                return googleProvider(actualModelId);
             }
             const sdk = getOrCreateProvider(
                 provider.name,
@@ -331,7 +355,7 @@ export async function getProviderClient(
                 resolvedKey,
             );
             circuitBreaker.recordSuccess(provider.name);
-            return wrapModelWithQueue(sdk(actualModelId));
+            return sdk(actualModelId);
         } catch (error) {
             circuitBreaker.recordFailure(provider.name);
             throw error;
@@ -353,11 +377,14 @@ export async function getProviderClient(
         );
     }
 
-    const resolvedKey = apiKey || provider.apiKey || '';
+    const resolvedKey = await resolveProviderKey(
+        provider.name as SupportedProvider,
+        apiKey,
+    );
     if (!resolvedKey) {
         throw new Error(
             `No API key provided for provider "${provider.name}". ` +
-                `Configure the key in your client settings.`,
+                `Configure the key in your client settings or environment.`,
         );
     }
 
@@ -368,7 +395,7 @@ export async function getProviderClient(
             resolvedKey,
         );
         circuitBreaker.recordSuccess(provider.name);
-        return wrapModelWithQueue(sdk(modelId));
+        return sdk(modelId);
     } catch (error) {
         circuitBreaker.recordFailure(provider.name);
         throw error;

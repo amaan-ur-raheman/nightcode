@@ -1,5 +1,5 @@
 import type { SupportedProvider } from './models';
-import { SUPPORTED_CHAT_MODELS, findSupportedChatModel } from './models';
+import { findSupportedChatModel } from './models';
 
 /**
  * Maps each provider to its OS keychain account name.
