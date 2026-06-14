@@ -7,7 +7,7 @@
         "./client": "./src/client.ts"
     },
     "scripts": {
-        "db:generate": "bunx prisma generate --schema prisma/schema.prisma && bunx prisma generate --schema prisma/schema.sqlite.prisma",
+        "db:generate": "bun run prisma/sync-schemas.ts && bunx prisma generate --schema prisma/schema.prisma && bunx prisma generate --schema prisma/schema.sqlite.prisma",
         "db:migrate": "bunx prisma migrate dev",
         "db:push:sqlite": "bunx prisma db push --schema prisma/schema.sqlite.prisma",
         "test": "vitest run",
