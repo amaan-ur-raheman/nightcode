@@ -77,7 +77,7 @@ export async function runNonInteractive(args: string[]): Promise<void> {
         const session = await sessionRes.json();
 
         // Send message via chat endpoint using raw fetch to handle streaming
-        const chatUrl = `${process.env.API_URL ?? 'http://localhost:3000'}/chat`;
+        const chatUrl = `${process.env.API_URL ?? 'http://localhost:5959'}/chat`;
         const userMessage = {
             id: crypto.randomUUID(),
             role: 'user' as const,

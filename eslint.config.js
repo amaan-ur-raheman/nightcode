@@ -54,7 +54,6 @@ module.exports = [
             '@typescript-eslint/no-unsafe-function-type': 'warn',
             'no-case-declarations': 'warn',
             'no-control-regex': 'warn',
-            'preserve-caught-error': 'off',
             'no-text-in-text/no-text-in-text': 'error',
         },
     },

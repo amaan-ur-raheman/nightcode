@@ -83,8 +83,14 @@ function getContextBudget(modelId: string): number {
 
 /**
  * Estimate tokens for a single UIMessage by summing text in all parts.
+ * Results are cached by message ID to avoid redundant JSON.stringify calls.
  */
-function estimateMessageTokens(message: NightCodeUIMessage): number {
+function estimateMessageTokens(
+    message: NightCodeUIMessage,
+    cache?: Map<string, number>,
+): number {
+    if (cache?.has(message.id)) return cache.get(message.id)!;
+
     let total = 0;
     for (const part of message.parts) {
         if (part.type === 'text') {
@@ -109,7 +115,9 @@ function estimateMessageTokens(message: NightCodeUIMessage): number {
         }
     }
     // Add overhead for message structure (role, id, metadata)
-    return total + 20;
+    const result = total + 20;
+    cache?.set(message.id, result);
+    return result;
 }
 
 const mcpToolSchema = z.object({
@@ -290,10 +298,11 @@ const app = new Hono<AuthenticatedEnv>().post(
         // Token-budget truncation: keep messages within context window
         // Dynamic budget based on model's context window (80% of max)
         const contextBudget = getContextBudget(model);
+        const tokenCache = new Map<string, number>();
         // Always preserve the first user message as a context anchor
         const firstUserIdx = mergedMessages.findIndex((m) => m.role === 'user');
         const totalTokens = mergedMessages.reduce(
-            (sum, m) => sum + estimateMessageTokens(m),
+            (sum, m) => sum + estimateMessageTokens(m, tokenCache),
             0,
         );
         console.log(
@@ -304,7 +313,7 @@ const app = new Hono<AuthenticatedEnv>().post(
             const firstUserMessage =
                 firstUserIdx >= 0 ? mergedMessages[firstUserIdx] : null;
             const firstUserTokens = firstUserMessage
-                ? estimateMessageTokens(firstUserMessage)
+                ? estimateMessageTokens(firstUserMessage, tokenCache)
                 : 0;
 
             // Reserve budget for first message + context anchor
@@ -316,7 +325,7 @@ const app = new Hono<AuthenticatedEnv>().post(
             for (let i = mergedMessages.length - 1; i >= 0; i--) {
                 const msg = mergedMessages[i];
                 if (!msg) continue;
-                const msgTokens = estimateMessageTokens(msg);
+                const msgTokens = estimateMessageTokens(msg, tokenCache);
                 if (tokenSum + msgTokens > availableBudget) {
                     cutoffIndex = i + 1;
                     break;
@@ -495,27 +504,25 @@ const app = new Hono<AuthenticatedEnv>().post(
 
                 if (!completedUsage) return;
 
-                try {
-                    const billableUsage = calculateCreditsForUsage({
-                        provider: actualModel.provider,
-                        model: actualModel.modelId,
-                        usage: completedUsage,
-                    });
-                    console.log(
-                        `[chat:${reqId}]   Billing: ${billableUsage.credits} credits for ${actualModel.provider}/${actualModel.modelId}`,
-                    );
+                const billableUsage = calculateCreditsForUsage({
+                    provider: actualModel.provider,
+                    model: actualModel.modelId,
+                    usage: completedUsage,
+                });
+                console.log(
+                    `[chat:${reqId}]   Billing: ${billableUsage.credits} credits for ${actualModel.provider}/${actualModel.modelId}`,
+                );
 
-                    await ingestAIUsage({
-                        externalCustomerId: userId,
-                        eventId: `chat-message:${event.responseMessage.id}`,
-                        credits: billableUsage.credits,
-                    });
-                } catch (error) {
+                ingestAIUsage({
+                    externalCustomerId: userId,
+                    eventId: `chat-message:${event.responseMessage.id}`,
+                    credits: billableUsage.credits,
+                }).catch((err) => {
                     console.error(
                         `[chat:${reqId}]   Billing failed:`,
-                        error instanceof Error ? error.message : error,
+                        err instanceof Error ? err.message : err,
                     );
-                }
+                });
             },
             onError(error) {
                 const name =

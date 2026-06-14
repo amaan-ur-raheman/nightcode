@@ -218,7 +218,6 @@ const FILE_CONFLICT_TOOLS = new Set([
     'searchReplace',
     'deleteFile',
     'moveFile',
-    'createFile',
     'renameSymbol',
 ]);
 

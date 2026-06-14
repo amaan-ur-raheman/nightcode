@@ -432,7 +432,6 @@ function isWriteTool(toolName: string): boolean {
         'editFile',
         'searchReplace',
         'patch',
-        'createFile',
         'deleteFile',
         'moveFile',
         'renameSymbol',

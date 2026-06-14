@@ -183,7 +183,7 @@ nightcode -n --file input.txt --timeout 60000
 
 # MCP server management
 nightcode mcp add filesystem --command npx --args -y @modelcontextprotocol/server-filesystem .
-nightcode mcp add remote --url http://localhost:3000/mcp
+nightcode mcp add remote --url http://localhost:5959/mcp
 nightcode mcp list
 nightcode mcp remove filesystem
 

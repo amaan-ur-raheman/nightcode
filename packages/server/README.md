@@ -203,7 +203,7 @@ A lean subagent variant strips non-essential sections to save ~400 tokens per su
 
 | Variable             | Description                       |
 | -------------------- | --------------------------------- |
-| `PORT`               | Server port (default: `3000`)     |
+| `PORT`               | Server port (default: `5959`)     |
 | `DATABASE_URL`       | PostgreSQL connection string      |
 | `CLERK_SECRET_KEY`   | Clerk backend secret key          |
 | `POLAR_ACCESS_TOKEN` | Polar API access token            |

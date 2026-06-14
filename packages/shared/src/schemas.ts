@@ -99,10 +99,18 @@ export const toolInputSchemas = {
     }),
     webFetch: z.object({
         url: z.string().url().describe('Full URL to fetch'),
+        method: z
+            .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+            .default('GET')
+            .describe('HTTP method'),
         headers: z
             .record(z.string(), z.string())
             .optional()
-            .describe('Optional HTTP request headers'),
+            .describe('Optional request headers'),
+        body: z
+            .string()
+            .optional()
+            .describe('Request body (for POST/PUT/PATCH)'),
     }),
     writeFile: z.object({
         path: z.string().describe('Relative path to write'),
@@ -162,22 +170,6 @@ export const toolInputSchemas = {
     createDirectory: z.object({
         path: z.string().describe('Relative path of the directory to create'),
     }),
-    runTests: z.object({
-        filter: z
-            .string()
-            .optional()
-            .describe('Optional test name filter / file pattern'),
-        runner: z
-            .string()
-            .optional()
-            .describe(
-                "Test runner to use (e.g. 'bun test', 'npx vitest run', 'npx jest', 'pytest', 'cargo test', 'go test ./...'). Auto-detected if omitted.",
-            ),
-        timeout: z
-            .number()
-            .default(60_000)
-            .describe('Timeout in milliseconds (default: 60000)'),
-    }),
     codeSearch: z.object({
         symbol: z
             .string()
@@ -197,25 +189,7 @@ export const toolInputSchemas = {
         pathA: z.string().describe('Relative path to the first file'),
         pathB: z.string().describe('Relative path to the second file'),
     }),
-    httpRequest: z.object({
-        url: z.string().url().describe('Full URL to request'),
-        method: z
-            .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
-            .default('GET')
-            .describe('HTTP method'),
-        headers: z
-            .record(z.string(), z.string())
-            .optional()
-            .describe('Optional request headers'),
-        body: z
-            .string()
-            .optional()
-            .describe('Request body (for POST/PUT/PATCH)'),
-    }),
-    createFile: z.object({
-        path: z.string().describe('Relative path to create'),
-        content: z.string().describe('File contents'),
-    }),
+
     renameSymbol: z.object({
         oldName: z.string().describe('Current symbol name'),
         newName: z.string().describe('New symbol name'),
@@ -525,47 +499,6 @@ export const toolInputSchemas = {
             .enum(['pending', 'in-progress', 'completed', 'failed'])
             .optional()
             .describe("New status for the task (for 'update' action)"),
-    }),
-    ai: z.object({
-        model: z
-            .string()
-            .describe(
-                "Model ID to use for AI generation. Examples: 'deepseek-ai/deepseek-v4-flash', 'gpt-4o', 'claude-3-5-haiku-20241022', 'opencode/deepseek-v4-flash-free'",
-            ),
-        messages: z
-            .array(
-                z.object({
-                    role: z
-                        .enum(['user', 'assistant', 'system'])
-                        .describe('Message role'),
-                    content: z.string().describe('Message content'),
-                }),
-            )
-            .describe('Array of messages for the AI model'),
-        maxTokens: z
-            .number()
-            .optional()
-            .describe('Maximum number of tokens to generate'),
-        temperature: z
-            .number()
-            .min(0)
-            .max(2)
-            .optional()
-            .describe('Model temperature (0-2, default varies by model)'),
-        systemPrompt: z
-            .string()
-            .optional()
-            .describe('Optional system prompt to override the default'),
-        stream: z
-            .boolean()
-            .default(false)
-            .describe('Whether to stream the response (experimental)'),
-        modelProvider: z
-            .string()
-            .optional()
-            .describe(
-                "Optional model provider (e.g., 'nvidia', 'anthropic', 'openai', 'opencode', 'groq'). If omitted, will be inferred from model ID",
-            ),
     }),
     askQuestion: z.object({
         questions: z
@@ -1101,20 +1034,6 @@ export const buildToolContracts = {
         description:
             'Create a directory (and any missing parent directories) in the project.',
         inputSchema: toolInputSchemas.createDirectory,
-    }),
-    runTests: tool({
-        description:
-            "Run the project's test suite and return structured results.",
-        inputSchema: toolInputSchemas.runTests,
-    }),
-    httpRequest: tool({
-        description:
-            'Make an HTTP request (GET/POST/PUT/PATCH/DELETE) and return the response.',
-        inputSchema: toolInputSchemas.httpRequest,
-    }),
-    createFile: tool({
-        description: 'Create a new file, erroring if it already exists.',
-        inputSchema: toolInputSchemas.createFile,
     }),
     renameSymbol: tool({
         description:

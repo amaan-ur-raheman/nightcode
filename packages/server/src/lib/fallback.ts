@@ -1,12 +1,5 @@
 import { getProviderName, isModelAvailable } from './providers';
 
-type FallbackConfig = {
-    primary: string;
-    fallbacks: string[];
-    maxRetries: number;
-    retryDelayMs: number;
-};
-
 // Default fallback chains per provider
 const FALLBACK_CHAINS: Record<string, string[]> = {
     nim: [

@@ -28,21 +28,17 @@ async function buildTree(
         }
     });
     const resolvedInfos = await Promise.all(lstatPromises);
+    const lastNonNullIndex = resolvedInfos.findLastIndex((info) => info !== null);
 
     // Collect subdirectory tree promises (parallel sibling traversal)
     const childTreePromises: Promise<string[]>[] = [];
-    const validIndices: number[] = [];
     for (let i = 0; i < resolvedInfos.length; i++) {
         const item = resolvedInfos[i];
-        if (!item) continue;
-        validIndices.push(i);
-        const isLast = i === resolvedInfos.length - 1;
-        lines.push(
-            prefix +
-                (isLast ? '└── ' : '├── ') +
-                item.name +
-                (item.isDir ? '/' : ''),
-        );
+        if (!item) {
+            childTreePromises.push(Promise.resolve([]));
+            continue;
+        }
+        const isLast = i === lastNonNullIndex;
         if (item.isDir) {
             childTreePromises.push(
                 buildTree(
@@ -58,9 +54,20 @@ async function buildTree(
     }
 
     const childResults = await Promise.all(childTreePromises);
-    for (let j = 0; j < validIndices.length; j++) {
-        const result = childResults[j];
-        if (result) lines.push(...result);
+    for (let i = 0; i < resolvedInfos.length; i++) {
+        const item = resolvedInfos[i];
+        if (!item) continue;
+        const isLast = i === lastNonNullIndex;
+        lines.push(
+            prefix +
+                (isLast ? '└── ' : '├── ') +
+                item.name +
+                (item.isDir ? '/' : ''),
+        );
+        const childLines = childResults[i];
+        if (childLines && childLines.length > 0) {
+            lines.push(...childLines);
+        }
     }
 
     return lines;

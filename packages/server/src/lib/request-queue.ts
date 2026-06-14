@@ -3,6 +3,7 @@ import { serverDebug } from './debug';
 
 interface QueuedRequest {
     id: string;
+    userId?: string;
     execute: () => Promise<any>;
     resolve: (result: any) => void;
     reject: (error: Error) => void;
@@ -14,6 +15,7 @@ interface QueuedRequest {
 
 export interface QueueConfig {
     maxConcurrent: number;
+    maxConcurrentPerUser: number;
     maxQueueSize: number;
     retryDelay: number;
     maxRetries: number;
@@ -21,7 +23,8 @@ export interface QueueConfig {
 }
 
 const DEFAULT_CONFIG: QueueConfig = {
-    maxConcurrent: 3,
+    maxConcurrent: parseInt(process.env.QUEUE_MAX_CONCURRENT || '8', 10),
+    maxConcurrentPerUser: parseInt(process.env.QUEUE_MAX_PER_USER || '3', 10),
     maxQueueSize: 100,
     retryDelay: 1000,
     maxRetries: 3,
@@ -38,6 +41,7 @@ export interface QueueStats {
 class RequestQueue {
     private queue: QueuedRequest[] = [];
     private running: Set<string> = new Set();
+    private runningByUser: Map<string, number> = new Map();
     private config: QueueConfig = { ...DEFAULT_CONFIG };
     private rateLimited = false;
     private rateLimitReset = 0;
@@ -45,11 +49,12 @@ class RequestQueue {
 
     async enqueue<T>(
         execute: () => Promise<T>,
-        options: { priority?: number; maxRetries?: number } = {},
+        options: { priority?: number; maxRetries?: number; userId?: string } = {},
     ): Promise<T> {
         return new Promise((resolve, reject) => {
             const request: QueuedRequest = {
                 id: randomUUID(),
+                userId: options.userId,
                 execute: execute as () => Promise<any>,
                 resolve: resolve as (result: any) => void,
                 reject,
@@ -78,11 +83,17 @@ class RequestQueue {
         });
     }
 
+    private canRun(request: QueuedRequest): boolean {
+        if (this.running.size >= this.config.maxConcurrent) return false;
+        if (request.userId) {
+            const userCount = this.runningByUser.get(request.userId) ?? 0;
+            if (userCount >= this.config.maxConcurrentPerUser) return false;
+        }
+        return true;
+    }
+
     private async processQueue(): Promise<void> {
-        while (
-            this.running.size < this.config.maxConcurrent &&
-            this.queue.length > 0
-        ) {
+        while (this.queue.length > 0) {
             if (this.rateLimited && Date.now() < this.rateLimitReset) {
                 const delay = this.rateLimitReset - Date.now();
                 serverDebug.log(
@@ -93,7 +104,11 @@ class RequestQueue {
                 this.rateLimited = false;
             }
 
-            const request = this.queue.shift();
+            // Find next request that can run (respects per-user limits)
+            const idx = this.queue.findIndex((r) => this.canRun(r));
+            if (idx === -1) break; // No request can run right now
+
+            const [request] = this.queue.splice(idx, 1);
             if (!request) break;
 
             this.executeRequest(request).catch((err) => {
@@ -109,6 +124,12 @@ class RequestQueue {
 
     private async executeRequest(request: QueuedRequest): Promise<void> {
         this.running.add(request.id);
+        if (request.userId) {
+            this.runningByUser.set(
+                request.userId,
+                (this.runningByUser.get(request.userId) ?? 0) + 1,
+            );
+        }
         this.emitStats();
 
         try {
@@ -163,6 +184,14 @@ class RequestQueue {
             }
         } finally {
             this.running.delete(request.id);
+            if (request.userId) {
+                const count = this.runningByUser.get(request.userId) ?? 1;
+                if (count <= 1) {
+                    this.runningByUser.delete(request.userId);
+                } else {
+                    this.runningByUser.set(request.userId, count - 1);
+                }
+            }
             this.processQueue();
         }
     }

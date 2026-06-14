@@ -1,10 +1,9 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { MAX_OUTPUT, isPrivateHost } from './utils';
 
-const TIMEOUT_MS = 15_000;
-
 export async function webFetchTool(input: unknown) {
-    const { url, headers } = toolInputSchemas.webFetch.parse(input);
+    const { url, method, headers, body } =
+        toolInputSchemas.webFetch.parse(input);
 
     try {
         const host = new URL(url).hostname.toLowerCase();
@@ -18,58 +17,34 @@ export async function webFetchTool(input: unknown) {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), 15_000);
 
     try {
         const response = await fetch(url, {
+            method,
             headers,
+            body,
             signal: controller.signal,
         });
-        if (!response.ok)
-            return { error: `HTTP ${response.status}: ${response.statusText}` };
-
-        const reader = response.body?.getReader();
-        if (!reader)
-            return {
-                url,
-                status: response.status,
-                contentType: response.headers.get('content-type'),
-                body: '',
-            };
-
-        const decoder = new TextDecoder();
-        let body = '';
-        let truncated = false;
-
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                body += decoder.decode(value, { stream: true });
-                if (body.length >= MAX_OUTPUT) {
-                    truncated = true;
-                    break;
-                }
-            }
-        } finally {
-            reader.cancel();
-        }
-
         clearTimeout(timer);
+        const text = await response.text();
+        const tooLong = text.length > MAX_OUTPUT;
         return {
-            url,
             status: response.status,
-            contentType: response.headers.get('content-type'),
-            body: truncated ? body.slice(0, MAX_OUTPUT) : body,
-            ...(truncated ? { truncated: true } : {}),
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            body: tooLong
+                ? text.slice(0, MAX_OUTPUT) + '\n...(truncated)'
+                : text,
+            ...(tooLong ? { truncated: true } : {}),
         };
     } catch (err) {
         clearTimeout(timer);
-        const message = err instanceof Error ? err.message : String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         return {
-            error: message.includes('aborted')
-                ? `Request timed out after ${TIMEOUT_MS}ms`
-                : `Failed to fetch: ${message}`,
+            error: msg.includes('aborted')
+                ? 'Request timed out after 15000ms'
+                : `Request failed: ${msg}`,
         };
     }
 }

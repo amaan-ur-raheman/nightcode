@@ -68,9 +68,18 @@ describe('ReplRunner', () => {
         });
     });
 
-    it('initializes the persistent process on construction', () => {
+    it('initializes the persistent process lazily on command execution', async () => {
         const runner = new ReplRunner();
+        expect(Bun.spawn).not.toHaveBeenCalled();
+        const execPromise = runner.execute('echo "test"');
         expect(Bun.spawn).toHaveBeenCalled();
+        
+        // Simulate data arriving to finish the test gracefully
+        // @ts-expect-error - handleData is private and accessed for testing
+        runner.handleData('test\n');
+        // @ts-expect-error - handleData is private and accessed for testing
+        runner.handleData('__REPL_SENTINEL__');
+        await execPromise;
     });
 
     it('executes a command and resolves when sentinel is received', async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // We need to test the pure helper functions extracted from model-fetcher.
 // The fetch functions hit network so we test them with mocked fetch.
@@ -45,6 +45,30 @@ describe('model-fetcher helpers', () => {
 });
 
 describe('fetchAllModels', () => {
+    let originalFetch: typeof global.fetch;
+
+    beforeEach(() => {
+        originalFetch = global.fetch;
+        (global as any).fetch = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('11434')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        models: [{ name: 'llama3:latest', model: 'llama3:latest' }]
+                    }),
+                } as any);
+            }
+            return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({ data: [] }),
+            } as any);
+        });
+    });
+
+    afterEach(() => {
+        (global as any).fetch = originalFetch;
+    });
+
     it('returns cached results within TTL', async () => {
         const { fetchAllModels, clearModelCache } =
             await import('../model-fetcher');
@@ -79,42 +103,21 @@ describe('fetchAllModels', () => {
 
         clearModelCache();
 
-        const mockResponse = {
-            models: [{ name: 'llama3:latest', model: 'llama3:latest' }],
-        };
+        const result = await fetchAllModels();
+        const localModels = result.models.filter(
+            (m) => m.provider === 'local',
+        );
+        expect(localModels).toHaveLength(1);
+        const first = localModels[0];
+        if (!first) throw new Error('No local models found');
+        expect(first.id).toBe('local/llama3:latest');
+        expect(first.displayName).toBe('Llama3 Latest');
 
-        const originalFetch = global.fetch;
-        (global as any).fetch = vi.fn().mockImplementation((url: string) => {
-            if (url.includes('11434')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve(mockResponse),
-                } as any);
-            }
-            return Promise.resolve({
-                ok: false,
-            } as any);
-        });
-
-        try {
-            const result = await fetchAllModels();
-            const localModels = result.models.filter(
-                (m) => m.provider === 'local',
-            );
-            expect(localModels).toHaveLength(1);
-            const first = localModels[0];
-            if (!first) throw new Error('No local models found');
-            expect(first.id).toBe('local/llama3:latest');
-            expect(first.displayName).toBe('Llama3 Latest');
-
-            // Verify registered in SUPPORTED_CHAT_MODELS search
-            const resolved = findSupportedChatModel('local/llama3:latest');
-            expect(resolved).toBeDefined();
-            if (!resolved) throw new Error('Model was not resolved');
-            expect(resolved.provider).toBe('local');
-            expect(resolved.pricing.inputUsdPerMillionTokens).toBe(0.1);
-        } finally {
-            (global as any).fetch = originalFetch;
-        }
+        // Verify registered in SUPPORTED_CHAT_MODELS search
+        const resolved = findSupportedChatModel('local/llama3:latest');
+        expect(resolved).toBeDefined();
+        if (!resolved) throw new Error('Model was not resolved');
+        expect(resolved.provider).toBe('local');
+        expect(resolved.pricing.inputUsdPerMillionTokens).toBe(0.1);
     });
 });

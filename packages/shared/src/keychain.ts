@@ -1,4 +1,24 @@
-import { execSync, execFileSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
+
+function runCommandAsync(
+    cmd: string,
+    args: string[],
+    input?: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    return new Promise((resolve) => {
+        const child = execFile(cmd, args, (error, stdout) => {
+            resolve({
+                stdout: stdout || '',
+                stderr: error?.message || '',
+                exitCode: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
+            });
+        });
+        if (input && child.stdin) {
+            child.stdin.write(input);
+            child.stdin.end();
+        }
+    });
+}
 
 class KeychainManager {
     private serviceName = 'nightcode';
@@ -11,46 +31,42 @@ class KeychainManager {
         try {
             if (process.platform === 'darwin') {
                 try {
-                    execFileSync(
-                        'security',
-                        [
-                            'delete-generic-password',
-                            '-s',
-                            this.serviceName,
-                            '-a',
-                            account,
-                        ],
-                        { stdio: 'ignore' },
-                    );
-                } catch {}
-
-                execFileSync(
-                    'security',
-                    [
-                        'add-generic-password',
+                    await runCommandAsync('security', [
+                        'delete-generic-password',
                         '-s',
                         this.serviceName,
                         '-a',
                         account,
-                        '-w',
-                        password,
-                        '-U',
-                    ],
-                    { stdio: 'ignore' },
-                );
-                return true;
+                    ]);
+                } catch {
+                    // Ignore error if key does not exist yet
+                }
+
+                const addRes = await runCommandAsync('security', [
+                    'add-generic-password',
+                    '-s',
+                    this.serviceName,
+                    '-a',
+                    account,
+                    '-w',
+                    password,
+                    '-U',
+                ]);
+                return addRes.exitCode === 0;
             }
 
             if (process.platform === 'linux') {
-                execFileSync(
-                    'sh',
+                const res = await runCommandAsync(
+                    'secret-tool',
                     [
-                        '-c',
-                        `secret-tool store --label="NightCode ${account}" "${this.serviceName}" "${account}"`,
+                        'store',
+                        `--label=NightCode ${account}`,
+                        this.serviceName,
+                        account,
                     ],
-                    { input: password, stdio: ['pipe', 'ignore', 'ignore'] },
+                    password,
                 );
-                return true;
+                return res.exitCode === 0;
             }
 
             return false;
@@ -68,30 +84,30 @@ class KeychainManager {
 
         try {
             if (process.platform === 'darwin') {
-                const result = execFileSync(
-                    'security',
-                    [
-                        'find-generic-password',
-                        '-s',
-                        this.serviceName,
-                        '-a',
-                        account,
-                        '-w',
-                    ],
-                    { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] },
-                ).trim();
-                if (result) return result;
+                const res = await runCommandAsync('security', [
+                    'find-generic-password',
+                    '-s',
+                    this.serviceName,
+                    '-a',
+                    account,
+                    '-w',
+                ]);
+                if (res.exitCode === 0 && res.stdout) {
+                    return res.stdout.trim();
+                }
                 this.notFoundCache.add(account);
                 return null;
             }
 
             if (process.platform === 'linux') {
-                const result = execFileSync(
-                    'secret-tool',
-                    ['lookup', this.serviceName, account],
-                    { encoding: 'utf-8' },
-                ).trim();
-                if (result) return result;
+                const res = await runCommandAsync('secret-tool', [
+                    'lookup',
+                    this.serviceName,
+                    account,
+                ]);
+                if (res.exitCode === 0 && res.stdout) {
+                    return res.stdout.trim();
+                }
                 this.notFoundCache.add(account);
                 return null;
             }
@@ -106,27 +122,23 @@ class KeychainManager {
     async deleteKey(account: string): Promise<boolean> {
         try {
             if (process.platform === 'darwin') {
-                execFileSync(
-                    'security',
-                    [
-                        'delete-generic-password',
-                        '-s',
-                        this.serviceName,
-                        '-a',
-                        account,
-                    ],
-                    { stdio: 'ignore' },
-                );
-                return true;
+                const res = await runCommandAsync('security', [
+                    'delete-generic-password',
+                    '-s',
+                    this.serviceName,
+                    '-a',
+                    account,
+                ]);
+                return res.exitCode === 0;
             }
 
             if (process.platform === 'linux') {
-                execFileSync(
-                    'secret-tool',
-                    ['clear', this.serviceName, account],
-                    { stdio: 'ignore' },
-                );
-                return true;
+                const res = await runCommandAsync('secret-tool', [
+                    'clear',
+                    this.serviceName,
+                    account,
+                ]);
+                return res.exitCode === 0;
             }
 
             return false;

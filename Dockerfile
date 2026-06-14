@@ -33,6 +33,6 @@ COPY packages/database/prisma packages/database/prisma
 ENV NODE_ENV=production
 ENV BUN_ENV=production
 
-EXPOSE 3001
+EXPOSE 5959
 
-CMD ["bun", "run", "packages/server/src/index.ts"]
+CMD ["bun", "run", "packages/server/dist/index.js"]

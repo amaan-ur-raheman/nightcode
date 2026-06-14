@@ -69,7 +69,7 @@ async function ensureValidToken(): Promise<string | null> {
 }
 
 export const apiClient = hc<AppType>(
-    process.env.API_URL ?? 'http://localhost:3000',
+    process.env.API_URL ?? 'http://localhost:5959',
     {
         fetch: async (
             input: Parameters<typeof fetch>[0],

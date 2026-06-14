@@ -1,6 +1,5 @@
 import type { LanguageModelUsage } from 'ai';
 import {
-    SUPPORTED_CHAT_MODELS,
     findSupportedChatModel,
     type ModelPricing,
 } from '@nightcode/shared';

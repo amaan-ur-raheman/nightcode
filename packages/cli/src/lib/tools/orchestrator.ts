@@ -114,7 +114,7 @@ async function decomposeTask(
     signal?: AbortSignal,
     maxAttempts = 2,
 ): Promise<TaskGraph> {
-    const API_URL = process.env.API_URL ?? 'http://localhost:3000';
+    const API_URL = process.env.API_URL ?? 'http://localhost:5959';
 
     let lastError: Error | null = null;
 
