@@ -73,7 +73,7 @@ export async function fetchDynamicModels(
             // Using raw fetch (not apiClient) to inject x-provider-keys header.
             // The /models endpoint doesn't require auth, so this is safe.
             const res = await fetch(
-                `${process.env.API_URL ?? 'http://localhost:3000'}/models`,
+                `${process.env.API_URL ?? 'http://localhost:5959'}/models`,
                 {
                     headers: {
                         ...headers,

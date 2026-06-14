@@ -371,7 +371,7 @@ export const BotMessage = React.memo(function BotMessage({
                                         width="100%"
                                         paddingX={2}
                                     >
-                                        <text attributes={TextAttributes.DIM}>
+                                        <text>
                                             <em fg={statusColor}>
                                                 {statusIcon}{' '}
                                             </em>

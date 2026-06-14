@@ -18,10 +18,14 @@ export class ReplRunner {
     private isProcessing = false;
 
     constructor() {
-        this.initialize();
+        // Lazily initialized on first execution
     }
 
-    private initialize() {
+    private ensureInitialized() {
+        if (this.proc && !this.proc.killed && this.proc.exitCode === null) {
+            return;
+        }
+
         const shell =
             process.platform === 'win32'
                 ? 'powershell.exe'
@@ -151,6 +155,13 @@ export class ReplRunner {
 
     private executeSingle(command: string): Promise<string> {
         return new Promise<string>((resolve) => {
+            try {
+                this.ensureInitialized();
+            } catch (err) {
+                resolve(`[REPL failed to initialize: ${err instanceof Error ? err.message : String(err)}]`);
+                return;
+            }
+
             this.outputBuffer = '';
             this.currentResolver = resolve;
 

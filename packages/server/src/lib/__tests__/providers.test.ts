@@ -1,11 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../request-queue', () => ({
-    requestQueue: {
-        enqueue: async (fn: Function) => fn(),
-    },
-}));
-
 vi.mock('../zen', () => ({
     zen: async () => ({}),
     isZenModel: () => false,
