@@ -129,7 +129,7 @@ nightcode -n --file input.txt
 
 # Manage MCP servers
 nightcode mcp add filesystem --command npx --args -y @modelcontextprotocol/server-filesystem .
-nightcode mcp add remote --url http://localhost:3000/mcp
+nightcode mcp add remote --url http://localhost:5959/mcp
 nightcode mcp list
 nightcode mcp remove filesystem
 
@@ -180,12 +180,11 @@ NightCode provides **40+ tools** that the AI can call during conversations:
 | `patch`           | Apply unified diff patches                   |
 | `createDirectory` | Create directories with parents              |
 
-### Shell & Testing
+### Shell & Commands
 
-| Tool       | Description                  |
-| ---------- | ---------------------------- |
-| `bash`     | Execute shell commands       |
-| `runTests` | Run the project's test suite |
+| Tool   | Description            |
+| ------ | ---------------------- |
+| `bash` | Execute shell commands |
 
 ### Git Operations
 
