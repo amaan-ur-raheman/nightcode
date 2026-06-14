@@ -467,7 +467,11 @@ export function FileTree({
             paddingTop={1}
             overflow="hidden"
         >
-            <text attributes={TextAttributes.BOLD} fg={colors.primary}>
+            <text
+                attributes={TextAttributes.BOLD}
+                fg={activePane === 'file-tree' ? colors.primary : colors.dimSeparator}
+            >
+                {activePane === 'file-tree' ? '● ' : ''}
                 {diffMode ? 'Changed Files' : 'Files'}
             </text>
             <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
