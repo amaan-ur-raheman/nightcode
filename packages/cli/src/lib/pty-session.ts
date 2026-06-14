@@ -152,6 +152,19 @@ export class PtySessionManager extends EventEmitter {
         }
     }
 
+    public interrupt() {
+        if (!this.activeProc) return;
+        try {
+            if (this.activeProc.pid) {
+                process.kill(-this.activeProc.pid, 'SIGINT');
+            } else {
+                this.activeProc.kill('SIGINT');
+            }
+        } catch (e) {
+            // failed to kill
+        }
+    }
+
     private appendOutput(chunk: string) {
         this.combinedBuffer += chunk;
         // Keep buffer size reasonable
@@ -219,10 +232,15 @@ export function usePtySession() {
         ptySessionManager.writeInput(data);
     }, []);
 
+    const interrupt = useCallback(() => {
+        ptySessionManager.interrupt();
+    }, []);
+
     return {
         ...state,
         attach,
         detach,
         writeInput,
+        interrupt,
     };
 }

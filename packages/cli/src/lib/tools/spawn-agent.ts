@@ -106,6 +106,7 @@ export async function spawnAgentTool(
             }
             throw new Error(
                 `Subagent timed out after ${SUBAGENT_TIMEOUT_MS / 60000} minutes`,
+                { cause: err },
             );
         }
 

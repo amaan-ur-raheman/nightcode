@@ -474,6 +474,7 @@ export async function runSubagentLoop(
                 ) {
                     throw new Error(
                         'Rate limit hit. Wait a moment and try again.',
+                        { cause: streamErr },
                     );
                 }
                 throw streamErr;
