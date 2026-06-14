@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { compress } from 'hono/compress';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 
 dotenv.config({ path: path.resolve(import.meta.dirname, '../../.env') });
@@ -45,6 +46,10 @@ app.onError((error, c) => {
     return c.json({ error: 'Internal server error' }, 500);
 });
 
+app.get('/health', (c) => {
+    return c.json({ status: 'ok', port, uptime: process.uptime() });
+});
+
 app.use('/chat/*', requireAuth);
 app.use('/sessions/*', requireAuth);
 app.use('/billing/checkout', requireAuth);
@@ -68,7 +73,7 @@ const routes = app
 
 export type AppType = typeof routes;
 
-const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+const port = process.env.PORT ? Number(process.env.PORT) : 5959;
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(`Invalid PORT: ${process.env.PORT}`);
 }
@@ -83,3 +88,29 @@ process.on('uncaughtException', (error) => {
 });
 
 export default { port, fetch: app.fetch, idleTimeout: 255 };
+
+// Write PID file for session tracking (nightcode.sh reads this)
+const pidFile = process.env.PID_FILE || '/tmp/nightcode-server.pid';
+fs.writeFileSync(pidFile, String(process.pid));
+
+const cleanupPidFile = () => {
+    try {
+        if (fs.existsSync(pidFile)) {
+            fs.unlinkSync(pidFile);
+        }
+    } catch {}
+};
+
+process.on('SIGTERM', () => {
+    cleanupPidFile();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    cleanupPidFile();
+    process.exit(0);
+});
+
+process.on('exit', cleanupPidFile);
+
+console.log(`NightCode server listening on http://localhost:${port}`);

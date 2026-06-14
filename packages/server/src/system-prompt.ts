@@ -10,9 +10,51 @@ type SystemPromptParams = {
     corrections?: string[];
 };
 
-const MAX_PROMPT_CACHE_SIZE = 32;
-const promptCache = new Map<string, string>();
-const subagentPromptCache = new Map<string, string>();
+const MAX_PROMPT_CACHE_SIZE = 64;
+
+/**
+ * LRU cache: evicts least-recently-used entries when full.
+ * Uses a Map (which preserves insertion order) + access-time tracking.
+ */
+class LRUCache<K, V> {
+    private map = new Map<K, { value: V; accessedAt: number }>();
+    private maxSize: number;
+
+    constructor(maxSize: number) {
+        this.maxSize = maxSize;
+    }
+
+    get(key: K): V | undefined {
+        const entry = this.map.get(key);
+        if (!entry) return undefined;
+        entry.accessedAt = Date.now();
+        return entry.value;
+    }
+
+    set(key: K, value: V): void {
+        if (this.map.has(key)) {
+            this.map.get(key)!.value = value;
+            this.map.get(key)!.accessedAt = Date.now();
+            return;
+        }
+        if (this.map.size >= this.maxSize) {
+            // Evict least recently used
+            let oldestKey: K | undefined;
+            let oldestTime = Infinity;
+            for (const [k, v] of this.map) {
+                if (v.accessedAt < oldestTime) {
+                    oldestTime = v.accessedAt;
+                    oldestKey = k;
+                }
+            }
+            if (oldestKey !== undefined) this.map.delete(oldestKey);
+        }
+        this.map.set(key, { value, accessedAt: Date.now() });
+    }
+}
+
+const promptCache = new LRUCache<string, string>(MAX_PROMPT_CACHE_SIZE);
+const subagentPromptCache = new LRUCache<string, string>(MAX_PROMPT_CACHE_SIZE);
 
 /**
  * Simple hash function for cache keys. Not cryptographic, but sufficient
@@ -181,7 +223,7 @@ When debugging dev servers, use the processManage tool:
 - **list** — Show running dev server processes (node, bun, vite, etc.)
 - **list-ports** — Show what's listening on a specific port (or all ports)
 - **kill** — Stop a stuck process by PID (SIGTERM first, SIGKILL if needed)
-Common ports: 3000 (React/Next), 5173 (Vite), 8080 (backend), 4200 (Angular)
+Common ports: 5959 (NightCode), 3000 (React/Next), 5173 (Vite), 8080 (backend), 4200 (Angular)
 
 ### Secret Scanning
 Use the **secretScan** tool before committing to detect accidentally committed secrets:
@@ -268,7 +310,6 @@ Choose the right tool for the job:
 - **searchReplace** — Find and replace text across multiple files using regex. Use for bulk patterns (e.g., renaming a function across 10 files).
 - **patch** — Apply a unified diff. Use for complex multi-file changes where you have the diff.
 - **writeFile** — Create new files or full rewrites. Overwrites existing content.
-- **createFile** — Create a new file only. Errors if file already exists (safety check).
 - **deleteFile** — Remove a file or empty directory.
 - **moveFile** — Move or rename files/directories.
 - **renameSymbol** — AST-aware rename across all files. Handles declarations, imports, types. Safer than searchReplace for code symbols.
@@ -350,10 +391,6 @@ You are in PLAN mode — subagent must also be PLAN.`);
 
     const result = optimizePrompt(parts.join('\n'));
 
-    if (promptCache.size >= MAX_PROMPT_CACHE_SIZE) {
-        const firstKey = promptCache.keys().next().value;
-        if (firstKey) promptCache.delete(firstKey);
-    }
     promptCache.set(key, result);
 
     return result;
@@ -392,10 +429,6 @@ export function buildSubagentSystemPrompt({
 
     const result = optimizePrompt(parts.join('\n'));
 
-    if (subagentPromptCache.size >= MAX_PROMPT_CACHE_SIZE) {
-        const firstKey = subagentPromptCache.keys().next().value;
-        if (firstKey) subagentPromptCache.delete(firstKey);
-    }
     subagentPromptCache.set(key, result);
 
     return result;
