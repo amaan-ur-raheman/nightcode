@@ -192,12 +192,91 @@ function SessionChat({
     // Let the user cancel a reply even before the first streamed chunks arrived
     const keyHandlerRef = useRef<((key: any) => void) | undefined>(undefined);
     keyHandlerRef.current = (key) => {
+        // Handle chat mode switching & scrolling
+        if (activePane === 'chat') {
+            if (chatMode === 'insert') {
+                if (key.name === 'escape' && isTopLayer('base')) {
+                    key.preventDefault();
+                    setChatMode('scroll');
+                    return;
+                }
+            } else if (chatMode === 'scroll') {
+                if (
+                    key.name === 'i' ||
+                    key.name === 'a' ||
+                    key.name === 'return' ||
+                    key.name === 'enter'
+                ) {
+                    key.preventDefault();
+                    setChatMode('insert');
+                    return;
+                }
+                if (key.name === 'j' || key.name === 'down') {
+                    key.preventDefault();
+                    const sb = chatScrollRef.current;
+                    if (sb) {
+                        sb.scrollTo(sb.scrollTop + 1);
+                    }
+                    return;
+                }
+                if (key.name === 'k' || key.name === 'up') {
+                    key.preventDefault();
+                    const sb = chatScrollRef.current;
+                    if (sb) {
+                        sb.scrollTo(Math.max(0, sb.scrollTop - 1));
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Pane navigation via Ctrl+W cycles focus between Chat input, File tree, Outline, and Code panel.
+        if (key.name === 'w' && key.ctrl && isTopLayer('base')) {
+            key.preventDefault();
+            const availablePanes: ('file-tree' | 'symbol-outline' | 'code-panel' | 'chat')[] = [];
+            if (showFileTree && !isFullscreenCode) {
+                availablePanes.push('file-tree');
+            }
+            if (selectedFile) {
+                if (!isFullscreenCode) {
+                    availablePanes.push('symbol-outline');
+                }
+                availablePanes.push('code-panel');
+            }
+            if (!isFullscreenCode) {
+                availablePanes.push('chat');
+            }
+            if (availablePanes.length > 0) {
+                const currentIdx = availablePanes.indexOf(activePane);
+                const nextIdx = (currentIdx + 1) % availablePanes.length;
+                const nextPane = availablePanes[nextIdx] ?? 'chat';
+                setActivePane(nextPane);
+            }
+        }
+
+        // Fullscreen code panel toggle via Ctrl+F.
+        if (key.name === 'f' && key.ctrl && isTopLayer('base')) {
+            key.preventDefault();
+            if (selectedFile) {
+                setIsFullscreenCode((prev) => {
+                    const next = !prev;
+                    if (next) {
+                        setActivePane('code-panel');
+                    } else {
+                        setActivePane('chat');
+                    }
+                    return next;
+                });
+            }
+        }
+
         if (key.name === 'escape' && isTopLayer('base') && isLoading) {
             key.preventDefault();
             interrupt();
         }
         if (key.name === 'r' && key.ctrl && isTopLayer('base') && !isLoading) {
             key.preventDefault();
+            requestStartTimeRef.current = Date.now();
             retryLast();
         }
         if (key.name === 'b' && key.ctrl && isTopLayer('base') && !isLoading) {
@@ -364,6 +443,7 @@ function SessionChat({
         if (!initialPrompt || hasSubmittedInitialPromptRef.current) return;
 
         hasSubmittedInitialPromptRef.current = true;
+        requestStartTimeRef.current = Date.now();
         void submit({
             userText: initialPrompt.message,
             mode: initialPrompt.mode,
@@ -371,48 +451,94 @@ function SessionChat({
         });
     }, [initialPrompt, submit]);
 
-    const { showFileTree, selectedFile, setSelectedFile, diffMode } =
-        useFileTree();
+    const {
+        showFileTree,
+        selectedFile,
+        setSelectedFile,
+        diffMode,
+        activePane,
+        setActivePane,
+    } = useFileTree();
     const [highlightedLine, setHighlightedLine] = useState<
         number | undefined
     >();
+    const [isFullscreenCode, setIsFullscreenCode] = useState(false);
+    const [chatMode, setChatMode] = useState<'insert' | 'scroll'>('insert');
+    const chatScrollRef = useRef<any>(null);
+
+    const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
+    const requestStartTimeRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (!isLoading) {
+            if (requestStartTimeRef.current) {
+                const duration = Date.now() - requestStartTimeRef.current;
+                setLastLatencyMs(duration);
+                requestStartTimeRef.current = null;
+            }
+        }
+    }, [isLoading]);
+
+    useEffect(() => {
+        if (activePane !== 'chat') {
+            setChatMode('insert');
+        }
+    }, [activePane]);
 
     useEffect(() => {
         setHighlightedLine(undefined);
     }, [selectedFile]);
 
+    useEffect(() => {
+        if (!selectedFile) {
+            setIsFullscreenCode(false);
+        }
+    }, [selectedFile]);
+
+    const renderChat = !isFullscreenCode;
+    const renderFileTree = showFileTree && !isFullscreenCode;
+    const renderCodeViewer = !!selectedFile;
+
     return (
         <box flexDirection="row" width="100%" height="100%">
-            {showFileTree && (
+            {renderFileTree && (
                 <FileTree
                     rootPath={process.cwd()}
                     selectedFile={selectedFile}
                     onSelectFile={setSelectedFile}
                 />
             )}
-            {showFileTree && selectedFile ? (
-                diffMode ? (
-                    <FileDiffPanel filePath={selectedFile} />
-                ) : (
-                    <box flexDirection="row" flexGrow={1} height="100%">
-                        <SymbolOutline
-                            filePath={selectedFile}
-                            onSelectSymbol={(sym) =>
-                                setHighlightedLine(sym.line)
-                            }
-                        />
-                        <CodePanel
-                            filePath={selectedFile}
-                            highlightedLine={highlightedLine}
-                        />
-                    </box>
-                )
-            ) : (
-                <box flexDirection="column" flexGrow={1}>
+
+            {renderCodeViewer && (
+                <box flexDirection="row" flexGrow={60} width={isFullscreenCode ? "100%" : "60%"} height="100%">
+                    {diffMode ? (
+                        <FileDiffPanel filePath={selectedFile} />
+                    ) : (
+                        <box flexDirection="row" flexGrow={1} height="100%">
+                            {!isFullscreenCode && (
+                                <SymbolOutline
+                                    filePath={selectedFile}
+                                    onSelectSymbol={(sym) =>
+                                        setHighlightedLine(sym.line)
+                                    }
+                                />
+                            )}
+                            <CodePanel
+                                filePath={selectedFile}
+                                highlightedLine={highlightedLine}
+                            />
+                        </box>
+                    )}
+                </box>
+            )}
+
+            {renderChat && (
+                <box flexDirection="column" flexGrow={renderCodeViewer ? 40 : 1} width={renderCodeViewer ? "40%" : "100%"} height="100%">
                     <SessionShell
-                        onSubmit={(text) =>
-                            submit({ userText: text, mode, model })
-                        }
+                        onSubmit={(text) => {
+                            requestStartTimeRef.current = Date.now();
+                            submit({ userText: text, mode, model });
+                        }}
                         onClear={clearMessages}
                         loading={isLoading}
                         interruptible={isLoading}
@@ -440,6 +566,10 @@ function SessionChat({
                         sessionId={session.id}
                         confirmationManager={confirmationManager}
                         questionManager={questionManager}
+                        scrollRef={chatScrollRef}
+                        chatMode={chatMode}
+                        messages={messages}
+                        lastLatencyMs={lastLatencyMs}
                     >
                         {displayMessages.length > MAX_VISIBLE_MESSAGES && (
                             <box paddingX={3} paddingTop={1}>
