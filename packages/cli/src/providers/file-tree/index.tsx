@@ -19,9 +19,9 @@ type FileTreeContextValue = {
     shrinkTree: () => void;
     diffMode: boolean;
     openDiffMode: () => void;
-    activePane: 'file-tree' | 'symbol-outline' | 'code-panel';
+    activePane: 'file-tree' | 'symbol-outline' | 'code-panel' | 'chat';
     setActivePane: (
-        pane: 'file-tree' | 'symbol-outline' | 'code-panel',
+        pane: 'file-tree' | 'symbol-outline' | 'code-panel' | 'chat',
     ) => void;
 };
 
@@ -33,15 +33,15 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
     const [fileTreeWidth, setFileTreeWidth] = useState(DEFAULT_WIDTH);
     const [diffMode, setDiffMode] = useState(false);
     const [activePane, setActivePane] = useState<
-        'file-tree' | 'symbol-outline' | 'code-panel'
-    >('file-tree');
+        'file-tree' | 'symbol-outline' | 'code-panel' | 'chat'
+    >('chat');
 
     const toggleFileTree = useCallback(() => {
         setShowFileTree((prev) => {
             if (prev) {
                 setSelectedFile(undefined);
                 setDiffMode(false);
-                setActivePane('file-tree');
+                setActivePane('chat');
             } else {
                 setActivePane('file-tree');
             }
@@ -53,12 +53,12 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
         setShowFileTree(false);
         setSelectedFile(undefined);
         setDiffMode(false);
-        setActivePane('file-tree');
+        setActivePane('chat');
     }, []);
 
     const clearSelectedFile = useCallback(() => {
         setSelectedFile(undefined);
-        setActivePane('file-tree');
+        setActivePane('chat');
     }, []);
 
     const growTree = useCallback(() => {
@@ -88,7 +88,7 @@ export function FileTreeProvider({ children }: { children: ReactNode }) {
                     if (path) {
                         setActivePane('symbol-outline');
                     } else {
-                        setActivePane('file-tree');
+                        setActivePane('chat');
                     }
                 },
                 clearSelectedFile,

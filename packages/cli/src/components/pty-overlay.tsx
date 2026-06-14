@@ -25,7 +25,7 @@ const sanitizeTerminalOutput = (output: string) => {
 };
 
 export function PtyOverlay() {
-    const { active, command, output, isAttached, detach, writeInput } =
+    const { active, command, output, isAttached, detach, writeInput, interrupt } =
         usePtySession();
     const { isTopLayer, push, pop } = useKeyboardLayer();
     const dimensions = useTerminalDimensions();
@@ -36,7 +36,7 @@ export function PtyOverlay() {
         if (isAttached) {
             push('pty', () => {
                 // Handle Ctrl+C propagation for app close prevention
-                writeInput('\x03');
+                interrupt();
                 return true;
             });
         } else {
@@ -45,7 +45,7 @@ export function PtyOverlay() {
         return () => {
             pop('pty');
         };
-    }, [isAttached, push, pop, writeInput]);
+    }, [isAttached, push, pop, interrupt]);
 
     useKeyboard((key) => {
         if (!isAttached || !isTopLayer('pty')) return;
@@ -72,7 +72,7 @@ export function PtyOverlay() {
         // Ctrl+C to interrupt
         if (key.ctrl && key.name === 'c') {
             key.preventDefault();
-            writeInput('\x03');
+            interrupt();
             return;
         }
 

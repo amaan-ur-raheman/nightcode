@@ -13,9 +13,10 @@ import {
     getProviderDisplayName,
     extractProvider,
 } from '@/lib/model-names';
-import { highlightCode, renderBashOutput } from '@/lib/syntax-highlight';
+import { highlightCode } from '@/lib/syntax-highlight';
 import { loadSettings } from '@/lib/settings';
 import { toUnifiedDiff } from '@/lib/diff-utils';
+import { type ThemeColors } from '@/theme';
 
 import { EmptyBorder } from '@/components/border';
 import { MarkdownText } from '@/lib/markdown';
@@ -25,6 +26,14 @@ import { TaskGraphView } from '@/components/task-graph';
 import { TaskListPanel } from '@/components/task-list-panel';
 import { QuestionResult } from '@/components/question-result';
 import { useOrchestration } from '@/hooks/use-orchestration';
+import {
+    SearchMatchesBlock,
+    GitStatusBlock,
+    SecretScanBlock,
+    ProfileCodeBlock,
+    GitLogTimelineBlock,
+    parseGitShortStatus,
+} from './enhanced-tool-outputs';
 import { orchestratorManager } from '@/lib/orchestrator-manager';
 
 type ClientMessagePart = Message['parts'][number];
@@ -59,13 +68,33 @@ function formatToolArgs(tc: ToolPart): string {
     }
 
     const entries = Object.entries(tc.input);
+    if (entries.length === 0) return '';
+
+    // If it's a single simple argument (like command, query, etc.), show just the value
+    if (entries.length === 1) {
+        const [key, val] = entries[0]!;
+        if (typeof val !== 'object' || val === null) {
+            const str = String(val ?? '');
+            return str.length > 80 ? str.slice(0, 77) + '...' : str;
+        }
+    }
+
     const summary = entries
         .map(([key, val]) => {
-            const str = String(val ?? '');
+            let str = '';
+            if (typeof val === 'object' && val !== null) {
+                try {
+                    str = JSON.stringify(val);
+                } catch {
+                    str = String(val);
+                }
+            } else {
+                str = String(val ?? '');
+            }
             if (str.length > 40) {
                 return `${key}: ${str.slice(0, 37)}...`;
             }
-            return str;
+            return `${key}: ${str}`;
         })
         .join(' ');
 
@@ -163,56 +192,114 @@ function renderHighlightedContent(
           ];
 }
 
-const COLLAPSE_THRESHOLD = 10;
-
-function BashOutput({
+function BashTerminalBlock({
+    command,
     output,
     colors,
 }: {
-    output: { stdout: string; stderr: string; exitCode: number };
-    colors: ReturnType<typeof useTheme>['colors'];
+    command: string;
+    output?: { stdout: string; stderr: string; exitCode: number } | null;
+    colors: ThemeColors;
 }) {
     const [collapsed, setCollapsed] = useState(true);
-    const hasOutput = !!(output.stdout?.trim() || output.stderr?.trim());
-    const totalLines =
-        (output.stdout?.split('\n').length ?? 0) +
-        (output.stderr?.split('\n').length ?? 0);
-    const isLong = totalLines > COLLAPSE_THRESHOLD;
 
-    if (!hasOutput) return null;
+    const lines = command.split('\n');
+    const renderedCommand = lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('#')) {
+            return (
+                <text key={`cmd-c-${idx}`} fg={colors.dimSeparator}>
+                    {line}
+                </text>
+            );
+        } else if (trimmed) {
+            const highlighted = highlightCode(line, 'shell', colors, true);
+            return (
+                <text key={`cmd-l-${idx}`}>
+                    <span fg={colors.dimSeparator}>$ </span>
+                    {highlighted}
+                </text>
+            );
+        } else {
+            return <text key={`cmd-e-${idx}`}>{''}</text>;
+        }
+    });
 
-    const rendered = renderBashOutput(
-        output.stdout ?? '',
-        output.stderr ?? '',
-        output.exitCode,
-        colors,
-    );
+    const stdout = output?.stdout ?? '';
+    const stderr = output?.stderr ?? '';
 
-    if (!rendered) return null;
+    const renderedOutput: React.ReactNode[] = [];
+    const ERROR_PATTERN =
+        /^\s*(error:|fatal:|panic:|cannot|permission denied|no such file|not found|failed|ERR!)/i;
 
-    if (!isLong) {
-        return (
-            <box paddingLeft={2} width="100%">
-                {rendered}
-            </box>
+    if (stdout.trim()) {
+        const stdoutLines = stdout.split('\n');
+        renderedOutput.push(
+            ...stdoutLines.map((line, i) => (
+                <text key={`s-${i}`} fg={colors.text}>
+                    {line}
+                </text>
+            )),
         );
     }
 
-    return (
-        <box flexDirection="column" paddingLeft={2} width="100%">
-            <box
-                {...({ onClick: () => setCollapsed((c) => !c) } as any)}
-                flexDirection="row"
-                gap={1}
-            >
-                <text fg={colors.dimSeparator}>{collapsed ? '▸' : '▾'}</text>
-                <text fg={colors.dimSeparator}>
-                    {collapsed
-                        ? `${totalLines} lines (click to expand)`
-                        : 'click to collapse'}
+    if (stderr.trim()) {
+        const stderrLines = stderr.split('\n');
+        renderedOutput.push(
+            ...stderrLines.map((line, i) => (
+                <text
+                    key={`e-${i}`}
+                    fg={
+                        ERROR_PATTERN.test(line)
+                            ? colors.error
+                            : colors.dimSeparator
+                    }
+                >
+                    {line}
                 </text>
+            )),
+        );
+    }
+
+    const hasOutput = renderedOutput.length > 0;
+    const isLong = renderedOutput.length > 15;
+
+    return (
+        <box paddingLeft={2} width="100%">
+            <box
+                flexDirection="column"
+                paddingX={2}
+                paddingY={1}
+                backgroundColor={colors.dialogSurface}
+                width="100%"
+                marginBottom={1}
+            >
+                {renderedCommand}
+                {hasOutput && (
+                    <>
+                        <text>{''}</text>
+                        {isLong ? (
+                            <box flexDirection="column" width="100%">
+                                <box
+                                    {...({ onClick: () => setCollapsed((c) => !c) } as any)}
+                                    flexDirection="row"
+                                    gap={1}
+                                >
+                                    <text fg={colors.dimSeparator}>{collapsed ? '▸' : '▾'}</text>
+                                    <text fg={colors.dimSeparator}>
+                                        {collapsed
+                                            ? `${renderedOutput.length} lines of output (click to expand)`
+                                            : 'click to collapse output'}
+                                    </text>
+                                </box>
+                                {!collapsed && renderedOutput}
+                            </box>
+                        ) : (
+                            renderedOutput
+                        )}
+                    </>
+                )}
             </box>
-            {!collapsed && rendered}
         </box>
     );
 }
@@ -308,6 +395,7 @@ export const BotMessage = React.memo(function BotMessage({
 
                             // Build unified diff for editFile/writeFile
                             let diffText: string | undefined;
+                            let filePath: string | undefined;
                             if (
                                 isEditFile &&
                                 'input' in part &&
@@ -318,7 +406,7 @@ export const BotMessage = React.memo(function BotMessage({
                                     string,
                                     unknown
                                 >;
-                                const filePath = String(input.path ?? '');
+                                filePath = String(input.path ?? '');
                                 const oldStr = String(input.oldString ?? '');
                                 const newStr = String(input.newString ?? '');
                                 if (filePath && (oldStr || newStr)) {
@@ -338,7 +426,7 @@ export const BotMessage = React.memo(function BotMessage({
                                     string,
                                     unknown
                                 >;
-                                const filePath = String(input.path ?? '');
+                                filePath = String(input.path ?? '');
                                 const content = String(input.content ?? '');
                                 if (filePath && content) {
                                     const lines = content.split('\n');
@@ -389,26 +477,120 @@ export const BotMessage = React.memo(function BotMessage({
                                                         )?.path ?? '',
                                                     )}
                                                 </em>
+                                            ) : toolName === 'bash' ? (
+                                                null
                                             ) : (
                                                 formatToolArgs(part)
                                             )}
                                             {isRunning && <ToolTimer />}
                                         </text>
                                     </box>
-                                    {/* Show bash output for bash tool */}
+
+                                    {/* Show inline terminal for bash tool */}
                                     {toolName === 'bash' &&
-                                        isComplete &&
-                                        'output' in part &&
-                                        !!part.output &&
-                                        typeof part.output === 'object' && (
-                                            <BashOutput
-                                                output={part.output as any}
-                                                colors={colors}
-                                            />
-                                        )}
+                                    'input' in part &&
+                                    part.input &&
+                                    typeof part.input === 'object' ? (
+                                        <BashTerminalBlock
+                                            command={String((part.input as any).command ?? '')}
+                                            output={
+                                                isComplete &&
+                                                'output' in part &&
+                                                part.output &&
+                                                typeof part.output === 'object'
+                                                    ? (part.output as any)
+                                                    : null
+                                            }
+                                            colors={colors}
+                                        />
+                                    ) : null}
+
+                                    {/* Show inline search matches for grep/codeSearch */}
+                                    {(toolName === 'grep' || toolName === 'codeSearch') &&
+                                    isComplete &&
+                                    'output' in part &&
+                                    part.output &&
+                                    typeof part.output === 'object' ? (
+                                        <SearchMatchesBlock
+                                            matches={(part.output as any).matches ?? []}
+                                            colors={colors}
+                                        />
+                                    ) : null}
+
+                                    {/* Show inline status for gitStatus/gitStatusExtended */}
+                                    {(toolName === 'gitStatus' || toolName === 'gitStatusExtended') &&
+                                    isComplete &&
+                                    'output' in part &&
+                                    part.output &&
+                                    typeof part.output === 'object' ? (
+                                        (() => {
+                                            const out = part.output as any;
+                                            if (toolName === 'gitStatus' && typeof out.status === 'string') {
+                                                const parsed = parseGitShortStatus(out.status);
+                                                return (
+                                                    <GitStatusBlock
+                                                        staged={parsed.staged}
+                                                        unstaged={parsed.unstaged}
+                                                        untracked={parsed.untracked}
+                                                        currentBranch={parsed.currentBranch}
+                                                        colors={colors}
+                                                    />
+                                                );
+                                            }
+                                            return (
+                                                <GitStatusBlock
+                                                    staged={out.staged ?? []}
+                                                    unstaged={out.unstaged ?? []}
+                                                    untracked={out.untracked ?? []}
+                                                    currentBranch={out.currentBranch}
+                                                    colors={colors}
+                                                />
+                                            );
+                                        })()
+                                    ) : null}
+
+                                    {/* Show inline secrets for secretScan */}
+                                    {toolName === 'secretScan' &&
+                                    isComplete &&
+                                    'output' in part &&
+                                    part.output &&
+                                    typeof part.output === 'object' ? (
+                                        <SecretScanBlock
+                                            secrets={(part.output as any).secrets ?? []}
+                                            colors={colors}
+                                        />
+                                    ) : null}
+
+                                    {/* Show inline profile results for profileCode */}
+                                    {toolName === 'profileCode' &&
+                                    isComplete &&
+                                    'output' in part &&
+                                    part.output &&
+                                    typeof part.output === 'object' ? (
+                                        <ProfileCodeBlock
+                                            summary={String((part.output as any).summary ?? '')}
+                                            hotspots={(part.output as any).hotspots ?? []}
+                                            topPerformers={(part.output as any).topPerformers ?? []}
+                                            durationMs={Number((part.output as any).durationMs ?? 0)}
+                                            colors={colors}
+                                        />
+                                    ) : null}
+
+                                    {/* Show inline timeline for gitLog */}
+                                    {toolName === 'gitLog' &&
+                                    isComplete &&
+                                    'output' in part &&
+                                    part.output &&
+                                    typeof part.output === 'object' ? (
+                                        <GitLogTimelineBlock
+                                            commits={(part.output as any).commits ?? []}
+                                            colors={colors}
+                                        />
+                                    ) : null}
+
                                     {/* Show inline diff for editFile/writeFile */}
                                     {(isEditFile || isWriteFile) &&
-                                        diffText &&
+                                        !!diffText &&
                                         isComplete && (
                                             <box paddingLeft={2} width="100%">
                                                 <diff
@@ -419,6 +601,7 @@ export const BotMessage = React.memo(function BotMessage({
                                                     }
                                                     diff={diffText}
                                                     showLineNumbers
+                                                    filetype={filePath ? filePath.split('.').pop()?.toLowerCase() : undefined}
                                                 />
                                             </box>
                                         )}

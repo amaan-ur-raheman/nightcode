@@ -52,8 +52,13 @@ export function FileDiffPanel({ filePath }: FileDiffPanelProps) {
                     <text fg={colors.dimSeparator}>Loading diff...</text>
                 )}
                 {error && <text fg={colors.error}>{error}</text>}
-                {!loading && !error && diffText && (
-                    <diff view="split" diff={diffText} showLineNumbers />
+                {!loading && !error && !!diffText && (
+                    <diff
+                        view="split"
+                        diff={diffText}
+                        showLineNumbers
+                        filetype={filePath.split('.').pop()?.toLowerCase()}
+                    />
                 )}
                 {!loading && !error && !diffText && (
                     <text fg={colors.dimSeparator}>No uncommitted changes</text>

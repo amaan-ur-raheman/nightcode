@@ -18,6 +18,7 @@ async function acquireLock(retries = 10, delay = 50): Promise<void> {
                 if (i === retries - 1) {
                     throw new Error(
                         `Failed to acquire lock on memory file: ${err.message}`,
+                        { cause: err },
                     );
                 }
                 await new Promise((resolve) => setTimeout(resolve, delay));

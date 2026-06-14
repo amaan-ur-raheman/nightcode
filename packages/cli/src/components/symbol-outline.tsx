@@ -146,7 +146,11 @@ export function SymbolOutline({
             paddingTop={1}
             overflow="hidden"
         >
-            <text attributes={TextAttributes.BOLD} fg={colors.primary}>
+            <text
+                attributes={TextAttributes.BOLD}
+                fg={activePane === 'symbol-outline' ? colors.primary : colors.dimSeparator}
+            >
+                {activePane === 'symbol-outline' ? '● ' : ''}
                 Outline
             </text>
             <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>

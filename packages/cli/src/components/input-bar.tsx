@@ -50,6 +50,10 @@ type InputBarProps = {
     onAddImage?: (attachment: ImageAttachment) => void;
     onRemoveImage?: (index: number) => void;
     sessionId?: string;
+    chatMode?: 'insert' | 'scroll';
+    messages?: any[];
+    isLoading?: boolean;
+    lastLatencyMs?: number | null;
 };
 
 export function InputBar({
@@ -64,6 +68,10 @@ export function InputBar({
     onAddImage,
     onRemoveImage,
     sessionId,
+    chatMode = 'insert',
+    messages = [],
+    isLoading = false,
+    lastLatencyMs,
 }: InputBarProps) {
     const textareaRef = useRef<TextareaRenderable>(null);
     const onSubmitRef = useRef<() => void>(() => {});
@@ -77,7 +85,7 @@ export function InputBar({
     const { colors } = useTheme();
     const navigate = useNavigate();
     const { mode, model, toggleMode, setModel, setMode } = usePromptConfig();
-    const { toggleFileTree, openDiffMode, selectedFile } = useFileTree();
+    const { toggleFileTree, openDiffMode, selectedFile, activePane } = useFileTree();
 
     const {
         showCommandMenu,
@@ -560,7 +568,11 @@ export function InputBar({
             <box
                 width="100%"
                 border={['left']}
-                borderColor={getModeColor(mode, colors)}
+                borderColor={
+                    activePane === 'chat'
+                        ? getModeColor(mode, colors)
+                        : colors.dimSeparator
+                }
                 customBorderChars={{
                     ...EmptyBorder,
                     vertical: '┃',
@@ -691,6 +703,8 @@ export function InputBar({
                             ref={textareaRef}
                             focused={
                                 !disabled &&
+                                activePane === 'chat' &&
+                                chatMode === 'insert' &&
                                 (isTopLayer('base') ||
                                     isTopLayer('command') ||
                                     isTopLayer('mention'))
@@ -699,15 +713,20 @@ export function InputBar({
                             onContentChange={handleTextareaContentChange}
                             onCursorChange={handleTextareaCursorChange}
                             placeholder={
-                                mode === Mode.PLAN
-                                    ? 'Describe what to plan... (@ for files)'
-                                    : 'Describe what to build... (@ for files)'
+                                chatMode === 'scroll'
+                                    ? 'SCROLL MODE — Press i to type, j/k to scroll'
+                                    : mode === Mode.PLAN
+                                      ? 'Describe what to plan... (@ for files)'
+                                      : 'Describe what to build... (@ for files)'
                             }
                         />
                     </box>
                     <StatusBar
                         messageCount={messageCount}
                         sessionTitle={sessionTitle}
+                        messages={messages}
+                        isLoading={isLoading}
+                        lastLatencyMs={lastLatencyMs}
                     />
                 </box>
             </box>
