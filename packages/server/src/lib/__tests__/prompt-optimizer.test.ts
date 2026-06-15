@@ -56,6 +56,36 @@ describe('optimizePrompt', () => {
         const result = optimizePrompt('PLEASE ensure that you must test');
         expect(result).toBe('must test');
     });
+
+    it('replaces "do not" with "don\'t"', () => {
+        const result = optimizePrompt('do not use this');
+        expect(result).toBe("don't use this");
+    });
+
+    it('replaces "does not" with "doesn\'t"', () => {
+        const result = optimizePrompt('does not work');
+        expect(result).toBe("doesn't work");
+    });
+
+    it('replaces "cannot" with "can\'t"', () => {
+        const result = optimizePrompt('cannot proceed');
+        expect(result).toBe("can't proceed");
+    });
+
+    it('replaces "will not" with "won\'t"', () => {
+        const result = optimizePrompt('will not compile');
+        expect(result).toBe("won't compile");
+    });
+
+    it('compresses "When to X" patterns', () => {
+        const result = optimizePrompt('**When to use** this tool');
+        expect(result).toBe('**use:** this tool');
+    });
+
+    it('removes trailing periods from bullet items', () => {
+        const result = optimizePrompt('- This is a bullet point.');
+        expect(result).toBe('- This is a bullet point');
+    });
 });
 
 describe('estimateTokens', () => {
