@@ -1,7 +1,8 @@
 import { runGit } from './utils';
+import { getProjectCwd } from '../workspace-context';
 
 export async function gitStatusExtendedTool() {
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
 
     try {
         const statusResult = await runGit(cwd, ['status', '--porcelain=v1']);

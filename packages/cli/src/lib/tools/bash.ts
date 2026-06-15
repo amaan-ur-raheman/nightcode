@@ -2,6 +2,7 @@ import { toolInputSchemas } from '@nightcode/shared';
 import { checkCommandSafety } from './dangerous-ops';
 import { MAX_OUTPUT, truncate } from './utils';
 import { ptySessionManager } from '../pty-session';
+import { getProjectCwd } from '../workspace-context';
 
 export function spawnCommand(command: string, options: Record<string, any>) {
     return Bun.spawn(['bash', '-c', command], options);
@@ -46,7 +47,7 @@ export async function bashTool(
 
     let timedOut = false;
     const proc = spawnCommand(command, {
-        cwd: process.cwd(),
+        cwd: getProjectCwd(),
         stdin: 'pipe',
         stdout: 'pipe',
         stderr: 'pipe',

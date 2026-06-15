@@ -1,5 +1,6 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { runGit } from './utils';
+import { getProjectCwd } from '../workspace-context';
 import {
     getGitState,
     createFeatureBranch,
@@ -10,7 +11,7 @@ export async function gitCommitTool(input: unknown) {
     const { message, files } = toolInputSchemas.gitCommit.parse(input);
 
     try {
-        const cwd = process.cwd();
+        const cwd = getProjectCwd();
         const filesToStage = files && files.length > 0 ? files : [];
 
         // Auto-create feature branch if on main
