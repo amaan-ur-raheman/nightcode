@@ -1,3 +1,4 @@
+import { relative } from 'path';
 import { toolInputSchemas, type ModeType } from '@nightcode/shared';
 import { getValidAuth } from '@/lib/auth';
 import {
@@ -14,9 +15,58 @@ import {
     releaseSlot,
     recordProviderLatency,
 } from '@/lib/concurrency-limit';
+import { undoManager } from '@/lib/undo-manager';
+import { runGit } from './utils';
+import { getProjectCwd } from '@/lib/workspace-context';
 
 const SUBAGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (increased from 5)
 const MAX_STEPS = 100;
+
+async function injectWorkspaceContext(task: string, cwd: string): Promise<string> {
+    const recentFiles = new Set<string>();
+    
+    // 1. Gather from undo history
+    try {
+        const undoHistory = undoManager.getHistory();
+        for (const entry of undoHistory) {
+            if (entry.filePath) {
+                const rel = relative(cwd, entry.filePath);
+                if (!rel.startsWith('..')) {
+                    recentFiles.add(rel);
+                }
+            }
+        }
+    } catch {}
+
+    // 2. Gather from git status
+    try {
+        const gitRes = await runGit(cwd, ['status', '--porcelain']);
+        if (gitRes && gitRes.stdout) {
+            const lines = gitRes.stdout.split('\n');
+            for (const line of lines) {
+                if (line.length < 3) continue;
+                const rest = line.substring(3);
+                const arrowIdx = rest.indexOf(' -> ');
+                const file = arrowIdx !== -1 ? rest.substring(arrowIdx + 4) : rest;
+                if (file) {
+                    recentFiles.add(file);
+                }
+            }
+        }
+    } catch {}
+
+    if (recentFiles.size === 0) {
+        return task;
+    }
+
+    const contextBlock = `\n\n## Workspace Context (Auto-injected from parent session)
+Recently modified or active files in the workspace:
+${Array.from(recentFiles).map(f => `- ${f}`).join('\n')}
+
+Please focus on these files or inspect them if they are relevant to your task.`;
+
+    return task + contextBlock;
+}
 
 export async function spawnAgentTool(
     input: unknown,
@@ -71,10 +121,12 @@ export async function spawnAgentTool(
     signal?.addEventListener('abort', onCaller, { once: true });
 
     const startTime = Date.now();
+    const cwd = getProjectCwd();
+    const taskWithContext = await injectWorkspaceContext(task, cwd);
 
     try {
         const result = await runSubagentLoop({
-            prompt: task,
+            prompt: taskWithContext,
             mode: mode as 'BUILD' | 'PLAN',
             model: resolvedModel,
             auth,

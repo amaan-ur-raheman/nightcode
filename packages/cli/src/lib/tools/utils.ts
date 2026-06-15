@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve } from 'path';
 import { stat, readFile, writeFile } from 'fs/promises';
 import { undoManager } from '../undo-manager';
 import { globCache } from '../glob-cache';
+import { getProjectCwd } from '../workspace-context';
 
 export const IGNORE = new Set([
     'node_modules',
@@ -56,7 +57,7 @@ export const MAX_PATCH_SIZE = 200_000;
 export const MAX_TEST_OUTPUT = 50_000;
 
 export function resolveInsideCwd(path: string) {
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
     const resolved = resolve(cwd, path);
     const rel = relative(cwd, resolved);
     if (rel.startsWith('..') || isAbsolute(rel)) {
@@ -73,11 +74,16 @@ export function truncate(value: string, limit: number) {
 
 const GIT_TIMEOUT_MS = 30_000; // 30 seconds
 
-export async function runGit(cwd: string, args: string[]) {
+export async function runGit(
+    cwd: string,
+    args: string[],
+    env?: Record<string, string>,
+) {
     const proc = Bun.spawn(['git', ...args], {
         cwd,
         stdout: 'pipe',
         stderr: 'pipe',
+        env: env ? { ...process.env, ...env } : undefined,
     });
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -171,7 +177,7 @@ export async function globReplace(
     globPattern: string,
     replaceFn: (content: string) => { updated: string; count: number },
 ): Promise<{ filesChanged: number; changes: ReplaceResult[] }> {
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
 
     const allMatches = await globCache.getCachedGlob(globPattern, cwd);
     const files: string[] = [];
