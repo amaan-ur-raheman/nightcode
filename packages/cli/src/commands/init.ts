@@ -70,14 +70,14 @@ export function initCommand(options: InitOptions): void {
     const templateKey = options.template || 'basic';
     const template = TEMPLATES[templateKey];
 
-    console.log(`\n🚀 Initializing NightCode project: ${projectName}\n`);
+    console.log(`\nInitializing NightCode project: ${projectName}\n`);
     console.log(`Template: ${template.description}\n`);
 
     // Check for existing .nightcode directory
     const nightcodeDir = join(projectDir, '.nightcode');
     if (existsSync(nightcodeDir)) {
         console.log(
-            '⚠️  .nightcode directory already exists. Skipping initialization.',
+            '[WARNING] .nightcode directory already exists. Skipping initialization.',
         );
         console.log('   Remove it first if you want to re-initialize.\n');
         return;
@@ -97,7 +97,7 @@ export function initCommand(options: InitOptions): void {
         } else {
             writeFileSync(fullPath, content, 'utf-8');
         }
-        console.log(`  ✅ Created ${filePath}`);
+        console.log(`  [OK] Created ${filePath}`);
     }
 
     // Initialize git if requested
@@ -121,7 +121,7 @@ export function initCommand(options: InitOptions): void {
 
             if (isInsideGit) {
                 console.log(
-                    '  ⚠️  Directory is already inside a Git repository. Skipping Git initialization.',
+                    '  [WARNING] Directory is already inside a Git repository. Skipping Git initialization.',
                 );
             } else {
                 execSync('git init', { cwd: projectDir, stdio: 'ignore' });
@@ -130,18 +130,18 @@ export function initCommand(options: InitOptions): void {
                     cwd: projectDir,
                     stdio: 'ignore',
                 });
-                console.log('  ✅ Initialized git repository');
+                console.log('  [OK] Initialized git repository');
             }
         } catch (error) {
             const errorMsg =
                 error instanceof Error ? error.message : String(error);
             console.log(
-                `  ⚠️  Git initialization skipped/failed in ${projectDir}: ${errorMsg}`,
+                `  [WARNING] Git initialization skipped/failed in ${projectDir}: ${errorMsg}`,
             );
         }
     }
 
-    console.log('\n✨ NightCode project initialized!\n');
+    console.log('\nNightCode project initialized!\n');
     console.log('Next steps:');
     console.log('  1. Run `nightcode` to start the TUI');
     console.log('  2. Configure MCP servers in .nightcode/settings.json');

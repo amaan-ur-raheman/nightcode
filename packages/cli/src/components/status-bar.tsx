@@ -121,8 +121,7 @@ export const StatusBar = React.memo(function StatusBar({
     let latencyStr = '';
     const finalDurationMs = lastLatencyMs ?? lastDurationMs;
     if (!isLoading && finalDurationMs != null) {
-        const emoji = finalDurationMs < 800 ? '🟢' : finalDurationMs < 3000 ? '🟡' : '🔴';
-        latencyStr = `${emoji} ${finalDurationMs >= 1000 ? `${(finalDurationMs / 1000).toFixed(1)}s` : `${finalDurationMs}ms`}`;
+        latencyStr = finalDurationMs >= 1000 ? `${(finalDurationMs / 1000).toFixed(1)}s` : `${finalDurationMs}ms`;
     }
 
     const userMessages = messageCount != null ? messageCount : 0;

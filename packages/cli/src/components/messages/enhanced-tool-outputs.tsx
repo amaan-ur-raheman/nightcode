@@ -186,7 +186,7 @@ export function SecretScanBlock({
                 width="100%"
             >
                 <text fg={colors.error} attributes={['bold'] as any}>
-                    🛡️ Security Scan: {secrets.length} secret{secrets.length > 1 ? 's' : ''} found
+                    Security Scan: {secrets.length} secret{secrets.length > 1 ? 's' : ''} found
                 </text>
                 <text fg={colors.dimSeparator} marginBottom={1}>
                     Review each finding before staging or committing changes.
@@ -253,7 +253,7 @@ export function ProfileCodeBlock({
     return (
         <box paddingLeft={2} flexDirection="column" width="100%">
             <text fg={colors.info} attributes={['bold'] as any}>
-                ⏱️ Profiling Results ({durationMs}ms)
+                Profiling Results ({durationMs}ms)
             </text>
             <text fg={colors.dimSeparator} marginBottom={1}>
                 {summary}

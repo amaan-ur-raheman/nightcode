@@ -177,7 +177,7 @@ export function RenameDialogContent() {
                         if (canSubmit) handleRename(false);
                     }}
                 >
-                    {loading ? '[Running...]' : '[🔍 Preview (dry run)]'}
+                    {loading ? '[Running...]' : '[Preview (dry run)]'}
                 </text>
                 <text
                     fg={canSubmit ? colors.error : colors.dimSeparator}
@@ -185,7 +185,7 @@ export function RenameDialogContent() {
                         if (canSubmit) handleRename(true);
                     }}
                 >
-                    {loading ? '[Running...]' : '[✏️ Apply Rename]'}
+                    {loading ? '[Running...]' : '[Apply Rename]'}
                 </text>
             </box>
 
@@ -208,7 +208,7 @@ export function RenameDialogContent() {
                                 attributes={TextAttributes.BOLD}
                                 marginBottom={1}
                             >
-                                📋 Preview: {result.totalMatches} occurrence(s)
+                                Preview: {result.totalMatches} occurrence(s)
                                 in {result.filesChanged} file(s)
                             </text>
                             <scrollbox height={6}>

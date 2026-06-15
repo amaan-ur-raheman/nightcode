@@ -30,11 +30,11 @@ const STATUS_COLORS: Record<
 };
 
 const ROLE_LABELS: Record<string, string> = {
-    coder: '💻',
-    reviewer: '🔍',
-    tester: '🧪',
-    researcher: '📚',
-    debugger: '🐛',
+    coder: '[CODER]',
+    reviewer: '[REVIEW]',
+    tester: '[TEST]',
+    researcher: '[RESEARCH]',
+    debugger: '[DEBUG]',
 };
 
 function formatToolName(name: string): string {

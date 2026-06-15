@@ -84,7 +84,7 @@ class ErrorPatternTracker {
     formatSuggestionsForPrompt(): string {
         if (this.suggestions.length === 0) return '';
         return (
-            '\n\n### ⚠️ Error Patterns Detected\n' +
+            '\n\n### [WARNING] Error Patterns Detected\n' +
             'You have encountered these errors repeatedly. Consider these suggestions:\n\n' +
             this.suggestions.map((s) => `- ${s}`).join('\n')
         );
