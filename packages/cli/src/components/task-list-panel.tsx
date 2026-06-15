@@ -47,7 +47,7 @@ export const TaskListPanel = React.memo(function TaskListPanel() {
     return (
         <box flexDirection="column" gap={0} paddingLeft={3} width="100%">
             <box flexDirection="row" gap={1} alignItems="center" width="100%">
-                <text attributes={TextAttributes.BOLD}>📋 Task List</text>
+                <text attributes={TextAttributes.BOLD}>Task List</text>
                 <ProgressBar
                     completed={completed}
                     total={total}

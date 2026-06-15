@@ -69,7 +69,7 @@ export async function breakingChangeCheckTool(input: unknown) {
 
     if (report.willBreak) {
         const lines: string[] = [
-            `⚠️  Breaking Change Detected!`,
+            `[WARNING] Breaking Change Detected!`,
             '',
             `Node: ${nodeId}`,
             `Removed Exports: ${report.removedExports.join(', ')}`,
@@ -99,7 +99,7 @@ export async function breakingChangeCheckTool(input: unknown) {
     }
 
     return {
-        output: `✅ No breaking changes. All exports are preserved.`,
+        output: `[OK] No breaking changes. All exports are preserved.`,
     };
 }
 
@@ -128,10 +128,10 @@ export async function suggestMigrationTool(input: unknown) {
     for (const step of steps) {
         const priority =
             step.priority === 'critical'
-                ? '🔴'
+                ? '[CRITICAL]'
                 : step.priority === 'recommended'
-                  ? '🟡'
-                  : '⚪';
+                  ? '[RECOMMENDED]'
+                  : '[INFO]';
         lines.push(`${priority} Step ${step.step}: [${step.action}]`);
         lines.push(`   ${step.description}`);
         if (step.filePath) {

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'fs';
 import { resolve, extname, relative } from 'path';
 import { debug } from './debug';
 import { runCommand } from './command-runner';
+import { getProjectCwd } from './workspace-context';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -648,7 +649,14 @@ class AutoFixPipeline {
     private debounceTimer: ReturnType<typeof setTimeout> | null = null;
     private lastReport: ValidationReport | null = null;
     private projectType: ProjectType | null = null;
-    private cwd: string = process.cwd();
+    private _cwd?: string;
+    get cwd(): string {
+        return this._cwd ?? getProjectCwd();
+    }
+    set cwd(val: string) {
+        this._cwd = val;
+        this.projectType = null;
+    }
 
     /**
      * Update pipeline configuration.
@@ -850,7 +858,6 @@ class AutoFixPipeline {
      */
     setCwd(cwd: string): void {
         this.cwd = cwd;
-        this.projectType = null; // Reset project type when cwd changes
     }
 
     /**
@@ -907,24 +914,24 @@ function formatSummary(
     const parts: string[] = [];
 
     for (const result of results) {
-        const icon = result.success ? '✅' : '❌';
+        const icon = result.success ? '✓' : '✗';
         const duration = `${(result.durationMs / 1000).toFixed(1)}s`;
         parts.push(`${icon} ${result.checkType} (${duration})`);
     }
 
     if (errorCount > 0 || warningCount > 0) {
         parts.push('');
-        if (errorCount > 0) parts.push(`🔴 ${errorCount} error(s)`);
-        if (warningCount > 0) parts.push(`🟡 ${warningCount} warning(s)`);
+        if (errorCount > 0) parts.push(`[ERROR] ${errorCount} error(s)`);
+        if (warningCount > 0) parts.push(`[WARNING] ${warningCount} warning(s)`);
     }
 
     if (autoFixResult) {
         parts.push('');
         if (autoFixResult.success) {
-            parts.push('🔧 Auto-fix resolved all issues');
+            parts.push('[Auto-Fix] Resolved all issues');
         } else {
             parts.push(
-                `🔧 Auto-fix: ${autoFixResult.remainingErrors} error(s) remain`,
+                `[Auto-Fix] ${autoFixResult.remainingErrors} error(s) remain`,
             );
         }
     }

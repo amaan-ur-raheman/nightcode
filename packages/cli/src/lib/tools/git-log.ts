@@ -1,5 +1,6 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { runGit } from './utils';
+import { getProjectCwd } from '../workspace-context';
 
 export async function gitLogTool(input: unknown) {
     const { limit, oneline, author } = toolInputSchemas.gitLog.parse(input);
@@ -10,7 +11,7 @@ export async function gitLogTool(input: unknown) {
         if (author) args.push(`--author=${author}`);
         args.push('-n', String(limit));
 
-        const result = await runGit(process.cwd(), args);
+        const result = await runGit(getProjectCwd(), args);
         if (result.exitCode !== 0) {
             return {
                 success: false,

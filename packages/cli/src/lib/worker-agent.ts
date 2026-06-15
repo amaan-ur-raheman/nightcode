@@ -151,7 +151,7 @@ function buildDependencyResults(task: TaskNode, graph: TaskGraph): string {
             if (!dep) return null;
 
             if (dep.status === 'failed') {
-                return `### ⚠️ Prerequisite "${dep.description}" FAILED\nError: ${dep.error}\nContinue without this context.`;
+                return `### [WARNING] Prerequisite "${dep.description}" FAILED\nError: ${dep.error}\nContinue without this context.`;
             }
             if (dep.status === 'cancelled') {
                 return `### Prerequisite "${dep.description}" was cancelled. Continue without it.`;

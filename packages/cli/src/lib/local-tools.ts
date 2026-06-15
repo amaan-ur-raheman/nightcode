@@ -6,6 +6,7 @@ import { autoFixPipeline } from './auto-fix-pipeline';
 import { fileWatcher } from './file-watcher';
 import { resolve } from 'path';
 import { toolOutputCache } from './tool-output-cache';
+import { debug } from './debug';
 
 const PLAN_TOOLS = new Set([
     'readFile',
@@ -191,6 +192,73 @@ async function directExecute(
 
         // Cache the result for future identical calls
         toolOutputCache.set(toolName, input, result);
+
+        // Auto-advance task list if applicable
+        try {
+            const { getTaskList, taskListTool } = await import('./tools/task-list');
+            const { basename } = await import('path');
+            const state = getTaskList();
+            if (state && state.tasks && state.tasks.length > 0) {
+                const pendingOrInProgress = state.tasks.filter(
+                    (t) => t.status === 'pending' || t.status === 'in-progress'
+                );
+                if (pendingOrInProgress.length > 0) {
+                    let matchedTask: any = null;
+                    const inp = input as Record<string, unknown> | undefined;
+
+                    if (['editFile', 'writeFile', 'patch', 'searchReplace'].includes(toolName) && inp) {
+                        let filePath = '';
+                        if (toolName === 'editFile' || toolName === 'writeFile') {
+                            filePath = typeof inp.path === 'string' ? inp.path : '';
+                        } else if (toolName === 'searchReplace') {
+                            filePath = typeof inp.glob === 'string' ? inp.glob : '';
+                        } else if (toolName === 'patch') {
+                            const patchStr = typeof inp.patch === 'string' ? inp.patch : '';
+                            const match = /^\+\+\+\s+b\/([^\t\r\n]+)/m.exec(patchStr);
+                            filePath = match ? match[1]!.trim() : '';
+                        }
+
+                        if (filePath) {
+                            const name = basename(filePath);
+                            matchedTask = pendingOrInProgress.find(
+                                (t) => t.description.toLowerCase().includes(name.toLowerCase())
+                            );
+                        }
+                    } else if (toolName === 'validateCode') {
+                        matchedTask = pendingOrInProgress.find((t) => {
+                            const desc = t.description.toLowerCase();
+                            return desc.includes('test') || desc.includes('verify') || desc.includes('typecheck') || desc.includes('validate') || desc.includes('lint') || desc.includes('check');
+                        });
+                    } else if (toolName === 'gitCommit') {
+                        matchedTask = pendingOrInProgress.find((t) => {
+                            const desc = t.description.toLowerCase();
+                            return desc.includes('commit') || desc.includes('push') || desc.includes('git');
+                        });
+                    } else if (toolName === 'bash' && inp && typeof inp.command === 'string') {
+                        const cmd = inp.command.toLowerCase();
+                        if (cmd.includes('test') || cmd.includes('vitest') || cmd.includes('jest')) {
+                            matchedTask = pendingOrInProgress.find((t) => {
+                                const desc = t.description.toLowerCase();
+                                return desc.includes('test') || desc.includes('verify') || desc.includes('run');
+                            });
+                        }
+                    }
+
+                    if (matchedTask) {
+                        if (typeof matchedTask.id !== 'string' || !matchedTask.id) {
+                            console.warn('[local-tools] Matched task is missing a valid id property:', matchedTask);
+                        } else {
+                            await taskListTool({
+                                action: 'complete',
+                                taskId: matchedTask.id
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            debug.warn('local-tools', 'Failed to auto-advance task list', error);
+        }
 
         // Track file modifications for the auto-fix pipeline and invalidate cache
         if (FILE_MODIFYING_TOOLS.has(toolName)) {

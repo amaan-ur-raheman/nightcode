@@ -353,8 +353,8 @@ export function TimelineDialogContent({
                                     `Snapshot ${s.commitHash.substring(0, 6)}`;
                                 const prefix =
                                     originalMsg?.role === 'assistant'
-                                        ? '🤖'
-                                        : '👤';
+                                        ? '[AI]'
+                                        : '[USER]';
 
                                 return (
                                     <box

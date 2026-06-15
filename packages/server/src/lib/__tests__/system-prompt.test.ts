@@ -108,7 +108,7 @@ describe('buildSystemPrompt', () => {
     it('includes parallel tool execution rules in subagent prompt', () => {
         const prompt = buildSubagentSystemPrompt({ mode: 'PLAN' });
         expect(prompt).toContain(
-            'Emit ALL independent tool calls in a SINGLE response',
+            'Emit ALL independent readFile/glob/grep calls in ONE response',
         );
         expect(prompt).toContain('they execute in parallel');
     });
@@ -119,5 +119,137 @@ describe('buildSystemPrompt', () => {
 
         const buildPrompt = buildSubagentSystemPrompt({ mode: 'BUILD' });
         expect(buildPrompt).toContain('Verify changes');
+    });
+
+    it('includes git history tools', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('gitLog');
+        expect(prompt).toContain('gitBlame');
+        expect(prompt).toContain('gitBranch');
+        expect(prompt).toContain('gitStatusExtended');
+        expect(prompt).toContain('diffFiles');
+    });
+
+    it('includes file intelligence tools', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('getOutline');
+        expect(prompt).toContain('fileInfo');
+        expect(prompt).toContain('createDirectory');
+    });
+
+    it('includes web fetch tool', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('webFetch');
+    });
+
+    it('includes persistent REPL tool', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('replExecute');
+    });
+
+    it('includes keychain tools', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('keychainSet');
+        expect(prompt).toContain('keychainGet');
+        expect(prompt).toContain('keychainDelete');
+    });
+
+    it('includes knowledge graph lifecycle guidance', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('buildKnowledgeGraph');
+        expect(prompt).toContain('Build once at session start');
+    });
+
+    it('includes common workflows section', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('Workflows & Patterns');
+        expect(prompt).toContain('Safe Refactoring');
+        expect(prompt).toContain('Pre-commit');
+        expect(prompt).toContain('Debug');
+    });
+
+    it('includes model selection guidance', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('Model Selection');
+        expect(prompt).toContain('Fast/cheap');
+        expect(prompt).toContain('Balanced');
+        expect(prompt).toContain('Deep reasoning');
+    });
+
+    it('includes anti-patterns section', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        // Anti-patterns were consolidated into Workflows & Patterns and Error Recovery
+        expect(prompt).toContain('don\'t use searchReplace for code symbols');
+        expect(prompt).toContain('don\'t store secrets in memory');
+    });
+
+    it('includes tool combinations section', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        // Tool combinations were consolidated into Workflows & Patterns
+        expect(prompt).toContain('Architecture');
+        expect(prompt).toContain('buildKnowledgeGraph');
+        expect(prompt).toContain('Pre-commit');
+    });
+
+    it('includes mode-specific tool guidance', () => {
+        // Mode-specific guidance is now integrated into Tool Usage sections
+        const buildPrompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(buildPrompt).toContain('Every Task');
+        expect(buildPrompt).toContain('Most Tasks');
+        expect(buildPrompt).toContain('Common Tools');
+
+        const planPrompt = buildSystemPrompt({ mode: 'PLAN' });
+        expect(planPrompt).toContain('Tool Usage');
+    });
+
+    it('includes additional workflow patterns', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('Feature');
+        expect(prompt).toContain('Rename Across Files');
+        expect(prompt).toContain('New File');
+        expect(prompt).toContain('Code Review');
+    });
+
+    it('includes Quick Reference at top of prompt', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('Quick Reference');
+        expect(prompt).toContain('Read before edit');
+        expect(prompt).toContain('Parallelize');
+        expect(prompt).toContain('Verify after changes');
+    });
+
+    it('includes Happy Path example', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('Happy Path');
+        expect(prompt).toContain('good path');
+        expect(prompt).toContain('bad path');
+    });
+
+    it('does not include Quick Reference for subagents', () => {
+        const prompt = buildSubagentSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).not.toContain('Quick Reference');
+    });
+
+    it('includes Error Recovery section', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('Error Recovery');
+        expect(prompt).toContain('validateCode fails');
+        expect(prompt).toContain('editFile fails');
+        expect(prompt).toContain('bash command fails');
+    });
+
+    it('resolves grep vs semanticSearch correctly', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        // grep for string literals, semanticSearch for symbols
+        expect(prompt).toContain('Use grep for string literals');
+        expect(prompt).toContain('semanticSearch');
+        expect(prompt).toContain('NOT for string literals');
+    });
+
+    it('includes tool frequency organization', () => {
+        const prompt = buildSystemPrompt({ mode: 'BUILD' });
+        expect(prompt).toContain('Every Task');
+        expect(prompt).toContain('Most Tasks');
+        expect(prompt).toContain('Common Tools');
     });
 });

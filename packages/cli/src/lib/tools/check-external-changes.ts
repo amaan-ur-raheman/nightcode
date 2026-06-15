@@ -59,7 +59,7 @@ function formatChanges(changes: FileChangeEvent[], since?: number): string {
     const deleted = changes.filter((c) => c.changeType === 'deleted');
 
     if (created.length > 0) {
-        lines.push(`### ✨ Created (${created.length})`);
+        lines.push(`### [Created] (${created.length})`);
         for (const c of created) {
             lines.push(`- ${c.filePath}`);
         }
@@ -67,7 +67,7 @@ function formatChanges(changes: FileChangeEvent[], since?: number): string {
     }
 
     if (modified.length > 0) {
-        lines.push(`### ✏️ Modified (${modified.length})`);
+        lines.push(`### [Modified] (${modified.length})`);
         for (const c of modified) {
             lines.push(`- ${c.filePath}`);
         }
@@ -75,7 +75,7 @@ function formatChanges(changes: FileChangeEvent[], since?: number): string {
     }
 
     if (deleted.length > 0) {
-        lines.push(`### 🗑️ Deleted (${deleted.length})`);
+        lines.push(`### [Deleted] (${deleted.length})`);
         for (const c of deleted) {
             lines.push(`- ${c.filePath}`);
         }
@@ -85,7 +85,7 @@ function formatChanges(changes: FileChangeEvent[], since?: number): string {
     lines.push(`**Total: ${changes.length} file(s) changed externally**`);
     lines.push('');
     lines.push(
-        '⚠️ These changes were made outside of this session. Re-read affected files before editing them.',
+        '[WARNING] These changes were made outside of this session. Re-read affected files before editing them.',
     );
 
     return lines.join('\n');

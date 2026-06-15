@@ -212,7 +212,7 @@ export function CommitDialogContent({
                     gap={1}
                 >
                     <text fg={colors.error} attributes={TextAttributes.BOLD}>
-                        ⚠️ No Changes Staged for Commit
+                        [WARNING] No Changes Staged for Commit
                     </text>
                     <text fg={colors.text}>
                         Use Space in the file tree view or run 'git add' in bash
@@ -230,7 +230,7 @@ export function CommitDialogContent({
                     width="100%"
                 >
                     <text fg={colors.success} attributes={TextAttributes.BOLD}>
-                        📂 Staged Changes ({stagedFiles.length})
+                        Staged Changes ({stagedFiles.length})
                     </text>
                     <scrollbox height={4}>
                         {stagedFiles.map((file) => (
@@ -248,7 +248,7 @@ export function CommitDialogContent({
                     fg={colors.primary}
                     marginBottom={1}
                 >
-                    📝 Commit Message:
+                    Commit Message:
                 </text>
                 <box
                     border={['bottom', 'left', 'right', 'top']}
@@ -274,7 +274,7 @@ export function CommitDialogContent({
                     paddingY={0}
                     marginTop={1}
                 >
-                    <text fg={colors.error}>❌ {error}</text>
+                    <text fg={colors.error}>[ERROR] {error}</text>
                 </box>
             )}
 
@@ -300,7 +300,7 @@ export function CommitDialogContent({
                         >
                             {generatingMessage
                                 ? 'Generating...'
-                                : '🪄 AI Generate'}
+                                : 'AI Generate'}
                         </text>
                     </box>
                 )}
@@ -317,7 +317,7 @@ export function CommitDialogContent({
                     >
                         {committing
                             ? 'Committing...'
-                            : '💾 Commit (Ctrl+Enter)'}
+                            : 'Commit (Ctrl+Enter)'}
                     </text>
                 </box>
             </box>

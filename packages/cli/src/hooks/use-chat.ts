@@ -48,6 +48,7 @@ import {
 } from '@/lib/subagent-progress';
 import { safeStringify } from '@/lib/safe-json';
 import { timelineManager } from '@/lib/timeline-manager';
+import { fileWatcher } from '@/lib/file-watcher';
 
 const MAX_SUBAGENT_OUTPUT_CHARS = 8000;
 
@@ -405,6 +406,35 @@ export function useChat(
             }
         }
     }, [chat.status, chat.messages, sessionId]);
+
+    // Subscribes to the fileWatcher to reactively push system messages when files change externally
+    useEffect(() => {
+        if (!fileWatcher.isWatching()) {
+            fileWatcher.start();
+        }
+        const unsubscribe = fileWatcher.onChange((events) => {
+            const externalChanges = events.filter((e) => !e.isInternal);
+            if (externalChanges.length === 0) return;
+
+            const changeDescriptions = externalChanges.map(
+                (e) => `"${e.filePath}" was ${e.changeType} externally`,
+            );
+            const noticeText = `[System Notice: ${changeDescriptions.join(', ')}. Please re-read if necessary.]`;
+
+            const systemMessage = {
+                id: crypto.randomUUID(),
+                role: 'system' as const,
+                content: noticeText,
+                parts: [{ type: 'text' as const, text: noticeText }],
+            };
+
+            chat.setMessages((prev) => [...prev, systemMessage]);
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [chat]);
 
     // Flush collected tool calls — executes single tools directly, batches multiple via batchManager
     const flushPendingToolCalls = useCallback(

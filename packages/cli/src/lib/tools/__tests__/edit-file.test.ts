@@ -46,4 +46,17 @@ describe('editFileTool', () => {
             retryable: true,
         });
     });
+
+    it('fuzzy matches oldString with minor whitespace differences', async () => {
+        writeFileSync(join(TEST_DIR, 'test.ts'), '  const x   =   1;\n\n  const y = 2;');
+        const { editFileTool } = await import('../edit-file');
+        const result = await editFileTool({
+            path: 'test.ts',
+            oldString: 'const x = 1;\nconst y = 2;',
+            newString: 'const x = 100;\nconst y = 200;',
+        });
+        expect(result).toHaveProperty('success', true);
+        const fileContent = readFileSync(join(TEST_DIR, 'test.ts'), 'utf-8');
+        expect(fileContent).toContain('const x = 100;\nconst y = 200;');
+    });
 });

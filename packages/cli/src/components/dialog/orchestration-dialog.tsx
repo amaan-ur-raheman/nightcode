@@ -43,12 +43,12 @@ const STATUS_COLORS: Record<
 };
 
 const ROLE_EMOJIS: Record<string, string> = {
-    coder: '💻',
-    reviewer: '🔍',
-    tester: '🧪',
-    researcher: '📚',
-    debugger: '🐛',
-    orchestrator: '🎯',
+    coder: '[CODER]',
+    reviewer: '[REVIEW]',
+    tester: '[TEST]',
+    researcher: '[RESEARCH]',
+    debugger: '[DEBUG]',
+    orchestrator: '[ORCH]',
 };
 
 export function OrchestrationDialogContent({
@@ -119,19 +119,19 @@ export function OrchestrationDialogContent({
     const getAvailableActions = (node: TaskNode) => {
         const actions: { id: string; label: string }[] = [];
         if (node.status === 'running') {
-            actions.push({ id: 'pause', label: '⏸ Pause Task' });
+            actions.push({ id: 'pause', label: 'Pause Task' });
         } else if (node.status === 'paused') {
-            actions.push({ id: 'resume', label: '▶ Resume Task' });
+            actions.push({ id: 'resume', label: 'Resume Task' });
         }
         if (
             node.status === 'failed' ||
             node.status === 'cancelled' ||
             node.status === 'completed'
         ) {
-            actions.push({ id: 'retry', label: '🔄 Retry Task' });
+            actions.push({ id: 'retry', label: 'Retry Task' });
         }
-        actions.push({ id: 'force_complete', label: '🏁 Force Complete' });
-        actions.push({ id: 'edit', label: '✏ Edit Details' });
+        actions.push({ id: 'force_complete', label: 'Force Complete' });
+        actions.push({ id: 'edit', label: 'Edit Details' });
         actions.push({ id: 'back', label: '← Back to Tasks' });
         return actions;
     };
@@ -432,7 +432,7 @@ export function OrchestrationDialogContent({
                     fg={colors.primary}
                     marginBottom={1}
                 >
-                    🎯 Active Orchestrations:
+                    Active Orchestrations:
                 </text>
                 <scrollbox ref={graphsScrollRef} height={8}>
                     {activeGraphs.map((state, i) => {
@@ -526,7 +526,7 @@ export function OrchestrationDialogContent({
                                         }
                                         attributes={TextAttributes.DIM}
                                     >
-                                        ⚡{' '}
+                                        {' '}
                                         {state.workerCount -
                                             state.completedWorkers}{' '}
                                         Active Workers
@@ -562,7 +562,7 @@ export function OrchestrationDialogContent({
                             onMouseDown={() => setMode('graphs')}
                             attributes={TextAttributes.BOLD}
                         >
-                            📂 Active Orchestrations
+                            Active Orchestrations
                         </text>
                         <text fg={colors.dimSeparator}>›</text>
                         <text fg={colors.text} attributes={TextAttributes.BOLD}>
@@ -594,7 +594,7 @@ export function OrchestrationDialogContent({
                         const symbol = STATUS_SYMBOLS[node.status] || '○';
                         const colorKey =
                             STATUS_COLORS[node.status] || 'dimSeparator';
-                        const emoji = ROLE_EMOJIS[node.type] || '🤖';
+                        const emoji = ROLE_EMOJIS[node.type] || '[AGENT]';
                         return (
                             <box
                                 key={node.id}
@@ -650,7 +650,7 @@ export function OrchestrationDialogContent({
                         fg={colors.primary}
                         marginBottom={1}
                     >
-                        📊 Topology Dependency Map
+                        Topology Dependency Map
                     </text>
                     <TaskGraphView graph={currentGraph} compact />
                 </box>
@@ -670,7 +670,7 @@ export function OrchestrationDialogContent({
         const actions = getAvailableActions(currentNode);
         const symbol = STATUS_SYMBOLS[currentNode.status] || '○';
         const colorKey = STATUS_COLORS[currentNode.status] || 'dimSeparator';
-        const emoji = ROLE_EMOJIS[currentNode.type] || '🤖';
+        const emoji = ROLE_EMOJIS[currentNode.type] || '[AGENT]';
 
         return (
             <box flexDirection="column" gap={1} width="100%">
@@ -719,7 +719,7 @@ export function OrchestrationDialogContent({
                             fg={colors.primary}
                             attributes={TextAttributes.BOLD}
                         >
-                            🆔 {currentNode.id}
+                            ID: {currentNode.id}
                         </text>
                         <text fg={colors.primary}>
                             {emoji} {currentNode.type.toUpperCase()}
@@ -764,7 +764,7 @@ export function OrchestrationDialogContent({
                         marginTop={1}
                     >
                         <text attributes={TextAttributes.DIM} marginBottom={1}>
-                            📂 Result output:
+                            Result output:
                         </text>
                         <scrollbox
                             height={4}
@@ -789,7 +789,7 @@ export function OrchestrationDialogContent({
                             attributes={TextAttributes.DIM}
                             marginBottom={1}
                         >
-                            ❌ Error logs:
+                            [ERROR] Error logs:
                         </text>
                         <scrollbox
                             height={3}
@@ -804,7 +804,7 @@ export function OrchestrationDialogContent({
 
                 <box flexDirection="column" gap={1} marginTop={1} width="100%">
                     <text attributes={TextAttributes.BOLD} fg={colors.primary}>
-                        ⚙️ Controls & Overrides:
+                        Controls & Overrides:
                     </text>
                     <box flexDirection="column" gap={0}>
                         {actions.map((act, i) => {
@@ -854,7 +854,7 @@ export function OrchestrationDialogContent({
                     fg={colors.primary}
                     marginBottom={1}
                 >
-                    ✏️ Edit Task Specifications: {currentNode.id}
+                    Edit Task Specifications: {currentNode.id}
                 </text>
 
                 <box flexDirection="column" gap={0} width="100%">
@@ -951,7 +951,7 @@ export function OrchestrationDialogContent({
                     fg={colors.primary}
                     marginBottom={1}
                 >
-                    🏁 Force Task Completion: {currentNode.id}
+                    Force Task Completion: {currentNode.id}
                 </text>
 
                 <box flexDirection="column" gap={0} width="100%">

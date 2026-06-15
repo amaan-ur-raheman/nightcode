@@ -82,7 +82,7 @@ export async function mcpAddCommand(options: McpAddOptions): Promise<void> {
     settings.mcp.servers[options.name] = serverConfig;
     saveSettings(settings);
 
-    console.log(`\n✅ Added MCP server "${options.name}"\n`);
+    console.log(`\n[OK] Added MCP server "${options.name}"\n`);
     console.log('Configuration:');
     console.log(JSON.stringify(sanitizeConfig(serverConfig), null, 2));
     console.log('\nRestart NightCode to use the new server.\n');
@@ -99,7 +99,7 @@ export async function mcpRemoveCommand(name: string): Promise<void> {
     delete settings.mcp.servers[name];
     saveSettings(settings);
 
-    console.log(`\n✅ Removed MCP server "${name}"\n`);
+    console.log(`\n[OK] Removed MCP server "${name}"\n`);
 }
 
 export async function mcpListCommand(): Promise<void> {

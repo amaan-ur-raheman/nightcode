@@ -1,5 +1,6 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { runGit } from './utils';
+import { getProjectCwd } from '../workspace-context';
 
 export async function gitBlameTool(input: unknown) {
     const { filePath, startLine, endLine } =
@@ -14,7 +15,7 @@ export async function gitBlameTool(input: unknown) {
         }
         args.push(filePath);
 
-        const result = await runGit(process.cwd(), args);
+        const result = await runGit(getProjectCwd(), args);
         if (result.exitCode !== 0) {
             return {
                 success: false,

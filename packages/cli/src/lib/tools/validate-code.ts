@@ -71,14 +71,14 @@ function formatReport(report: ValidationReport): string {
     lines.push(`## Validation Report`);
     lines.push('');
     lines.push(
-        `**Status:** ${report.success ? '✅ All checks passed' : '❌ Issues found'}`,
+        `**Status:** ${report.success ? '[PASS] All checks passed' : '[FAIL] Issues found'}`,
     );
     lines.push(`**Files checked:** ${report.filesChecked.length}`);
     lines.push('');
 
     // Individual check results
     for (const result of report.results) {
-        const icon = result.success ? '✅' : '❌';
+        const icon = result.success ? '[PASS]' : '[FAIL]';
         const duration = `${(result.durationMs / 1000).toFixed(1)}s`;
         lines.push(`### ${icon} ${result.checkType} (${duration})`);
 
@@ -89,7 +89,7 @@ function formatReport(report: ValidationReport): string {
                     ? `${error.file}${error.line ? `:${error.line}` : ''}`
                     : '';
                 const rule = error.rule ? ` (${error.rule})` : '';
-                const prefix = error.severity === 'error' ? '🔴' : '🟡';
+                const prefix = error.severity === 'error' ? '[ERROR]' : '[WARN]';
                 lines.push(`- ${prefix} ${location}${rule}: ${error.message}`);
             }
             if (result.errors.length > 20) {
@@ -107,7 +107,7 @@ function formatReport(report: ValidationReport): string {
 
     // Auto-fix results
     if (report.autoFixResult) {
-        lines.push('### 🔧 Auto-Fix');
+        lines.push('### [Auto-Fix]');
         lines.push('');
         if (report.autoFixResult.success) {
             lines.push('Auto-fix resolved all lint issues.');

@@ -1,9 +1,10 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { runGit } from './utils';
+import { getProjectCwd } from '../workspace-context';
 
 export async function gitBranchTool(input: unknown) {
     const { action, name } = toolInputSchemas.gitBranch.parse(input);
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
 
     try {
         switch (action) {

@@ -1,8 +1,9 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { MAX_DIFF, runGit } from './utils';
+import { getProjectCwd } from '../workspace-context';
 
 export async function gitStatusTool() {
-    const result = await runGit(process.cwd(), [
+    const result = await runGit(getProjectCwd(), [
         'status',
         '--short',
         '--branch',
@@ -17,7 +18,7 @@ export async function gitDiffTool(input: unknown) {
     const args = ['diff'];
     if (staged) args.push('--cached');
     if (path) args.push('--', path);
-    const result = await runGit(process.cwd(), args);
+    const result = await runGit(getProjectCwd(), args);
     if (result.exitCode !== 0)
         return { error: result.stderr || 'git diff failed' };
     const diff = result.stdout;

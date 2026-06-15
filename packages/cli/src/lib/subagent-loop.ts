@@ -14,6 +14,8 @@ import { debug } from './debug';
 import { getApiKeyForProvider } from './api-keys';
 import { resolveProviderForModel } from '@nightcode/shared';
 import { ErrorPatternTracker } from './error-pattern-tracker';
+import { workspaceLocalStorage, getProjectCwd } from './workspace-context';
+import { setupWorktree, teardownWorktree } from './worktree';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:5959';
 
@@ -225,6 +227,25 @@ export async function runSubagentLoop(
         checkpointId,
         errorTracker,
     } = config;
+
+    const parentCwd = getProjectCwd();
+    let worktreePath = parentCwd;
+    let worktreeCreated = false;
+    const activeAgentId = agentId ?? crypto.randomUUID();
+
+    if (mode === 'BUILD') {
+        try {
+            worktreePath = await setupWorktree(activeAgentId, parentCwd);
+            worktreeCreated = (worktreePath !== parentCwd);
+        } catch (err) {
+            console.error(`[${label}] Failed to setup worktree for agent ${activeAgentId}:`, err);
+            throw err;
+        }
+    }
+
+    let success = false;
+    try {
+        const result = await workspaceLocalStorage.run({ cwd: worktreePath, agentId: activeAgentId }, async () => {
 
     // Track files modified in this session for self-verification
     const filesModified = new Set<string>();
@@ -684,7 +705,7 @@ export async function runSubagentLoop(
                         if (errorTracker) {
                             const suggestion = errorTracker.record(error);
                             if (suggestion) {
-                                part.errorText += `\n\n💡 Suggestion: ${suggestion}`;
+                                part.errorText += `\n\n[Suggestion] ${suggestion}`;
                             }
                         }
                     }
@@ -740,6 +761,14 @@ export async function runSubagentLoop(
         // Unlink parent abort listener if we added one
         // (heartbeatController is GC'd when function exits)
     }
+});
+success = true;
+return result;
+} finally {
+    if (worktreeCreated) {
+        await teardownWorktree(activeAgentId, worktreePath, parentCwd, success);
+    }
+}
 }
 
 /**

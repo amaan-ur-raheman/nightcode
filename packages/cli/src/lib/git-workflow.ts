@@ -1,5 +1,6 @@
 import { runGit } from './tools/utils';
 import { scanFilesForSecrets } from './tools/secret-scan';
+import { getProjectCwd } from './workspace-context';
 
 /**
  * Git workflow automation for NightCode.
@@ -22,7 +23,7 @@ export interface GitState {
  * Get the current git repository state.
  */
 export async function getGitState(): Promise<GitState> {
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
 
     const branchResult = await runGit(cwd, ['branch', '--show-current']);
     const branch = branchResult.stdout.trim() || 'detached';
@@ -48,7 +49,7 @@ export async function getGitState(): Promise<GitState> {
 export async function createFeatureBranch(
     description: string,
 ): Promise<string> {
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
 
     // Generate a URL-safe slug from the description
     const slug = description
@@ -87,7 +88,7 @@ export async function preCommitSecretScan(files: string[]): Promise<{
         severity: string;
     }>;
 }> {
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
 
     // If no specific files provided, scan all staged files
     let filesToScan = files;
@@ -138,7 +139,7 @@ export async function generatePRSummary(): Promise<{
     commits: string[];
     stats: { filesChanged: number; insertions: number; deletions: number };
 }> {
-    const cwd = process.cwd();
+    const cwd = getProjectCwd();
 
     // Determine the base branch
     const mainCheck = await runGit(cwd, ['rev-parse', '--verify', 'main']);

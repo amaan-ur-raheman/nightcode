@@ -372,31 +372,31 @@ function formatSummary(
     durationMs: number,
 ): string {
     const parts: string[] = [];
-    parts.push(`🔧 Benchmark tool: ${toolName}`);
-    parts.push(`⏱  Total time: ${(durationMs / 1000).toFixed(1)}s`);
-    parts.push(`📊 Benchmarks found: ${benchmarks.length}`);
+    parts.push(`Benchmark tool: ${toolName}`);
+    parts.push(`Total time: ${(durationMs / 1000).toFixed(1)}s`);
+    parts.push(`Benchmarks found: ${benchmarks.length}`);
     parts.push('');
 
     if (benchmarks.length > 0) {
-        parts.push('📈 Top performers (by ops/sec):');
+        parts.push('Top performers (by ops/sec):');
         const top3 = [...benchmarks]
             .sort((a, b) => (b.opsPerSec ?? 0) - (a.opsPerSec ?? 0))
             .slice(0, 3);
-        for (const b of top3) {
+        top3.forEach((b, index) => {
             const marginStr =
                 b.margin !== undefined ? ` (±${b.margin.toFixed(1)}%)` : '';
             parts.push(
-                `  🥇 ${b.name}: ${(b.opsPerSec ?? 0).toLocaleString()} ops/s${marginStr}`,
+                `  [#${index + 1}] ${b.name}: ${(b.opsPerSec ?? 0).toLocaleString()} ops/s${marginStr}`,
             );
-        }
+        });
     }
 
     if (hotspots.length > 0) {
         parts.push('');
-        parts.push('🔥 Hotspots (slowest benchmarks):');
+        parts.push('Hotspots (slowest benchmarks):');
         for (let i = 0; i < hotspots.length; i++) {
             const b = hotspots[i]!;
-            const icon = i === 0 ? '🟥' : i === 1 ? '🟧' : '🟨';
+            const icon = i === 0 ? '[High]' : i === 1 ? '[Medium]' : '[Low]';
             parts.push(
                 `  ${icon} ${b.name}: ${formatDuration(b.avgTimeNs ?? 0)}/iter`,
             );
