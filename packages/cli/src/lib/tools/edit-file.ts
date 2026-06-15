@@ -26,6 +26,38 @@ export async function editFileTool(
         idx += oldString.length;
     }
 
+    let isFuzzyMatch = false;
+    let matchedString: string | null = null;
+
+    if (occurrences === 0) {
+        // Try fuzzy match by normalizing newlines and collapsing spaces/tabs
+        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const lines = oldString.split(/\r?\n/);
+        const linePatterns = lines.map(line => {
+            const trimmed = line.trim();
+            if (trimmed === '') {
+                return '[ \\t]*';
+            }
+            const escaped = escapeRegExp(trimmed);
+            // Replace internal spaces/tabs with flexible horizontal spacing
+            return '[ \\t]*' + escaped.replace(/[ \t]+/g, '[ \\t]+');
+        });
+        const patternStr = linePatterns.join('[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)*');
+        try {
+            const regex = new RegExp(patternStr, 'g');
+            const matches = content.match(regex);
+            if (matches && matches.length === 1) {
+                occurrences = 1;
+                matchedString = matches[0];
+                isFuzzyMatch = true;
+            } else if (matches && matches.length > 1) {
+                occurrences = matches.length;
+            }
+        } catch (e) {
+            // Ignore regex construction errors and fall back to occurrences = 0
+        }
+    }
+
     if (occurrences === 0) {
         return {
             error: 'oldString not found in file',
@@ -37,12 +69,33 @@ export async function editFileTool(
 
     if (occurrences > 1) {
         // Find line numbers for each occurrence
-        const lines = content.split('\n');
         const matchLines: number[] = [];
-        for (let lineNum = 1; lineNum <= lines.length; lineNum++) {
-            const line = lines[lineNum - 1];
-            if (line && line.includes(oldString)) {
+        if (isFuzzyMatch) {
+            const lines = oldString.split(/\r?\n/);
+            const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const linePatterns = lines.map(line => {
+                const trimmed = line.trim();
+                if (trimmed === '') return '[ \\t]*';
+                return '[ \\t]*' + escapeRegExp(trimmed).replace(/[ \t]+/g, '[ \\t]+');
+            });
+            const patternStr = linePatterns.join('[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)*');
+            try {
+                const regex = new RegExp(patternStr, 'g');
+                let match;
+                while ((match = regex.exec(content)) !== null) {
+                    const beforeMatch = content.slice(0, match.index);
+                    const lineNum = beforeMatch.split('\n').length;
+                    matchLines.push(lineNum);
+                }
+            } catch {}
+        } else {
+            let searchStart = 0;
+            while (searchStart < content.length) {
+                const idx = content.indexOf(oldString, searchStart);
+                if (idx === -1) break;
+                const lineNum = content.slice(0, idx).split('\n').length;
                 matchLines.push(lineNum);
+                searchStart = idx + oldString.length;
             }
         }
 
@@ -54,7 +107,9 @@ export async function editFileTool(
         };
     }
 
-    const newContent = content.replace(oldString, () => newString);
+    const newContent = isFuzzyMatch && matchedString
+        ? content.replace(matchedString, () => newString)
+        : content.replace(oldString, () => newString);
     const diff = generateDiff(content, newContent);
     const diffOutput = formatDiff(diff);
 
