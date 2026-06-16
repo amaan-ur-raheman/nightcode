@@ -3,6 +3,7 @@ import { relative } from 'path';
 import { toolInputSchemas } from '@nightcode/shared';
 import { resolveInsideCwd } from './utils';
 import { globCache } from '../glob-cache';
+import { undoManager } from '../undo-manager';
 
 export async function deleteFileTool(input: unknown) {
     const { path, recursive } = toolInputSchemas.deleteFile.parse(input);
@@ -12,6 +13,9 @@ export async function deleteFileTool(input: unknown) {
         return { error: 'Cannot delete the project root directory' };
 
     try {
+        // Backup file before deleting so the operation can be undone
+        await undoManager.backup(resolved, 'deleteFile', `Delete ${path}`);
+
         await rm(resolved, { recursive });
         globCache.invalidate();
         return { success: true as const, path: relative(cwd, resolved) };

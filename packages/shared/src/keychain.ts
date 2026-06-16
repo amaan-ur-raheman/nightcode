@@ -10,7 +10,11 @@ function runCommandAsync(
             resolve({
                 stdout: stdout || '',
                 stderr: error?.message || '',
-                exitCode: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
+                exitCode: error
+                    ? typeof error.code === 'number'
+                        ? error.code
+                        : 1
+                    : 0,
             });
         });
         if (input && child.stdin) {

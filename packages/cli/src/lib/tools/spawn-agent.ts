@@ -1,4 +1,5 @@
-import { relative } from 'path';
+import { relative, join } from 'path';
+import { readFileSync, readdirSync, statSync } from 'fs';
 import { toolInputSchemas, type ModeType } from '@nightcode/shared';
 import { getValidAuth } from '@/lib/auth';
 import {
@@ -22,9 +23,15 @@ import { getProjectCwd } from '@/lib/workspace-context';
 const SUBAGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (increased from 5)
 const MAX_STEPS = 100;
 
-async function injectWorkspaceContext(task: string, cwd: string): Promise<string> {
+export async function injectWorkspaceContext(
+    task: string,
+    cwd: string,
+): Promise<string> {
     const recentFiles = new Set<string>();
-    
+    const gitLogLines: string[] = [];
+    const projectStructure: string[] = [];
+    const fileSummaries: string[] = [];
+
     // 1. Gather from undo history
     try {
         const undoHistory = undoManager.getHistory();
@@ -47,7 +54,8 @@ async function injectWorkspaceContext(task: string, cwd: string): Promise<string
                 if (line.length < 3) continue;
                 const rest = line.substring(3);
                 const arrowIdx = rest.indexOf(' -> ');
-                const file = arrowIdx !== -1 ? rest.substring(arrowIdx + 4) : rest;
+                const file =
+                    arrowIdx !== -1 ? rest.substring(arrowIdx + 4) : rest;
                 if (file) {
                     recentFiles.add(file);
                 }
@@ -55,17 +63,104 @@ async function injectWorkspaceContext(task: string, cwd: string): Promise<string
         }
     } catch {}
 
-    if (recentFiles.size === 0) {
+    // 3. Gather recent git log (last 5 commits) for decision context
+    try {
+        const logRes = await runGit(cwd, [
+            'log',
+            '--oneline',
+            '-5',
+            '--format=%h %s',
+        ]);
+        if (logRes && logRes.stdout) {
+            gitLogLines.push(
+                ...logRes.stdout
+                    .split('\n')
+                    .filter((l) => l.trim())
+                    .slice(0, 5),
+            );
+        }
+    } catch {}
+
+    // 4. Get top-level project structure (dirs only, depth 1)
+    try {
+        const entries = readdirSync(cwd).filter(
+            (e) => !e.startsWith('.') && e !== 'node_modules',
+        );
+        for (const entry of entries.slice(0, 15)) {
+            try {
+                const st = statSync(join(cwd, entry));
+                projectStructure.push(
+                    st.isDirectory() ? `${entry}/` : entry,
+                );
+            } catch {}
+        }
+    } catch {}
+
+    // 5. Generate brief summaries of recently modified files (first 3 lines)
+    // Skip binary files by checking for null bytes
+    const fileArray = Array.from(recentFiles).slice(0, 5);
+    for (const filePath of fileArray) {
+        try {
+            const absPath = join(cwd, filePath);
+            const content = readFileSync(absPath, 'utf-8');
+            // Skip binary content (null bytes indicate binary data)
+            if (content.includes('\0')) continue;
+            const firstLines = content
+                .split('\n')
+                .slice(0, 3)
+                .join('\n')
+                .trim();
+            if (firstLines) {
+                fileSummaries.push(
+                    `### ${filePath}\n${firstLines}`,
+                );
+            }
+        } catch {}
+    }
+
+    if (
+        recentFiles.size === 0 &&
+        gitLogLines.length === 0 &&
+        projectStructure.length === 0
+    ) {
         return task;
     }
 
-    const contextBlock = `\n\n## Workspace Context (Auto-injected from parent session)
-Recently modified or active files in the workspace:
-${Array.from(recentFiles).map(f => `- ${f}`).join('\n')}
+    const contextParts: string[] = [
+        '\n\n## Workspace Context (Auto-injected from parent session)',
+    ];
 
-Please focus on these files or inspect them if they are relevant to your task.`;
+    if (recentFiles.size > 0) {
+        contextParts.push(
+            `### Recently Modified Files\n${Array.from(recentFiles)
+                .map((f) => `- ${f}`)
+                .join('\n')}`,
+        );
+    }
 
-    return task + contextBlock;
+    if (gitLogLines.length > 0) {
+        contextParts.push(
+            `### Recent Commits\n${gitLogLines.map((l) => `- ${l}`).join('\n')}`,
+        );
+    }
+
+    if (projectStructure.length > 0) {
+        contextParts.push(
+            `### Project Structure\n${projectStructure.join('\n')}`,
+        );
+    }
+
+    if (fileSummaries.length > 0) {
+        contextParts.push(
+            `### File Previews\n${fileSummaries.join('\n\n')}`,
+        );
+    }
+
+    contextParts.push(
+        '\nPlease focus on these files or inspect them if they are relevant to your task.',
+    );
+
+    return task + contextParts.join('\n');
 }
 
 export async function spawnAgentTool(

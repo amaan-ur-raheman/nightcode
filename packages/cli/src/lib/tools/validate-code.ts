@@ -89,7 +89,8 @@ function formatReport(report: ValidationReport): string {
                     ? `${error.file}${error.line ? `:${error.line}` : ''}`
                     : '';
                 const rule = error.rule ? ` (${error.rule})` : '';
-                const prefix = error.severity === 'error' ? '[ERROR]' : '[WARN]';
+                const prefix =
+                    error.severity === 'error' ? '[ERROR]' : '[WARN]';
                 lines.push(`- ${prefix} ${location}${rule}: ${error.message}`);
             }
             if (result.errors.length > 20) {

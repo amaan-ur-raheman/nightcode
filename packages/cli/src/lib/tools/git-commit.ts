@@ -2,8 +2,6 @@ import { toolInputSchemas } from '@nightcode/shared';
 import { runGit } from './utils';
 import { getProjectCwd } from '../workspace-context';
 import {
-    getGitState,
-    createFeatureBranch,
     preCommitSecretScan,
 } from '../git-workflow';
 
@@ -13,18 +11,6 @@ export async function gitCommitTool(input: unknown) {
     try {
         const cwd = getProjectCwd();
         const filesToStage = files && files.length > 0 ? files : [];
-
-        // Auto-create feature branch if on main
-        let branchNote = '';
-        const state = await getGitState();
-        if (state.isOnMain && state.isDirty) {
-            try {
-                const newBranch = await createFeatureBranch(message);
-                branchNote = `\nCreated feature branch: ${newBranch}`;
-            } catch {
-                // Branch creation failed — continue with commit on current branch
-            }
-        }
 
         // Stage files if provided
         if (filesToStage.length > 0) {
@@ -78,7 +64,7 @@ export async function gitCommitTool(input: unknown) {
 
         return {
             success: true,
-            output: result.stdout + branchNote + warnings,
+            output: result.stdout + warnings,
             commitHash,
         };
     } catch (err) {

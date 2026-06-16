@@ -28,7 +28,9 @@ async function buildTree(
         }
     });
     const resolvedInfos = await Promise.all(lstatPromises);
-    const lastNonNullIndex = resolvedInfos.findLastIndex((info) => info !== null);
+    const lastNonNullIndex = resolvedInfos.findLastIndex(
+        (info) => info !== null,
+    );
 
     // Collect subdirectory tree promises (parallel sibling traversal)
     const childTreePromises: Promise<string[]>[] = [];
