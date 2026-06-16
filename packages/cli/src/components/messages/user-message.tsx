@@ -36,6 +36,7 @@ export const UserMessage = React.memo(function UserMessage({
                     ))}
                 </box>
             )}
+
             <text>{message}</text>
         </MessageBox>
     );

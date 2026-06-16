@@ -1,5 +1,6 @@
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
+import { appendFileSync } from 'fs';
 
 type ErrorBoundaryProps = {
     children: React.ReactNode;
@@ -28,7 +29,7 @@ export class ErrorBoundary extends React.Component<
 
     override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
         try {
-            require('fs').appendFileSync(
+            appendFileSync(
                 '/tmp/nightcode-error.log',
                 `[${new Date().toISOString()}]\n${error.stack || error.message}\nReact Stack:\n${errorInfo.componentStack}\n\n`,
             );

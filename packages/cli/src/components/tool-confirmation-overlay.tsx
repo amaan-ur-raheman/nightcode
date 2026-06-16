@@ -148,9 +148,11 @@ export function ToolConfirmationOverlay({
                         {'⚠ Permission required'}
                     </text>
                     {request.accessPath ? (
-                        <box>
-                            {'  ↳ '}
-                            {request.reason}{' '}
+                        <box flexDirection="row">
+                            <text fg={colors.text}>
+                                {'  ↳ '}
+                                {request.reason}{' '}
+                            </text>
                             <text fg={colors.dimSeparator}>
                                 {request.accessPath}
                             </text>

@@ -57,6 +57,12 @@ export const COMMANDS: Command[] = [
         },
     },
     {
+        name: 'goal',
+        description: 'Run a long-running task autonomously until completed',
+        value: '/goal',
+        category: 'session',
+    },
+    {
         name: 'history',
         description: 'Show visual playback timeline and rollback checkpoints',
         value: '/history',

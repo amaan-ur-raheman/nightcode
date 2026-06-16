@@ -148,7 +148,11 @@ export function SymbolOutline({
         >
             <text
                 attributes={TextAttributes.BOLD}
-                fg={activePane === 'symbol-outline' ? colors.primary : colors.dimSeparator}
+                fg={
+                    activePane === 'symbol-outline'
+                        ? colors.primary
+                        : colors.dimSeparator
+                }
             >
                 {activePane === 'symbol-outline' ? '● ' : ''}
                 Outline

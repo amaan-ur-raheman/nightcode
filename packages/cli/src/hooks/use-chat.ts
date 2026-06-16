@@ -22,6 +22,8 @@ import { apiClient } from '@/lib/api-client';
 import { getApiKeyForProvider } from '@/lib/api-keys';
 import { resolveProviderForModel } from '@nightcode/shared';
 import { executeLocalTool } from '@/lib/local-tools';
+import { correctionTracker } from '@/lib/correction-tracker';
+import { ErrorPatternTracker } from '@/lib/error-pattern-tracker';
 import {
     loadMcpTools,
     callMcpTool,
@@ -41,6 +43,9 @@ import {
 } from '@/lib/tools/dangerous-ops';
 import { questionManager } from '@/lib/tools/question-manager';
 import { isConfirmationEnabled } from '@/lib/settings';
+import { getProjectCwd } from '@/lib/workspace-context';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import {
     setCurrentToolCallContext,
     getCurrentToolCallContext,
@@ -162,6 +167,7 @@ export function useChat(
 ) {
     const isInterruptedRef = useRef(false);
     const mcpToolsRef = useRef<McpToolSchema[]>([]);
+    const errorTrackerRef = useRef(new ErrorPatternTracker());
     const activeToolControllers = useRef<Map<string, AbortController>>(
         new Map(),
     );
@@ -178,6 +184,8 @@ export function useChat(
     const pendingToolCallsTimer = useRef<ReturnType<typeof setTimeout> | null>(
         null,
     );
+    const pendingSystemNoticesRef = useRef<string[]>([]);
+    const isLoadingRef = useRef(false);
 
     // ─── Image attachments ─────────────────────────────────────────────────
     const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>(
@@ -310,6 +318,17 @@ export function useChat(
                     headers['x-provider-key'] = providerKey;
                 }
 
+                let projectContext: string | undefined;
+                try {
+                    const cwd = getProjectCwd();
+                    const rulesPath = join(cwd, '.agentrules');
+                    if (existsSync(rulesPath)) {
+                        projectContext = readFileSync(rulesPath, 'utf8');
+                    }
+                } catch (e) {
+                    // Ignore filesystem errors
+                }
+
                 return {
                     body: {
                         id: sessionId,
@@ -319,9 +338,24 @@ export function useChat(
                             metadata?.mode ??
                             Mode.BUILD,
                         model: modelId,
+                        projectContext,
                         mcpTools:
                             mcpToolsRef.current.length > 0
                                 ? mcpToolsRef.current
+                                : undefined,
+                        corrections: await correctionTracker
+                            .getCorrections()
+                            .then((c) => (c.length > 0 ? c : undefined)),
+                        positives: await correctionTracker
+                            .getPatterns()
+                            .then((p) =>
+                                p.positives.length > 0
+                                    ? p.positives
+                                    : undefined,
+                            ),
+                        errorWarnings:
+                            errorTrackerRef.current.getSuggestions().length > 0
+                                ? errorTrackerRef.current.getSuggestions()
                                 : undefined,
                     },
                     headers,
@@ -365,6 +399,30 @@ export function useChat(
 
     // Store chat ref for access in callbacks
     chatRef.current = chat;
+
+    const isLoading = useMemo(() => {
+        return (
+            chat.status === 'submitted' ||
+            chat.status === 'streaming' ||
+            (chat.status === 'ready' &&
+                !!chat.messages.at(-1)?.parts.some((p: any) => {
+                    if (
+                        p.type === 'dynamic-tool' ||
+                        (typeof p.type === 'string' &&
+                            p.type.startsWith('tool-'))
+                    ) {
+                        const toolPart = p as any;
+                        return (
+                            toolPart.state !== 'output-available' &&
+                            toolPart.state !== 'output-error'
+                        );
+                    }
+                    return false;
+                }))
+        );
+    }, [chat.status, chat.messages]);
+
+    isLoadingRef.current = isLoading;
 
     const lastSnapshotRef = useRef<string | null>(null);
     useEffect(() => {
@@ -419,6 +477,12 @@ export function useChat(
             const changeDescriptions = externalChanges.map(
                 (e) => `"${e.filePath}" was ${e.changeType} externally`,
             );
+
+            if (isLoadingRef.current) {
+                pendingSystemNoticesRef.current.push(...changeDescriptions);
+                return;
+            }
+
             const noticeText = `[System Notice: ${changeDescriptions.join(', ')}. Please re-read if necessary.]`;
 
             const systemMessage = {
@@ -435,6 +499,23 @@ export function useChat(
             unsubscribe();
         };
     }, [chat]);
+
+    // Flush pending system notices when isLoading transitions from true to false
+    useEffect(() => {
+        if (!isLoading && pendingSystemNoticesRef.current.length > 0) {
+            const descriptions = [...pendingSystemNoticesRef.current];
+            pendingSystemNoticesRef.current = [];
+
+            const noticeText = `[System Notice: ${descriptions.join(', ')}. Please re-read if necessary.]`;
+            const systemMessage = {
+                id: crypto.randomUUID(),
+                role: 'system' as const,
+                content: noticeText,
+                parts: [{ type: 'text' as const, text: noticeText }],
+            };
+            chat.setMessages((prev) => [...prev, systemMessage]);
+        }
+    }, [isLoading, chat]);
 
     // Flush collected tool calls — executes single tools directly, batches multiple via batchManager
     const flushPendingToolCalls = useCallback(
@@ -517,7 +598,7 @@ export function useChat(
                 setCurrentToolCallContext(tc.toolCallId);
                 try {
                     return tc.isMcpTool
-                        ? callMcpTool(tc.toolName, tc.input)
+                        ? callMcpTool(tc.toolName, tc.input, abortController.signal)
                         : executeLocalTool(
                               tc.toolName,
                               tc.input,
@@ -684,7 +765,7 @@ export function useChat(
                             setCurrentToolCallContext(tc?.toolCallId ?? null);
                             try {
                                 return isMcp
-                                    ? callMcpTool(toolName, input)
+                                    ? callMcpTool(toolName, input, execSignal)
                                     : executeLocalTool(
                                           toolName,
                                           input,
@@ -931,30 +1012,30 @@ export function useChat(
         [activeBranchId, sessionId],
     );
 
+    // Derive streaming token count from the last message during streaming
+    const streamingTokens = useMemo(() => {
+        if (chat.status !== 'streaming') return 0;
+        const lastMsg = chat.messages.at(-1);
+        if (!lastMsg || lastMsg.role !== 'assistant') return 0;
+
+        let textLen = 0;
+        for (const part of lastMsg.parts) {
+            if (part.type === 'text' && typeof part.text === 'string') {
+                textLen += part.text.length;
+            }
+        }
+        // Estimate tokens: ~4 chars per token
+        return Math.ceil(textLen / 4);
+    }, [chat.messages, chat.status]);
+
     return {
         messages: effectiveMessages,
         imageAttachments,
         status: chat.status,
         error: chat.error,
         tokenUsage,
-        isLoading:
-            chat.status === 'submitted' ||
-            chat.status === 'streaming' ||
-            (chat.status === 'ready' &&
-                chat.messages.at(-1)?.parts.some((p: any) => {
-                    if (
-                        p.type === 'dynamic-tool' ||
-                        (typeof p.type === 'string' &&
-                            p.type.startsWith('tool-'))
-                    ) {
-                        const toolPart = p as any;
-                        return (
-                            toolPart.state !== 'output-available' &&
-                            toolPart.state !== 'output-error'
-                        );
-                    }
-                    return false;
-                })),
+        streamingTokens,
+        isLoading,
         runningToolName,
         submit: (params: {
             userText: string;

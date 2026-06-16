@@ -53,7 +53,12 @@ type InputBarProps = {
     chatMode?: 'insert' | 'scroll';
     messages?: any[];
     isLoading?: boolean;
+    onInterrupt?: () => void;
     lastLatencyMs?: number | null;
+    /** Real-time token count during streaming */
+    streamingTokens?: number;
+    /** Timestamp when streaming started */
+    streamingStartTime?: number | null;
 };
 
 export function InputBar({
@@ -71,7 +76,10 @@ export function InputBar({
     chatMode = 'insert',
     messages = [],
     isLoading = false,
+    onInterrupt,
     lastLatencyMs,
+    streamingTokens = 0,
+    streamingStartTime,
 }: InputBarProps) {
     const textareaRef = useRef<TextareaRenderable>(null);
     const onSubmitRef = useRef<() => void>(() => {});
@@ -85,7 +93,8 @@ export function InputBar({
     const { colors } = useTheme();
     const navigate = useNavigate();
     const { mode, model, toggleMode, setModel, setMode } = usePromptConfig();
-    const { toggleFileTree, openDiffMode, selectedFile, activePane } = useFileTree();
+    const { toggleFileTree, openDiffMode, selectedFile, activePane } =
+        useFileTree();
 
     const {
         showCommandMenu,
@@ -552,6 +561,10 @@ export function InputBar({
 
     useEffect(() => {
         setResponder('base', () => {
+            if (isLoading && onInterrupt) {
+                onInterrupt();
+                return true;
+            }
             if (disabled) return false;
             const textarea = textareaRef.current;
             if (textarea && textarea.plainText.length > 0) {
@@ -561,7 +574,7 @@ export function InputBar({
             return false;
         });
         return () => setResponder('base', null);
-    }, [disabled, setResponder]);
+    }, [disabled, isLoading, onInterrupt, setResponder]);
 
     return (
         <box width="100%" alignItems="center">
@@ -727,6 +740,8 @@ export function InputBar({
                         messages={messages}
                         isLoading={isLoading}
                         lastLatencyMs={lastLatencyMs}
+                        streamingTokens={streamingTokens}
+                        streamingStartTime={streamingStartTime}
                     />
                 </box>
             </box>

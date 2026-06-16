@@ -315,9 +315,7 @@ export function CommitDialogContent({
                         fg={canSubmit ? 'black' : colors.dimSeparator}
                         attributes={TextAttributes.BOLD}
                     >
-                        {committing
-                            ? 'Committing...'
-                            : 'Commit (Ctrl+Enter)'}
+                        {committing ? 'Committing...' : 'Commit (Ctrl+Enter)'}
                     </text>
                 </box>
             </box>

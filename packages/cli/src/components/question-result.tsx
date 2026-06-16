@@ -17,7 +17,7 @@ export function QuestionResult({ questions, answers }: QuestionResultProps) {
             gap={1}
             paddingX={1}
             paddingY={1}
-            backgroundColor={colors.dialogSurface}
+            backgroundColor={colors.background}
         >
             <text attributes={TextAttributes.BOLD} fg={colors.error}>
                 # Questions
