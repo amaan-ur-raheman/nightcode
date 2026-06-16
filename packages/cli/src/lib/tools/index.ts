@@ -10,6 +10,8 @@ export { gitBranchTool } from './git-branch';
 export { gitLogTool } from './git-log';
 export { gitBlameTool } from './git-blame';
 export { gitStatusExtendedTool } from './git-status-extended';
+export { gitOperationsTool } from './git-operations';
+export { packageManagerTool } from './package-manager';
 export { webFetchTool } from './web-fetch';
 export { codeSearchTool } from './code-search';
 export { getOutlineTool } from './get-outline';
@@ -73,6 +75,8 @@ export { checkExternalChangesTool } from './check-external-changes';
 export { reviewPrTool } from './review-pr';
 export { semanticSearchTool } from './semantic-search';
 export { profileCodeTool } from './profile-code';
+export { suggestToolTool, listToolCategoriesTool } from './suggest-tool';
+export { declareConfidenceTool } from './declare-confidence';
 
 type ToolFn =
     | ((input: unknown) => Promise<unknown>)
@@ -104,6 +108,10 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     gitBlame: () => import('./git-blame').then((m) => m.gitBlameTool),
     gitStatusExtended: () =>
         import('./git-status-extended').then((m) => m.gitStatusExtendedTool),
+    gitOperations: () =>
+        import('./git-operations').then((m) => m.gitOperationsTool),
+    packageManager: () =>
+        import('./package-manager').then((m) => m.packageManagerTool),
     webFetch: () => import('./web-fetch').then((m) => m.webFetchTool),
     codeSearch: () => import('./code-search').then((m) => m.codeSearchTool),
     getOutline: () => import('./get-outline').then((m) => m.getOutlineTool),
@@ -189,6 +197,9 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
     getTaskStatus: () =>
         import('./orchestrator').then((m) => m.getTaskStatusTool),
     cancelTask: () => import('./orchestrator').then((m) => m.cancelTaskTool),
+    suggestTool: () => import('./suggest-tool').then((m) => m.suggestToolTool),
+    listToolCategories: () => import('./suggest-tool').then((m) => m.listToolCategoriesTool),
+    declareConfidence: () => import('./declare-confidence').then((m) => m.declareConfidenceTool),
 };
 
 const toolCache = new Map<string, ToolFn>();
