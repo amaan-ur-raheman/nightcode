@@ -53,9 +53,15 @@ describe('fetchAllModels', () => {
             if (url.includes('11434')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({
-                        models: [{ name: 'llama3:latest', model: 'llama3:latest' }]
-                    }),
+                    json: () =>
+                        Promise.resolve({
+                            models: [
+                                {
+                                    name: 'llama3:latest',
+                                    model: 'llama3:latest',
+                                },
+                            ],
+                        }),
                 } as any);
             }
             return Promise.resolve({
@@ -104,9 +110,7 @@ describe('fetchAllModels', () => {
         clearModelCache();
 
         const result = await fetchAllModels();
-        const localModels = result.models.filter(
-            (m) => m.provider === 'local',
-        );
+        const localModels = result.models.filter((m) => m.provider === 'local');
         expect(localModels).toHaveLength(1);
         const first = localModels[0];
         if (!first) throw new Error('No local models found');

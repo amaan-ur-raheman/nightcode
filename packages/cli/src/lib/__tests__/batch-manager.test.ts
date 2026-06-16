@@ -109,4 +109,38 @@ describe('BatchManager', () => {
         expect(settled).toEqual(['fast-id:fast', 'slow-id:slow']);
         expect(executor).toHaveBeenCalledTimes(2);
     });
+
+    it('applies cost-weighted adaptive parallel execution capping', async () => {
+        const { batchManager } = await import('../batch-manager');
+        const executor = vi.fn().mockResolvedValue('ok');
+
+        // 1. High-cost tools: writeFile (weight 6). 10 calls. Avg weight = 6. Cap = 24 / 6 = 4.
+        const highCostCalls = Array.from({ length: 10 }, (_, i) => ({
+            toolName: 'writeFile',
+            input: { path: `high-file-${i}.ts`, content: 'ok' },
+            toolCallId: `high-${i}`,
+        }));
+        
+        const highPromise = batchManager.executeParallel(highCostCalls, executor, 'BUILD');
+        await highPromise;
+        
+        // The first batch executed should be capped at 4
+        expect(executor).toHaveBeenCalledTimes(4);
+
+        // Reset spy count
+        executor.mockClear();
+
+        // 2. Low-cost tools: readFile (weight 1). 10 calls. Avg weight = 1. Cap = 24 / 1 = 24 (bounded by MAX_CAP = 16).
+        const lowCostCalls = Array.from({ length: 10 }, (_, i) => ({
+            toolName: 'readFile',
+            input: { path: `file-${i}.ts` },
+            toolCallId: `low-${i}`,
+        }));
+        
+        const lowPromise = batchManager.executeParallel(lowCostCalls, executor, 'BUILD');
+        await lowPromise;
+        
+        // Low cost calls should execute all 10 in parallel (since 10 <= 16)
+        expect(executor).toHaveBeenCalledTimes(10);
+    });
 });
