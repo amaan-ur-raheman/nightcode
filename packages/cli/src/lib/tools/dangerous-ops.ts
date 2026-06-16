@@ -168,6 +168,8 @@ function getBashReason(command: string): string {
     return 'Potentially dangerous command';
 }
 
+import { getAutonomyLevel } from '../settings';
+
 export function getConfirmationLevel(
     toolName: string,
     input: any,
@@ -175,6 +177,11 @@ export function getConfirmationLevel(
     level: ConfirmationLevel;
     reason: string;
 } {
+    const autonomy = getAutonomyLevel();
+    if (autonomy === 'full') {
+        return { level: 'none', reason: '' };
+    }
+
     if (toolName === 'bash') {
         const command = input?.command ?? '';
         const level = getBashConfirmationLevel(command);
@@ -186,12 +193,18 @@ export function getConfirmationLevel(
     }
 
     if (toolName === 'gitCommit') {
+        if (autonomy === 'balanced') {
+            return { level: 'none', reason: '' };
+        }
         return { level: 'confirm', reason: 'Git commit (creates a commit)' };
     }
 
     if (toolName === 'gitBranch') {
         const action = input?.action;
         if (action === 'checkout') {
+            if (autonomy === 'balanced') {
+                return { level: 'none', reason: '' };
+            }
             return {
                 level: 'confirm',
                 reason: 'Git checkout (switches branch)',
