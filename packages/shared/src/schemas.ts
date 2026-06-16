@@ -323,6 +323,56 @@ export const toolInputSchemas = {
         endLine: z.number().optional().describe('End line number (1-indexed)'),
     }),
     gitStatusExtended: z.object({}),
+    gitOperations: z.object({
+        action: z
+            .enum([
+                'merge',
+                'stash',
+                'stashPop',
+                'stashList',
+                'push',
+                'pull',
+                'fetch',
+            ])
+            .describe('Git operation to perform'),
+        branch: z
+            .string()
+            .optional()
+            .describe(
+                'Branch name for merge (source branch to merge into current)',
+            ),
+        message: z
+            .string()
+            .optional()
+            .describe('Message for stash (optional description)'),
+        remote: z
+            .string()
+            .default('origin')
+            .describe('Remote name for push/pull (default: origin)'),
+        forceWithLease: z
+            .boolean()
+            .default(false)
+            .describe('Use --force-with-lease for push (safer than --force)'),
+    }),
+    packageManager: z.object({
+        action: z
+            .enum(['install', 'add', 'remove', 'update', 'list', 'outdated'])
+            .describe('Package manager operation to perform'),
+        packages: z
+            .array(z.string())
+            .optional()
+            .describe(
+                'Package names for add/remove (e.g., ["lodash", "express"])',
+            ),
+        isDev: z
+            .boolean()
+            .default(false)
+            .describe('Install as dev dependency (add only)'),
+        packageManager: z
+            .enum(['npm', 'yarn', 'pnpm', 'bun', 'auto'])
+            .default('auto')
+            .describe('Package manager to use (default: auto-detect)'),
+    }),
     tokenCount: z.object({
         text: z.string().describe('The text to count tokens for'),
     }),
@@ -771,6 +821,38 @@ export const toolInputSchemas = {
                 'Custom benchmark command to run instead of auto-detecting (e.g. "npm run bench", "cargo bench -- my_bench")',
             ),
     }),
+    suggestTool: z.object({
+        task: z
+            .string()
+            .describe(
+                'Describe what you want to do (e.g. "find a file by pattern", "rename a function across all files") and this tool will suggest the best tool for the job.',
+            ),
+        category: z
+            .string()
+            .optional()
+            .describe(
+                'Optional category to narrow suggestions: read-explore, write-edit, git, validate, delegate, knowledge, memory, utility',
+            ),
+    }),
+    listToolCategories: z.object({}),
+    declareConfidence: z.object({
+        confidence: z
+            .enum(['high', 'medium', 'low'])
+            .describe(
+                "Your confidence level in the planned approach: 'high' (certain), 'medium' (fairly sure but verify), 'low' (unsure, needs extra care)",
+            ),
+        reasoning: z
+            .string()
+            .describe(
+                'Brief explanation of why you have this confidence level — what you know, what you are unsure about',
+            ),
+        suggestedApproach: z
+            .string()
+            .optional()
+            .describe(
+                'Optional description of your planned approach if confidence is medium or low',
+            ),
+    }),
 } as const;
 
 export const readOnlyToolContracts = {
@@ -834,6 +916,16 @@ export const readOnlyToolContracts = {
         description:
             'Show extended git status including branch tracking info, ahead/behind counts, and stash details.',
         inputSchema: toolInputSchemas.gitStatusExtended,
+    }),
+    gitOperations: tool({
+        description:
+            'Perform git merge, stash, push, pull, or fetch operations. Use for branch management, remote sync, and stash workflow.',
+        inputSchema: toolInputSchemas.gitOperations,
+    }),
+    packageManager: tool({
+        description:
+            'Manage project dependencies with npm, yarn, pnpm, or bun. Auto-detects package manager from lockfiles.',
+        inputSchema: toolInputSchemas.packageManager,
     }),
     webFetch: tool({
         description: 'Fetch a remote URL and return its body as text.',
@@ -990,6 +1082,21 @@ export const readOnlyToolContracts = {
             'Run benchmarks and profile code performance. Auto-detects the project benchmark tool (vitest bench, cargo bench, go test -bench, pytest-benchmark) or accepts a custom command. Reports ops/sec, timing, and identifies hotspots.',
         inputSchema: toolInputSchemas.profileCode,
     }),
+    suggestTool: tool({
+        description:
+            "Describe what you want to do and get a ranked list of the best tools to use. Pass a task description like 'search for a symbol in my codebase' and optionally narrow by category like 'read-explore' or 'delegate'. Use this when you're not sure which tool to use for a task.",
+        inputSchema: toolInputSchemas.suggestTool,
+    }),
+    listToolCategories: tool({
+        description:
+            'List all available tool categories with descriptions. Each category groups related tools (e.g., read-explore, write-edit, git, validate, delegate, knowledge, memory, utility). Call this to discover what kinds of tools are available.',
+        inputSchema: toolInputSchemas.listToolCategories,
+    }),
+    declareConfidence: tool({
+        description:
+            "Declare your confidence level before making a complex change. Use this to signal how certain you are about the approach. High = proceed normally, Medium = run extra validation, Low = inject verification steps. Helps the harness adjust its safety behavior.",
+        inputSchema: toolInputSchemas.declareConfidence,
+    }),
 } as const;
 
 export const buildToolContracts = {
@@ -1125,12 +1232,6 @@ export function getToolContracts(mode: ModeType) {
  * Subagents are leaf workers — they must not spawn children, orchestrate, or manage undo state.
  */
 const SUBAGENT_EXCLUDED_TOOLS = new Set([
-    'spawnAgent',
-    'spawnCodeReviewer',
-    'spawnTestWriter',
-    'spawnDebugger',
-    'spawnRefactor',
-    'spawnResearcher',
     'orchestrator',
     'getTaskStatus',
     'cancelTask',

@@ -74,7 +74,10 @@ describe('webFetchTool', () => {
             expect(result).toHaveProperty('status', 200);
             expect(globalThis.fetch).toHaveBeenCalledWith(
                 'https://example.com/api',
-                expect.objectContaining({ method: 'POST', body: '{"name":"test"}' }),
+                expect.objectContaining({
+                    method: 'POST',
+                    body: '{"name":"test"}',
+                }),
             );
         });
     });

@@ -8,6 +8,10 @@ type SystemPromptParams = {
     currentModel?: string;
     /** Learned corrections from previous undo operations */
     corrections?: string[];
+    /** Positive patterns — actions that were accepted (not undone) */
+    positives?: string[];
+    /** Error pattern warnings from repeated failures */
+    errorWarnings?: string[];
 };
 
 const MAX_PROMPT_CACHE_SIZE = 64;
@@ -69,13 +73,20 @@ function simpleHash(str: string): number {
 }
 
 function getCacheKey(params: SystemPromptParams): string {
-    // Hash correction content instead of using count to avoid cache collisions
-    // when different corrections have the same length
+    // Hash correction/positive/error content instead of using count to avoid cache collisions
     const correctionsKey =
         params.corrections && params.corrections.length > 0
             ? String(simpleHash(params.corrections.join('\n')))
             : '';
-    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}:${correctionsKey}`;
+    const positivesKey =
+        params.positives && params.positives.length > 0
+            ? String(simpleHash(params.positives.join('\n')))
+            : '';
+    const errorWarningsKey =
+        params.errorWarnings && params.errorWarnings.length > 0
+            ? String(simpleHash(params.errorWarnings.join('\n')))
+            : '';
+    return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}:${correctionsKey}:${positivesKey}:${errorWarningsKey}`;
 }
 
 /**
@@ -88,7 +99,12 @@ const QUICK_REFERENCE = `## Quick Reference
 2. **Parallelize.** Emit ALL independent tool calls in ONE response (reads, searches, writes). This cuts round-trips by 3-5x.
 3. **Verify after changes.** Run \`validateCode\` after every code change. Don't assume it works.
 4. **One correct change > three wrong ones.** If unsure, read more code first. Use \`undo\` immediately if something breaks.
-5. **After 5+ files read, start implementing.** Don't read 20 files "to be thorough" — you'll lose context of what you found.`;
+5. **After 5+ files read, start implementing.** Don't read 20 files "to be thorough" — you'll lose context of what you found.
+6. **Delegate complex work.** Don't do everything yourself. Use specialized subagent presets (e.g. \`spawnTestWriter\`, \`spawnDebugger\`) for focused tasks, and the \`orchestrator\` for large, multi-file features.
+7. **Start with Memory & Graph.** Check persistent guidelines using \`memoryList\` or \`memorySearch\` at the start. Build a knowledge graph (\`buildKnowledgeGraph\`) for large codebases to navigate relationships with \`semanticSearch\` and \`getKnowledgeNeighbors\`.
+8. **Utilize Sandbox REPL.** Experiment, test snippets, and verify logic using the persistent background sandbox (\`replExecute\`) instead of writing throwaway script files.
+9. **Secure Secrets & Environment.** Modify .env files using \`envManage\`, save credentials via \`keychainSet\` (never store in plaintext), and run \`secretScan\` before git commits.
+10. **Express Uncertainty & Discovery.** Before a complex change, call \`declareConfidence\`. If unsure which of the 54+ tools is best, query \`suggestTool\`.`;
 
 /**
  * Core rules — shared across all modes, with mode-specific additions appended.
@@ -99,23 +115,28 @@ const SHARED_RULES = `1. Use glob/grep/codeSearch to find relevant code, then re
 2. Never re-read files already read this session.
 3. **Parallelize reads and searches.** Emit ALL independent readFile/glob/grep calls in ONE response — they execute in parallel. This is 3-5x faster than sequential calls.
 4. **Think before writing.** After reading, understand the code before editing. Never guess at API signatures, function names, or file contents. Read → understand → edit.
-5. **Verify your work.** Run \`validateCode\` after making changes. Don't assume your changes work without validation.`;
+5. **Verify your work.** Run \`validateCode\` after making changes. Don't assume your changes work without validation.
+6. **Leverage subagents and the orchestrator.** Delegate specialized sub-problems (like writing tests, refactoring, code review, or debugging) to dedicated subagents, and decompose large tasks (3+ files) using the \`orchestrator\` to execute them concurrently.
+7. **Query memory on start.** Check for stored user styles, schemas, or instructions using \`memoryList\` or \`memorySearch\` at the beginning of a session.
+8. **Manage environment & secrets securely.** Use \`envManage\` to modify environment variables. Use \`keychainSet\` to store secrets securely (never hardcode them). Run \`secretScan\` before commits.
+9. **Experiment in the sandbox.** Use the persistent background REPL (\`replExecute\`) to test logic, verify snippets, or run quick checks without writing temporary files.
+10. **Explore relationships.** Build the knowledge graph (\`buildKnowledgeGraph\`) to trace export/import connections via \`semanticSearch\` and \`getKnowledgeNeighbors\` rather than generic grep searches.`;
 
 const PLAN_RULES = `${SHARED_RULES}
-6. Check git status first when context about changes is needed.
-7. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.
-8. When suggesting a plan, list the EXACT files and line ranges that will be modified.
-9. Identify potential risks and edge cases before proposing the plan.`;
+11. Check git status first when context about changes is needed.
+12. Present plans with concrete steps, file names, modified lines/blocks, and dependency impacts.
+13. When suggesting a plan, list the EXACT files and line ranges that will be modified.
+14. Identify potential risks and edge cases before proposing the plan.`;
 
 const BUILD_RULES = `${SHARED_RULES}
-6. Run tests first to establish a baseline before changes.
-7. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
-8. editFile: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
-9. Use editFile for small edits; writeFile only for new files or full rewrites.
-10. Use patch for multi-file changes, moveFile for renames, renameSymbol for symbol renames.
-11. Use undo to revert the last change if something goes wrong.
-12. After all changes, verify: run \`validateCode\` with \`test: true\` to execute type-checking, linting, and tests.
-13. **Accuracy over speed:** One correct change is better than three wrong ones. If unsure, read more code first.`;
+11. Run tests first to establish a baseline before changes.
+12. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
+13. editFile: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
+14. Use editFile for small edits; writeFile only for new files or full rewrites.
+15. Use patch for multi-file changes, moveFile for renames, renameSymbol for symbol renames.
+16. Use undo to revert the last change if something goes wrong.
+17. After all changes, verify: run \`validateCode\` with \`test: true\` to execute type-checking, linting, and tests.
+18. **Accuracy over speed:** One correct change is better than three wrong ones. If unsure, read more code first.`;
 
 /**
  * Lean rules for subagent/worker requests. Reuses SHARED_RULES with
@@ -124,17 +145,17 @@ const BUILD_RULES = `${SHARED_RULES}
 function buildSubagentRules(mode: ModeType): string {
     if (mode === 'PLAN') {
         return `${SHARED_RULES}
-6. Check git status first when context about changes is needed.
-7. Present concrete findings with file paths and line references.
-8. Be thorough — explore all relevant code paths before concluding.`;
+11. Check git status first when context about changes is needed.
+12. Present concrete findings with file paths and line references.
+13. Be thorough — explore all relevant code paths before concluding.`;
     }
     return `${SHARED_RULES}
-6. Run tests first to establish a baseline before changes.
-7. If a test/command fails: analyze the error, fix the code, retest.
-8. editFile: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
-9. Use editFile for small edits; writeFile only for new files.
-10. Verify: run \`validateCode\` with \`test: true\` after changes.
-11. If you encounter an unexpected error, stop and report it — don't keep retrying the same failed approach.`;
+11. Run tests first to establish a baseline before changes.
+12. If a test/command fails: analyze the error, fix the code, retest.
+13. editFile: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
+14. Use editFile for small edits; writeFile only for new files.
+15. Verify: run \`validateCode\` with \`test: true\` after changes.
+16. If you encounter an unexpected error, stop and report it — don't keep retrying the same failed approach.`;
 }
 
 export function buildSystemPrompt({
@@ -143,6 +164,8 @@ export function buildSystemPrompt({
     isSubagent,
     currentModel,
     corrections,
+    positives,
+    errorWarnings,
 }: SystemPromptParams): string {
     const key = getCacheKey({
         mode,
@@ -150,15 +173,15 @@ export function buildSystemPrompt({
         isSubagent,
         currentModel,
         corrections,
+        positives,
+        errorWarnings,
     });
     const cached = promptCache.get(key);
     if (cached) return cached;
 
     const model = currentModel ?? 'the main model';
 
-    const spawnAgentDesc = isSubagent
-        ? ''
-        : `- **spawnAgent** — Delegate a self-contained task to a subagent that runs autonomously and returns the result. Omit "model" to use the same model (${model}).`;
+    const spawnAgentDesc = `- **spawnAgent** — Delegate a self-contained task to a subagent that runs autonomously and returns the result. Omit "model" to use the same model (${model}).`;
 
     const parts: string[] = [];
 
@@ -180,9 +203,21 @@ export function buildSystemPrompt({
         );
     }
 
+    if (positives && positives.length > 0) {
+        parts.push(
+            `## Proven Patterns (Continue Using)\nThese patterns were accepted in previous sessions — keep using them:\n${positives.map((p) => `- ${p}`).join('\n')}`,
+        );
+    }
+
+    if (errorWarnings && errorWarnings.length > 0) {
+        parts.push(
+            `## ⚠️ Recurring Errors (Avoid)\nThese patterns have caused repeated failures — avoid them:\n${errorWarnings.map((w) => `- ${w}`).join('\n')}`,
+        );
+    }
+
     if (isSubagent) {
         parts.push(`## Subagent
-You are a subagent. Complete the assigned task and return the result. Do NOT spawn further subagents.`);
+You are a subagent. Complete the assigned task and return the result. Only spawn further subagents when absolutely necessary to decompose the task.`);
     }
 
     parts.push(
@@ -199,7 +234,6 @@ Implement changes directly.
 - Use bash for commands (tests, builds, git)
 - Use undo to revert if a change goes wrong
 - Verify changes when possible`,
-
     );
 
     if (!isSubagent) {
@@ -321,6 +355,14 @@ When debugging dev servers:
 - **profileCode** — Auto-detect and run benchmarks.
 - **askQuestion** — Prompt user with 1-10 questions with choices.
 
+### Tool Discovery
+Not sure which tool to use? Try:
+- **suggestTool** — Describe what you want to do and get the best tool suggestion. Pass your task description and optionally a category to narrow results.
+- **listToolCategories** — See all available tool categories (read-explore, write-edit, git, validate, delegate, knowledge, memory, utility).
+
+### Expressing Uncertainty
+- **declareConfidence** — Before a complex change, signal your confidence level (high/medium/low) and reasoning. The harness adjusts verification accordingly.
+
 ### Workflows & Patterns
 Chain tools for common scenarios:
 
@@ -422,17 +464,35 @@ export function buildSubagentSystemPrompt({
     mode,
     projectContext,
     currentModel,
+    corrections,
+    positives,
+    errorWarnings,
 }: {
     mode: ModeType;
     projectContext?: string;
     currentModel?: string;
+    corrections?: string[];
+    positives?: string[];
+    errorWarnings?: string[];
 }): string {
-    const key = `sub:${mode}:${currentModel ?? ''}:${projectContext ?? ''}`;
+    const correctionsKey =
+        corrections && corrections.length > 0
+            ? String(simpleHash(corrections.join('\n')))
+            : '';
+    const positivesKey =
+        positives && positives.length > 0
+            ? String(simpleHash(positives.join('\n')))
+            : '';
+    const errorWarningsKey =
+        errorWarnings && errorWarnings.length > 0
+            ? String(simpleHash(errorWarnings.join('\n')))
+            : '';
+    const key = `sub:${mode}:${currentModel ?? ''}:${projectContext ?? ''}:${correctionsKey}:${positivesKey}:${errorWarningsKey}`;
     const cached = subagentPromptCache.get(key);
     if (cached) return cached;
 
     const parts: string[] = [
-        `You are a specialized worker agent. Complete the assigned task and return the result. Do NOT spawn further subagents.`,
+        `You are a specialized worker agent. Complete the assigned task and return the result. Only spawn further subagents when absolutely necessary to decompose the task.`,
         mode === 'BUILD'
             ? `## Mode: BUILD\nImplement changes directly. Read relevant code before modifying. Verify changes when possible.`
             : `## Mode: PLAN\nAnalyze, research, and propose — do NOT make changes.`,
@@ -440,6 +500,24 @@ export function buildSubagentSystemPrompt({
 
     if (projectContext) {
         parts.push(`## Project Context\n${projectContext}`);
+    }
+
+    if (corrections && corrections.length > 0) {
+        parts.push(
+            `## Previous Corrections\n${corrections.map((c) => `- ${c}`).join('\n')}`,
+        );
+    }
+
+    if (positives && positives.length > 0) {
+        parts.push(
+            `## Proven Patterns\n${positives.map((p) => `- ${p}`).join('\n')}`,
+        );
+    }
+
+    if (errorWarnings && errorWarnings.length > 0) {
+        parts.push(
+            `## ⚠️ Recurring Errors\n${errorWarnings.map((w) => `- ${w}`).join('\n')}`,
+        );
     }
 
     parts.push(`## Rules\n${buildSubagentRules(mode)}`);

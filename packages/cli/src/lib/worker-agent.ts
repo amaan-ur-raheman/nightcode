@@ -26,6 +26,12 @@ import {
 } from '@/lib/concurrency-limit';
 import { messageBroker } from '@/lib/message-broker';
 import { writeResult } from '@/lib/workspace';
+import {
+    calculateTaskPriority,
+    getRetryStrategy,
+} from '@/lib/orchestrator-intelligence';
+import { correctionTracker } from '@/lib/correction-tracker';
+import { errorPatternTracker } from '@/lib/error-pattern-tracker';
 
 const WORKER_SYSTEM_PROMPTS: Record<AgentRole, string> = {
     orchestrator:
@@ -46,6 +52,8 @@ function buildWorkerPrompt(
     projectContext: string,
     depResults: string,
     task: TaskNode,
+    positives?: string[],
+    errorWarnings?: string[],
 ): string {
     const rolePrompt =
         WORKER_SYSTEM_PROMPTS[role] ?? WORKER_SYSTEM_PROMPTS.coder;
@@ -56,11 +64,24 @@ function buildWorkerPrompt(
         parts.push('Mode: PLAN — read-only analysis. Do NOT make changes.');
     if (projectContext) parts.push(`## Project Context\n${projectContext}`);
     if (depResults) parts.push(`## Prerequisite Results\n${depResults}`);
+    if (positives && positives.length > 0) {
+        parts.push(
+            `## Proven Patterns\n${positives.map((p) => `- ${p}`).join('\n')}`,
+        );
+    }
+    if (errorWarnings && errorWarnings.length > 0) {
+        parts.push(
+            `## ⚠️ Recurring Errors\n${errorWarnings.map((w) => `- ${w}`).join('\n')}`,
+        );
+    }
     parts.push(`## Task\n${task.description}`);
     if (task.files.length > 0)
         parts.push(
             `## Relevant Files\n${task.files.map((f) => `- ${f}`).join('\n')}`,
         );
+    // Inject performance hints from past runs of this role
+    const hints = performanceTracker.getHintsForRole(role);
+    if (hints) parts.push(hints);
     return parts.join('\n\n');
 }
 
@@ -72,6 +93,112 @@ const ROLE_MODE_MAP: Record<AgentRole, 'BUILD' | 'PLAN'> = {
     researcher: 'PLAN',
     debugger: 'BUILD',
 };
+
+// ── Worker Performance Feedback Loop ──
+const PERF_HISTORY_MAX = 100;
+
+interface RolePerformance {
+    successes: number;
+    failures: number;
+    totalTokens: number;
+    avgDurationMs: number;
+    /** Last failure reason — to avoid repeating the same mistake */
+    lastFailureReason: string;
+    /** Last failure timestamp — for time-decay of hints */
+    lastFailureAt: number;
+}
+
+class WorkerPerformanceTracker {
+    private history = new Map<string, RolePerformance>();
+
+    recordSuccess(role: AgentRole, durationMs: number, tokens?: number): void {
+        const perf = this.getOrCreate(role);
+        perf.successes++;
+        perf.avgDurationMs =
+            (perf.avgDurationMs * (perf.successes + perf.failures - 1) +
+                durationMs) /
+            (perf.successes + perf.failures);
+        if (tokens) perf.totalTokens += tokens;
+    }
+
+    recordFailure(role: AgentRole, reason: string, durationMs: number): void {
+        const perf = this.getOrCreate(role);
+        perf.failures++;
+        perf.lastFailureReason = reason;
+        perf.lastFailureAt = Date.now();
+        perf.avgDurationMs =
+            (perf.avgDurationMs * (perf.successes + perf.failures - 1) +
+                durationMs) /
+            (perf.successes + perf.failures);
+    }
+
+    /** Generate role-specific hints from past performance. */
+    getHintsForRole(role: AgentRole): string {
+        const perf = this.history.get(role);
+        if (!perf || perf.successes + perf.failures < 3) return '';
+
+        const hints: string[] = [];
+        const successRate = perf.successes / (perf.successes + perf.failures);
+
+        if (successRate < 0.5) {
+            hints.push(
+                `Past ${role} workers failed ${perf.failures} times with ${Math.round(successRate * 100)}% success rate. Focus on accuracy over speed.`,
+            );
+        }
+
+        if (
+            perf.lastFailureReason &&
+            Date.now() - perf.lastFailureAt < 3_600_000
+        ) {
+            // Decay: only show hint if failure was within the last hour
+            hints.push(
+                `Recent failure pattern for this role: "${perf.lastFailureReason}". Avoid this mistake.`,
+            );
+        }
+
+        return hints.length > 0
+            ? `\n\n### Performance Hints\n${hints.map((h) => `- ${h}`).join('\n')}`
+            : '';
+    }
+
+    private getOrCreate(role: AgentRole): RolePerformance {
+        let perf = this.history.get(role);
+        if (!perf) {
+            perf = {
+                successes: 0,
+                failures: 0,
+                totalTokens: 0,
+                avgDurationMs: 0,
+                lastFailureReason: '',
+                lastFailureAt: 0,
+            };
+            this.history.set(role, perf);
+        }
+        return perf;
+    }
+
+    /** Get summary stats for diagnostics. */
+    getStats(): Record<string, { successRate: number; avgDuration: number }> {
+        const stats: Record<
+            string,
+            { successRate: number; avgDuration: number }
+        > = {};
+        for (const [role, perf] of this.history) {
+            const total = perf.successes + perf.failures;
+            stats[role] = {
+                successRate: total > 0 ? perf.successes / total : 1,
+                avgDuration: perf.avgDurationMs,
+            };
+        }
+        return stats;
+    }
+
+    clear(): void {
+        this.history.clear();
+    }
+}
+
+const performanceTracker = new WorkerPerformanceTracker();
 
 const WORKER_MAX_STEPS = 60;
 /** Base per-worker wall-clock timeout (5 minutes). Prevents stuck workers from blocking slots. */
@@ -239,11 +366,20 @@ export async function runWorker(
     // Build task prompt with context from prerequisite tasks
     const depResults = buildDependencyResults(task, graph);
 
+    // Gather learning signals for the prompt
+    const [corrections, patterns, errorSuggestions] = await Promise.all([
+        correctionTracker.getCorrections(),
+        correctionTracker.getPatterns(),
+        Promise.resolve(errorPatternTracker.getSuggestions()),
+    ]);
+
     const taskPrompt = buildWorkerPrompt(
         task.type,
         projectContext,
         depResults,
         task,
+        patterns.positives,
+        errorSuggestions,
     );
 
     registerSubagent(agentId, task.description, WORKER_MAX_STEPS);
@@ -271,7 +407,8 @@ export async function runWorker(
     const combined = AbortSignal.any(signals);
 
     let startTime: number = 0;
-    const maxWorkerRetries = 2;
+    const retryStrategy = getRetryStrategy(task.type);
+    const maxWorkerRetries = retryStrategy.maxRetries;
     let lastError: any;
 
     try {
@@ -288,12 +425,14 @@ export async function runWorker(
                     agentId,
                     label: `worker-${task.id}`,
                     maxRetries: 3,
+                    errorTracker: errorPatternTracker,
                 });
                 const elapsed = Date.now() - startTime;
                 const provider = extractProvider(resolvedModel);
                 if (provider)
                     recordProviderLatency(provider, elapsed, true, mode);
                 latencyTracker.record(task.type, elapsed);
+                performanceTracker.recordSuccess(task.type, elapsed);
                 return result;
             } catch (error) {
                 lastError = error;
@@ -302,6 +441,15 @@ export async function runWorker(
                 if (provider)
                     recordProviderLatency(provider, elapsed, false, mode);
                 latencyTracker.record(task.type, elapsed);
+                const failureReason =
+                    error instanceof Error
+                        ? error.message.slice(0, 200)
+                        : String(error).slice(0, 200);
+                performanceTracker.recordFailure(
+                    task.type,
+                    failureReason,
+                    elapsed,
+                );
 
                 // Don't retry for non-transient errors
                 if (!isTransientError(error) || attempt >= maxWorkerRetries) {
@@ -313,7 +461,11 @@ export async function runWorker(
                 }
 
                 // Exponential backoff before retry
-                const delay = Math.min(2000 * Math.pow(2, attempt), 10000);
+                const delay = Math.min(
+                    retryStrategy.baseDelayMs *
+                        Math.pow(retryStrategy.backoffMultiplier, attempt),
+                    retryStrategy.maxDelayMs,
+                );
                 console.log(
                     `[worker-${task.id}] Transient error, retrying in ${delay}ms (attempt ${attempt + 2}/${maxWorkerRetries + 1}): ${error instanceof Error ? error.message : String(error)}`,
                 );
@@ -442,31 +594,13 @@ export async function executeTaskGraph(
                 }
             }
 
-            // Critical path prioritization
+            // Priority-based scheduling: use calculateTaskPriority for smarter ordering
             const cp = getCriticalPath(graph);
-            if (cp.length > 0) {
-                const cpSet = new Set(cp);
-                readyTasks.sort(
-                    (a, b) =>
-                        (cpSet.has(a.id) ? 0 : 1) - (cpSet.has(b.id) ? 0 : 1),
-                );
-            } else {
-                const depth = new Map<string, number>();
-                for (const id of getTopologicalOrder(graph)) {
-                    const node = graph.nodes[id];
-                    if (!node) continue;
-                    depth.set(
-                        id,
-                        node.dependencies.reduce(
-                            (max, d) => Math.max(max, (depth.get(d) ?? 0) + 1),
-                            0,
-                        ),
-                    );
-                }
-                readyTasks.sort(
-                    (a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0),
-                );
-            }
+            readyTasks.sort(
+                (a, b) =>
+                    calculateTaskPriority(b, graph, cp) -
+                    calculateTaskPriority(a, graph, cp),
+            );
 
             // Start ready tasks (respect concurrency limit)
             for (const task of readyTasks) {

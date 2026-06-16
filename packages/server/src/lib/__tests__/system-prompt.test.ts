@@ -179,8 +179,8 @@ describe('buildSystemPrompt', () => {
     it('includes anti-patterns section', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
         // Anti-patterns were consolidated into Workflows & Patterns and Error Recovery
-        expect(prompt).toContain('don\'t use searchReplace for code symbols');
-        expect(prompt).toContain('don\'t store secrets in memory');
+        expect(prompt).toContain("don't use searchReplace for code symbols");
+        expect(prompt).toContain("don't store secrets in memory");
     });
 
     it('includes tool combinations section', () => {

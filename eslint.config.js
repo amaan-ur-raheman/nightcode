@@ -3,6 +3,7 @@ const ts = require('typescript-eslint');
 const react = require('eslint-plugin-react');
 const prettier = require('eslint-config-prettier');
 const noTextInText = require('./eslint-rules/no-text-in-text');
+const noRawText = require('./eslint-rules/no-raw-text');
 
 module.exports = [
     {
@@ -28,6 +29,11 @@ module.exports = [
                     'no-text-in-text': noTextInText,
                 },
             },
+            'no-raw-text': {
+                rules: {
+                    'no-raw-text': noRawText,
+                },
+            },
         },
         languageOptions: {
             ecmaVersion: 'latest',
@@ -46,7 +52,7 @@ module.exports = [
         rules: {
             'react/react-in-jsx-scope': 'off',
             '@typescript-eslint/no-unused-vars': 'warn',
-            '@typescript-eslint/no-explicit-any': 'warn',
+            '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/no-require-imports': 'warn',
             'no-empty': 'warn',
             'no-useless-escape': 'warn',
@@ -55,6 +61,7 @@ module.exports = [
             'no-case-declarations': 'warn',
             'no-control-regex': 'warn',
             'no-text-in-text/no-text-in-text': 'error',
+            'no-raw-text/no-raw-text': 'error',
         },
     },
     prettier,

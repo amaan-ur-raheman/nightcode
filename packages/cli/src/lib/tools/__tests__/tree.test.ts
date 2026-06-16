@@ -67,10 +67,10 @@ describe('treeTool', () => {
 
         // z_error.txt should not be in the output
         expect(result.tree).not.toContain('z_error.txt');
-        
+
         // The last visible item (src/) should render with └── instead of ├──
         const lines = result.tree.split('\n');
-        const srcLine = lines.find(line => line.includes('src/'));
+        const srcLine = lines.find((line) => line.includes('src/'));
         expect(srcLine).toBe('└── src/');
     });
 });

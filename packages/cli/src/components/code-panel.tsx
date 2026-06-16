@@ -119,7 +119,9 @@ export function CodePanel({ filePath, highlightedLine }: CodePanelProps) {
                 <text fg={isActive ? colors.primary : colors.dimSeparator}>
                     {isActive ? '● ' : ''}
                     <em fg={isActive ? colors.primary : colors.info}>File: </em>
-                    <em fg={isActive ? colors.text : colors.dimSeparator}>{fileName}</em>
+                    <em fg={isActive ? colors.text : colors.dimSeparator}>
+                        {fileName}
+                    </em>
                     <em fg={colors.dimSeparator}> ({filePath})</em>
                 </text>
             </box>

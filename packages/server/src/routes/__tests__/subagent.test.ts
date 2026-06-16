@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 
 vi.mock('../../lib/polar', () => ({
     getAvailableCreditsBalance: vi.fn().mockResolvedValue(50),
+    getCachedCreditsBalance: vi.fn().mockReturnValue(null),
     ingestAIUsage: vi.fn(),
 }));
 
@@ -106,9 +107,9 @@ describe('Subagent Route', () => {
         });
 
         it('returns 402 when credits are zero', async () => {
-            const { getAvailableCreditsBalance } =
+            const { getCachedCreditsBalance } =
                 await import('../../lib/polar');
-            vi.mocked(getAvailableCreditsBalance).mockResolvedValueOnce(0);
+            vi.mocked(getCachedCreditsBalance).mockReturnValueOnce(0);
             const res = await app.request('/subagent', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

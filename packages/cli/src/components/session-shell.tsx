@@ -20,9 +20,10 @@ type SessionShellProps = {
     children?: ReactNode;
     onSubmit: (text: string) => void;
     onClear?: () => void;
-    inputDisabled?: boolean;
+        inputDisabled?: boolean;
     loading?: boolean;
     interruptible?: boolean;
+    onInterrupt?: () => void;
     canRetry?: boolean;
     runningToolName?: string | null;
     messageCount?: number;
@@ -40,6 +41,10 @@ type SessionShellProps = {
     chatMode?: 'insert' | 'scroll';
     messages?: any[];
     lastLatencyMs?: number | null;
+    /** Real-time token count during streaming */
+    streamingTokens?: number;
+    /** Timestamp when streaming started */
+    streamingStartTime?: number | null;
 };
 
 export function SessionShell({
@@ -49,6 +54,7 @@ export function SessionShell({
     inputDisabled = false,
     loading = false,
     interruptible = false,
+    onInterrupt,
     canRetry = false,
     runningToolName,
     messageCount,
@@ -66,6 +72,8 @@ export function SessionShell({
     chatMode = 'insert',
     messages = [],
     lastLatencyMs,
+    streamingTokens = 0,
+    streamingStartTime,
 }: SessionShellProps) {
     const { mode } = usePromptConfig();
     const { active } = usePtySession();
@@ -131,7 +139,10 @@ export function SessionShell({
                         chatMode={chatMode}
                         messages={messages}
                         isLoading={loading}
+                        onInterrupt={onInterrupt}
                         lastLatencyMs={lastLatencyMs}
+                        streamingTokens={streamingTokens}
+                        streamingStartTime={streamingStartTime}
                     />
                 )}
             </box>
@@ -151,10 +162,10 @@ export function SessionShell({
                             {runningToolName ? (
                                 <text
                                     attributes={TextAttributes.DIM}
-                                >{`running ${runningToolName}...`}</text>
+                                >{`running ${runningToolName}... (esc/ctrl+c to interrupt)`}</text>
                             ) : interruptible ? (
                                 <text attributes={TextAttributes.DIM}>
-                                    esc to interrupt
+                                    esc/ctrl+c to interrupt
                                 </text>
                             ) : null}
                         </>

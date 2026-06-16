@@ -125,12 +125,130 @@ const ALL_PARALLEL_TOOLS = [
     'profileCode',
 ];
 
+/**
+ * Cost tier for each tool type used for adaptive parallel execution caps.
+ * Reads/searches are cheap (high concurrency), writes are expensive (low concurrency).
+ */
+const TOOL_COST_TIERS: Record<string, 'low' | 'medium' | 'high'> = {
+    // Low cost — fast, stateless reads
+    readFile: 'low',
+    listDirectory: 'low',
+    glob: 'low',
+    grep: 'low',
+    codeSearch: 'low',
+    tree: 'low',
+    fileInfo: 'low',
+    getOutline: 'low',
+    gitStatus: 'low',
+    gitDiff: 'low',
+    gitLog: 'low',
+    gitBlame: 'low',
+    gitStatusExtended: 'low',
+    diffFiles: 'low',
+    tokenCount: 'low',
+    memoryGet: 'low',
+    memoryList: 'low',
+    memorySearch: 'low',
+    memoryFuzzySearch: 'low',
+    memoryStats: 'low',
+    keychainGet: 'low',
+    checkExternalChanges: 'low',
+    queryKnowledgeGraph: 'low',
+    getKnowledgeNeighbors: 'low',
+    getKnowledgeStats: 'low',
+    detectKnowledgeCycles: 'low',
+    
+    // Medium cost — mix of reads and state changes
+    webFetch: 'medium',
+    bash: 'medium',
+    packageManager: 'medium',
+    gitCommit: 'medium',
+    gitBranch: 'medium',
+    gitOperations: 'medium',
+    memorySet: 'medium',
+    memoryDelete: 'medium',
+    keychainSet: 'medium',
+    keychainDelete: 'medium',
+    getTaskStatus: 'medium',
+    buildKnowledgeGraph: 'medium',
+    addKnowledgeNode: 'medium',
+    addKnowledgeEdge: 'medium',
+    impactAnalysis: 'medium',
+    breakingChangeCheck: 'medium',
+    suggestMigration: 'medium',
+    semanticSearch: 'medium',
+    profileCode: 'medium',
+    askQuestion: 'medium',
+    useSkill: 'medium',
+    listSkills: 'medium',
+    suggestTool: 'low',
+    listToolCategories: 'low',
+    declareConfidence: 'low',
+    
+    // High cost — file mutations, complex operations
+    writeFile: 'high',
+    editFile: 'high',
+    searchReplace: 'high',
+    patch: 'high',
+    deleteFile: 'high',
+    moveFile: 'high',
+    createDirectory: 'high',
+    renameSymbol: 'high',
+    undo: 'high',
+    processManage: 'high',
+    envManage: 'high',
+    secretScan: 'high',
+    validateCode: 'high',
+    reviewPr: 'high',
+    spawnAgent: 'high',
+    spawnCodeReviewer: 'high',
+    spawnTestWriter: 'high',
+    spawnDebugger: 'high',
+    spawnRefactor: 'high',
+    spawnResearcher: 'high',
+    orchestrator: 'high',
+    cancelTask: 'high',
+    replExecute: 'high',
+};
+
+/**
+ * Get adaptive max parallel tools based on the mix of tool types in the current batch.
+ * Uses a cost-weighted algorithm so that 8 readFiles == 2 writeFiles in resource usage.
+ */
+function getAdaptiveParallelCap(toolCalls: ParallelToolCall[]): number {
+    const tiers = toolCalls.map((tc) => TOOL_COST_TIERS[tc.toolName] ?? 'medium');
+    
+    let weight = 0;
+    for (const tier of tiers) {
+        switch (tier) {
+            case 'low':
+                weight += 1;
+                break;
+            case 'medium':
+                weight += 3;
+                break;
+            case 'high':
+                weight += 6;
+                break;
+        }
+    }
+    
+    // Target total "weight" of ~24 (equivalent to 4 high-cost operations)
+    const TARGET_WEIGHT = 24;
+    const MIN_CAP = 2;
+    const MAX_CAP = 16;
+    
+    const adaptiveCap = Math.max(MIN_CAP, Math.min(MAX_CAP, Math.floor(TARGET_WEIGHT / (weight / Math.max(toolCalls.length, 1)))));
+    
+    return adaptiveCap;
+}
+
 const DEFAULT_CONFIG: BatchConfig = {
     maxBatchSize: 10,
     maxWaitTime: 50,
     enabledTools: DEFAULT_BATCH_TOOLS,
     parallelExecutionEnabled: true,
-    maxParallelTools: 8,
+    maxParallelTools: 8, // default, overridden adaptively
 };
 
 class BatchManager {
@@ -311,12 +429,14 @@ class BatchManager {
     ): Promise<ParallelToolResult[]> {
         if (toolCalls.length === 0) return [];
 
-        const capped = toolCalls.slice(0, this.config.maxParallelTools);
-        const skipped = toolCalls.slice(this.config.maxParallelTools);
+        // Use adaptive cap based on tool cost tiers instead of fixed maxParallelTools
+        const effectiveCap = getAdaptiveParallelCap(toolCalls);
+        const capped = toolCalls.slice(0, effectiveCap);
+        const skipped = toolCalls.slice(effectiveCap);
         if (skipped.length > 0) {
             debug.log(
                 'batch',
-                `Capping parallel execution from ${toolCalls.length} to ${this.config.maxParallelTools}`,
+                `Capping parallel execution from ${toolCalls.length} to ${effectiveCap}`,
             );
         }
 

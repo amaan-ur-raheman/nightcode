@@ -208,18 +208,20 @@ export function RenameDialogContent() {
                                 attributes={TextAttributes.BOLD}
                                 marginBottom={1}
                             >
-                                Preview: {result.totalMatches} occurrence(s)
-                                in {result.filesChanged} file(s)
+                                Preview: {result.totalMatches} occurrence(s) in{' '}
+                                {result.filesChanged} file(s)
                             </text>
                             <scrollbox height={6}>
                                 {result.changes.map((c) => (
-                                    <box key={c.file}>
+                                    <box key={c.file} flexDirection="row">
                                         <text fg={colors.primary}>
                                             {c.file}
                                         </text>
-                                        {' — '}
-                                        {c.replacements}
-                                        {' at lines '}
+                                        <text fg={colors.dimSeparator}>
+                                            {' — '}
+                                            {c.replacements}
+                                            {' at lines '}
+                                        </text>
                                         <text fg={colors.primary}>
                                             {c.lines.join(', ')}
                                         </text>

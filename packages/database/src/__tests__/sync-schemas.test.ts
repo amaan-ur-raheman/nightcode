@@ -14,7 +14,10 @@ describe('sync-schemas script integration', () => {
     beforeEach(() => {
         originalSchemaContent = fs.readFileSync(schemaPath, 'utf8');
         try {
-            originalSqliteSchemaContent = fs.readFileSync(sqliteSchemaPath, 'utf8');
+            originalSqliteSchemaContent = fs.readFileSync(
+                sqliteSchemaPath,
+                'utf8',
+            );
         } catch {
             originalSqliteSchemaContent = '';
         }
@@ -23,7 +26,11 @@ describe('sync-schemas script integration', () => {
     afterEach(() => {
         fs.writeFileSync(schemaPath, originalSchemaContent, 'utf8');
         if (originalSqliteSchemaContent) {
-            fs.writeFileSync(sqliteSchemaPath, originalSqliteSchemaContent, 'utf8');
+            fs.writeFileSync(
+                sqliteSchemaPath,
+                originalSqliteSchemaContent,
+                'utf8',
+            );
         } else {
             try {
                 fs.unlinkSync(sqliteSchemaPath);
@@ -39,7 +46,10 @@ describe('sync-schemas script integration', () => {
         } catch (error: any) {
             return {
                 success: false,
-                output: (error.stdout?.toString() || '') + '\n' + (error.stderr?.toString() || ''),
+                output:
+                    (error.stdout?.toString() || '') +
+                    '\n' +
+                    (error.stderr?.toString() || ''),
             };
         }
     };
@@ -63,7 +73,9 @@ datasource db {
         const sqliteContent = fs.readFileSync(sqliteSchemaPath, 'utf8');
         expect(sqliteContent).toContain('output   = "../generated/sqlite"');
         expect(sqliteContent).toContain('provider = "sqlite"');
-        expect(sqliteContent).toContain('THIS FILE IS AUTO-GENERATED. DO NOT EDIT DIRECTLY.');
+        expect(sqliteContent).toContain(
+            'THIS FILE IS AUTO-GENERATED. DO NOT EDIT DIRECTLY.',
+        );
     });
 
     it('successfully syncs a valid schema with single quotes and custom whitespace', () => {
@@ -102,7 +114,9 @@ datasource db {
 
         const result = runSyncScript();
         expect(result.success).toBe(false);
-        expect(result.output).toContain('Failed to replace the client generator output path');
+        expect(result.output).toContain(
+            'Failed to replace the client generator output path',
+        );
     });
 
     it('fails when datasource provider does not match pattern', () => {
@@ -120,6 +134,8 @@ datasource db {
 
         const result = runSyncScript();
         expect(result.success).toBe(false);
-        expect(result.output).toContain('Failed to replace the database provider');
+        expect(result.output).toContain(
+            'Failed to replace the database provider',
+        );
     });
 });

@@ -608,6 +608,24 @@ export const THEMES: Theme[] = [
             text: '#DBDBDB',
         },
     },
+    {
+        name: 'High Contrast',
+        colors: {
+            primary: '#FFFFFF',
+            planMode: '#FF00FF',
+            selection: '#00FFFF',
+            thinking: '#FF00FF',
+            success: '#00FF00',
+            error: '#FF0000',
+            info: '#00FFFF',
+            background: '#000000',
+            surface: '#1A1A1A',
+            dialogSurface: '#000000',
+            thinkingBorder: '#808080',
+            dimSeparator: '#666666',
+            text: '#FFFFFF',
+        },
+    },
 ];
 
 export const DEFAULT_THEME = THEMES.find((t) => t.name === 'Nightfox')!;

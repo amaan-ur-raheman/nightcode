@@ -191,4 +191,44 @@ describe('context-compression', () => {
             expect(text).toBe(tier1Texts[i]);
         }
     });
+
+    it('anchor extracts decision reasoning chains', () => {
+        const msgs = [
+            makeTextMsg('user', 'Start'),
+            makeTextMsg('assistant', 'I decided to refactor this file because it was too complex.'),
+            makeTextMsg('assistant', 'First, we will initialize the workspace. Then, we will create the DB entries. Finally, we will test it.'),
+            makeTextMsg('assistant', 'The goal is to increase coverage.'),
+            ...Array.from({ length: 30 }, (_, i) =>
+                makeTextMsg('assistant', `Filler msg ${i}`)
+            )
+        ];
+
+        const result = compressContext(msgs, { tier1Count: 4, tier2Count: 4 });
+        expect(result.anchor).toContain('Reasoning chain');
+        expect(result.anchor).toContain('Key decisions');
+        expect(result.anchor).toContain('I decided to refactor');
+        expect(result.anchor).toContain('First, we will initialize');
+        expect(result.anchor).toContain('increase coverage');
+    });
+
+    it('ProgressiveContextLoader loads context in batches', async () => {
+        const { ProgressiveContextLoader } = await import('../context-compression');
+        const msgs = Array.from({ length: 25 }, (_, i) =>
+            makeTextMsg('assistant', `Message ${i}`)
+        );
+        const loader = new ProgressiveContextLoader(msgs);
+        
+        const batch1 = loader.getNextBatch(10);
+        expect(batch1.messages.length).toBe(10);
+        expect(batch1.hasMore).toBe(true);
+        expect(batch1.messages[0].parts[0].text).toBe('Message 15');
+        
+        const batch2 = loader.getNextBatch(10);
+        expect(batch2.messages.length).toBe(10);
+        expect(batch2.hasMore).toBe(true);
+        
+        const batch3 = loader.getNextBatch(10);
+        expect(batch3.messages.length).toBe(5);
+        expect(batch3.hasMore).toBe(false);
+    });
 });

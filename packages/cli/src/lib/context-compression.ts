@@ -7,6 +7,14 @@
  * - Tier 3 (metadata):   Old messages — replaced with metadata summaries
  *
  * Tool-aware: errors always preserved in full; read outputs get structure extraction.
+ *
+ * Context-mode aware: compression adapts to the current task type:
+ * - "code"    → preserve code blocks and file content more aggressively
+ * - "research" → preserve text and analysis more, compress tool output harder
+ * - "debug"   → preserve error context and stack traces
+ * - "general" → balanced compression (default)
+ *
+ * Progressive loading: starts with minimal context, can expand on demand.
  */
 
 /** Messages kept at full fidelity (Tier 1). */
@@ -28,6 +36,60 @@ const TIER2_OUTPUT_THRESHOLD = 300;
 /** Threshold above which we start Tier 3 compression. */
 const TIER3_TEXT_THRESHOLD = 500;
 
+/** Context modes control how compression is adapted. */
+export type ContextMode = 'code' | 'research' | 'debug' | 'general';
+
+/** Per-mode compression tuning. */
+interface CompressionProfile {
+    /** Tier 1 message count multiplier (1.0 = default). */
+    tier1Multiplier: number;
+    /** Tier 2 message count multiplier (1.0 = default). */
+    tier2Multiplier: number;
+    /** How aggressively to compress tool output (0.0 = keep all, 1.0 = max compression). */
+    toolCompression: number;
+    /** How aggressively to compress text (0.0 = keep all, 1.0 = max compression). */
+    textCompression: number;
+    /** Whether to preserve error context more fully. */
+    preserveErrors: boolean;
+    /** Whether to preserve code blocks in text. */
+    preserveCode: boolean;
+}
+
+const PROFILES: Record<ContextMode, CompressionProfile> = {
+    code: {
+        tier1Multiplier: 1.2,
+        tier2Multiplier: 1.0,
+        toolCompression: 0.3, // Keep more tool output (file reads)
+        textCompression: 0.2, // Keep more text (code explanations)
+        preserveErrors: true,
+        preserveCode: true,
+    },
+    research: {
+        tier1Multiplier: 0.8,
+        tier2Multiplier: 1.2,
+        toolCompression: 0.7, // Compress tool output harder
+        textCompression: 0.2, // Keep text and analysis
+        preserveErrors: true,
+        preserveCode: false,
+    },
+    debug: {
+        tier1Multiplier: 1.3,
+        tier2Multiplier: 0.8,
+        toolCompression: 0.4,
+        textCompression: 0.3,
+        preserveErrors: true, // Always preserve error context
+        preserveCode: true,
+    },
+    general: {
+        tier1Multiplier: 1.0,
+        tier2Multiplier: 1.0,
+        toolCompression: 0.5,
+        textCompression: 0.5,
+        preserveErrors: true,
+        preserveCode: false,
+    },
+};
+
 export interface CompressionStats {
     originalCount: number;
     compressedCount: number;
@@ -35,6 +97,7 @@ export interface CompressionStats {
     tier1Count: number;
     tier2Count: number;
     tier3Count: number;
+    contextMode: ContextMode;
 }
 
 export interface CompressionResult {
@@ -46,17 +109,25 @@ export interface CompressionResult {
 /**
  * Apply progressive tiered compression to a message array.
  *
- * Returns a new array (does not mutate the input).
+ * @param contextMode - Controls how compression adapts to the task type.
  */
 export function compressContext(
     messages: any[],
     opts?: {
         tier1Count?: number;
         tier2Count?: number;
+        contextMode?: ContextMode;
     },
 ): CompressionResult {
-    const tier1Count = opts?.tier1Count ?? DEFAULT_TIER1_COUNT;
-    const tier2Count = opts?.tier2Count ?? DEFAULT_TIER2_COUNT;
+    const mode = opts?.contextMode ?? 'general';
+    const profile = PROFILES[mode];
+
+    const tier1Count = Math.round(
+        (opts?.tier1Count ?? DEFAULT_TIER1_COUNT) * profile.tier1Multiplier,
+    );
+    const tier2Count = Math.round(
+        (opts?.tier2Count ?? DEFAULT_TIER2_COUNT) * profile.tier2Multiplier,
+    );
     const totalKeep = tier1Count + tier2Count;
 
     if (messages.length <= totalKeep) {
@@ -70,6 +141,7 @@ export function compressContext(
                 tier1Count: messages.length,
                 tier2Count: 0,
                 tier3Count: 0,
+                contextMode: mode,
             },
         };
     }
@@ -93,12 +165,12 @@ export function compressContext(
     const tier2Messages = workingMessages.slice(tier2Start, tier1Start);
     const tier1Messages = workingMessages.slice(tier1Start);
 
-    // Compress each tier
+    // Compress each tier with mode-aware profiles
     const compressedTier2 = tier2Messages.map((msg) =>
-        compressMessage(msg, 'tier2'),
+        compressMessage(msg, 'tier2', profile),
     );
     const compressedTier3 = tier3Messages.map((msg) =>
-        compressMessage(msg, 'tier3'),
+        compressMessage(msg, 'tier3', profile),
     );
 
     // Build anchor from dropped context
@@ -135,14 +207,68 @@ export function compressContext(
             tier1Count: tier1Messages.length + (firstUser ? 1 : 0),
             tier2Count: compressedTier2.length,
             tier3Count: compressedTier3.length,
+            contextMode: mode,
         },
     };
 }
 
 /**
- * Compress a single message based on its tier.
+ * Detect the most likely context mode from a user message.
  */
-function compressMessage(msg: any, tier: 'tier2' | 'tier3'): any {
+export function detectContextMode(userMessage: string): ContextMode {
+    const lower = userMessage.toLowerCase();
+
+    // Debug signals
+    if (
+        lower.includes('error') ||
+        lower.includes('bug') ||
+        lower.includes('fix') ||
+        lower.includes('crash') ||
+        lower.includes('traceback') ||
+        lower.includes('exception')
+    ) {
+        return 'debug';
+    }
+
+    // Code signals
+    if (
+        lower.includes('implement') ||
+        lower.includes('write') ||
+        lower.includes('create') ||
+        lower.includes('add') ||
+        lower.includes('refactor') ||
+        lower.includes('code') ||
+        lower.includes('function') ||
+        lower.includes('class') ||
+        lower.includes('file')
+    ) {
+        return 'code';
+    }
+
+    // Research signals
+    if (
+        lower.includes('explain') ||
+        lower.includes('analyze') ||
+        lower.includes('investigate') ||
+        lower.includes('research') ||
+        lower.includes('how') ||
+        lower.includes('why') ||
+        lower.includes('what')
+    ) {
+        return 'research';
+    }
+
+    return 'general';
+}
+
+/**
+ * Compress a single message based on its tier and profile.
+ */
+function compressMessage(
+    msg: any,
+    tier: 'tier2' | 'tier3',
+    profile: CompressionProfile,
+): any {
     if (!msg || !msg.parts) return msg;
 
     const compressedParts = msg.parts.map((part: any) => {
@@ -152,11 +278,11 @@ function compressMessage(msg: any, tier: 'tier2' | 'tier3'): any {
             part.state === 'output-available' &&
             typeof part.output === 'string'
         ) {
-            return compressToolOutput(part, tier);
+            return compressToolOutput(part, tier, profile);
         }
         // Text parts
         if (part.type === 'text' && typeof part.text === 'string') {
-            return compressText(part, tier);
+            return compressText(part, tier, profile);
         }
         return part;
     });
@@ -165,15 +291,19 @@ function compressMessage(msg: any, tier: 'tier2' | 'tier3'): any {
 }
 
 /**
- * Compress a tool output part based on tier.
+ * Compress a tool output part based on tier and profile.
  */
-function compressToolOutput(part: any, tier: 'tier2' | 'tier3'): any {
+function compressToolOutput(
+    part: any,
+    tier: 'tier2' | 'tier3',
+    profile: CompressionProfile,
+): any {
     const output = part.output as string;
     const toolName = getToolName(part);
     const isError = isErrorResponse(output);
 
     // Errors are always preserved more fully
-    if (isError) {
+    if (isError && profile.preserveErrors) {
         const maxLen =
             tier === 'tier2' ? TIER2_TOOL_OUTPUT_MAX * 2 : TIER3_ERROR_MAX;
         if (output.length <= maxLen) return part;
@@ -183,8 +313,13 @@ function compressToolOutput(part: any, tier: 'tier2' | 'tier3'): any {
         };
     }
 
-    const maxLen =
+    // Apply mode-aware compression factor
+    const baseMaxLen =
         tier === 'tier2' ? TIER2_TOOL_OUTPUT_MAX : TIER3_TOOL_OUTPUT_MAX;
+    const compressionFactor = profile.toolCompression;
+    // Lower compression = higher maxLen (keep more content)
+    const maxLen = Math.round(baseMaxLen * (1 + (1 - compressionFactor)));
+
     if (output.length <= maxLen) return part;
 
     // Tool-specific compression strategies
@@ -301,13 +436,44 @@ function compressDirectoryListing(output: string, maxLen: number): string {
 }
 
 /**
- * Compress a text part based on tier.
+ * Compress a text part based on tier and profile.
  */
-function compressText(part: any, tier: 'tier2' | 'tier3'): any {
+function compressText(
+    part: any,
+    tier: 'tier2' | 'tier3',
+    profile: CompressionProfile,
+): any {
     const text = part.text;
+
+    // In code mode, preserve code blocks
+    if (profile.preserveCode && tier === 'tier2') {
+        const codeBlockRegex = /```[\s\S]*?```/g;
+        const codeBlocks: string[] = [];
+        let match;
+        while ((match = codeBlockRegex.exec(text)) !== null) {
+            codeBlocks.push(match[0]);
+        }
+        if (codeBlocks.length > 0) {
+            // Keep code blocks, compress surrounding text
+            const textWithoutCode = text.replace(
+                codeBlockRegex,
+                '[code block]',
+            );
+            if (textWithoutCode.length <= TIER3_TEXT_THRESHOLD * 2) return part;
+            return {
+                ...part,
+                text: truncateSmart(textWithoutCode, TIER2_TOOL_OUTPUT_MAX),
+            };
+        }
+    }
+
     if (tier === 'tier2') {
         // Tier 2: keep text mostly intact, only compress very long outputs
-        if (text.length <= TIER3_TEXT_THRESHOLD * 2) return part;
+        const compressionFactor = profile.textCompression;
+        const maxLen = Math.round(
+            TIER3_TEXT_THRESHOLD * 2 * (1 + (1 - compressionFactor)),
+        );
+        if (text.length <= maxLen) return part;
         return {
             ...part,
             text: truncateSmart(text, TIER2_TOOL_OUTPUT_MAX),
@@ -351,6 +517,8 @@ function truncatePreservingError(text: string, maxLen: number): string {
 
 /**
  * Build a context anchor summarizing what was dropped.
+ * Enhanced to preserve reasoning chains (the WHY behind decisions),
+ * not just file lists and errors.
  */
 function buildAnchor(
     tier3Messages: any[],
@@ -364,9 +532,12 @@ function buildAnchor(
         `[Context: ${totalDropped} earlier messages compressed to save tokens.]`,
     );
 
-    // Extract key decisions and file operations from dropped messages
+    // Extract key decisions, reasoning chains, and file operations
     const filesModified = new Set<string>();
     const decisions: string[] = [];
+    const reasoningChains: string[] = [];
+    const toolsUsed = new Set<string>();
+    const strategies: string[] = [];
 
     for (const msg of [...tier3Messages, ...tier2Messages]) {
         if (!msg?.parts) continue;
@@ -380,6 +551,9 @@ function buildAnchor(
                     const filePath = part.input?.path ?? part.input?.file;
                     if (filePath) filesModified.add(filePath);
                 }
+                if (toolName) {
+                    toolsUsed.add(toolName);
+                }
                 if (
                     part.state === 'output-available' &&
                     typeof part.output === 'string'
@@ -387,16 +561,65 @@ function buildAnchor(
                     // Extract first line of errors for decision context
                     if (isErrorResponse(part.output)) {
                         const firstLine = part.output.split('\n')[0];
-                        if (firstLine)
+                        if (firstLine && firstLine.length > 3)
                             decisions.push(`Error: ${firstLine.slice(0, 100)}`);
                     }
                 }
             }
-            // Extract text decisions
+            // Extract reasoning chains from text parts
             if (part.type === 'text' && typeof part.text === 'string') {
-                const text = part.text;
-                if (text.includes(' decided ') || text.includes(' choosing ')) {
-                    decisions.push(text.slice(0, 150));
+                const text = part.text.trim();
+                
+                // Capture decision statements with reasoning
+                const decisionPatterns = [
+                    /(?:I chose|I decided|I opted|I picked|I selected|Using|Preferring|Going with)[^.]*\./gi,
+                    /(?:Therefore|Because|Since|Given that|As a result)[^.]*\./gi,
+                    /(?:The reason|My rationale|The approach|The strategy)[^.]*\./gi,
+                    /(?:After considering|After reviewing|Based on)[^.]*\./gi,
+                    /(?:This means|This implies|Consequently)[^.]*\./gi,
+                    /(?:Let me|I'll|I should|I need to|I'm going to)[^.]*\./gi,
+                ];
+                
+                for (const pattern of decisionPatterns) {
+                    const matches = text.match(pattern);
+                    if (matches) {
+                        for (const m of matches) {
+                            const trimmed = m.trim();
+                            if (trimmed.length > 10 && trimmed.length < 300) {
+                                decisions.push(trimmed);
+                            }
+                        }
+                    }
+                }
+
+                // Capture multi-sentence reasoning chains (2-4 connected sentences)
+                // These represent thought processes behind decisions
+                const reasoningRegex = /(?:First|Next|Then|Finally|Step \d+)[^.]*\.(?:\s*[A-Z][^.]*\.){0,3}/g;
+                const reasoningMatches = text.match(reasoningRegex);
+                if (reasoningMatches) {
+                    for (const rm of reasoningMatches) {
+                        const trimmed = rm.trim();
+                        if (trimmed.length > 20 && trimmed.length < 400) {
+                            reasoningChains.push(trimmed);
+                        }
+                    }
+                }
+
+                // Capture strategy/goal statements
+                const strategyPatterns = [
+                    /(?:The goal|The objective|The plan|The approach is|The strategy is)[^.]*\./gi,
+                    /(?:To fix|To implement|To address|To resolve|To add)[^.]*\./gi,
+                ];
+                for (const pattern of strategyPatterns) {
+                    const matches = text.match(pattern);
+                    if (matches) {
+                        for (const m of matches) {
+                            const trimmed = m.trim();
+                            if (trimmed.length > 15 && trimmed.length < 300) {
+                                strategies.push(trimmed);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -407,8 +630,26 @@ function buildAnchor(
             `Files modified: ${[...filesModified].slice(0, 10).join(', ')}${filesModified.size > 10 ? ` (+${filesModified.size - 10} more)` : ''}`,
         );
     }
-    if (decisions.length > 0) {
-        parts.push(`Key decisions: ${decisions.slice(0, 3).join(' | ')}`);
+
+    if (toolsUsed.size > 0) {
+        parts.push(`Tools used: ${[...toolsUsed].slice(0, 8).join(', ')}`);
+    }
+
+    // Reasoning chains: the most valuable for maintaining context continuity
+    const uniqueReasoning = [...new Set(reasoningChains)];
+    if (uniqueReasoning.length > 0) {
+        parts.push(
+            `Reasoning chain: ${uniqueReasoning.slice(0, 2).join(' ')}`,
+        );
+    }
+
+    // Key decisions and strategies — the WHY
+    const allDecisions = [
+        ...strategies.slice(0, 2),
+        ...decisions.slice(0, 3),
+    ];
+    if (allDecisions.length > 0) {
+        parts.push(`Key decisions: ${allDecisions.slice(0, 3).join(' | ')}`);
     }
 
     return parts.join('\n');
@@ -485,4 +726,81 @@ function estimateMessageSize(msg: any): number {
             return sum + part.errorText.length;
         return sum;
     }, 0);
+}
+
+// ── Progressive Context Loader ──
+
+/**
+ * Progressive context loader: starts with minimal context and expands on demand.
+ * Useful for long-running sessions where early context becomes less relevant.
+ */
+export class ProgressiveContextLoader {
+    private loaded = 0;
+    private messages: any[] = [];
+    private contextMode: ContextMode;
+
+    constructor(messages: any[], contextMode: ContextMode = 'general') {
+        this.messages = messages;
+        this.contextMode = contextMode;
+    }
+
+    /**
+     * Get the next batch of context. Initially returns only Tier 1 (recent).
+     * Call repeatedly to expand with older context.
+     */
+    getNextBatch(batchSize: number = 10): {
+        messages: any[];
+        hasMore: boolean;
+    } {
+        const remaining = this.messages.length - this.loaded;
+        if (remaining <= 0) {
+            return { messages: [], hasMore: false };
+        }
+
+        const start = Math.max(
+            0,
+            this.messages.length - this.loaded - batchSize,
+        );
+        const batch = this.messages.slice(
+            start,
+            this.messages.length - this.loaded,
+        );
+        this.loaded += batch.length;
+
+        return {
+            messages: batch,
+            hasMore: start > 0,
+        };
+    }
+
+    /**
+     * Get a fully compressed version of all context.
+     * Used when token budget is tight.
+     */
+    getCompressed(): CompressionResult {
+        return compressContext(this.messages, {
+            contextMode: this.contextMode,
+        });
+    }
+
+    /**
+     * Get just the most recent N messages without compression.
+     */
+    getRecent(count: number): any[] {
+        return this.messages.slice(-count);
+    }
+
+    /**
+     * Reset to start fresh.
+     */
+    reset(): void {
+        this.loaded = 0;
+    }
+
+    /**
+     * Get current progress.
+     */
+    getProgress(): { loaded: number; total: number } {
+        return { loaded: this.loaded, total: this.messages.length };
+    }
 }

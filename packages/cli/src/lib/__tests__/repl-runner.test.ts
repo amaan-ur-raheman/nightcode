@@ -73,7 +73,7 @@ describe('ReplRunner', () => {
         expect(Bun.spawn).not.toHaveBeenCalled();
         const execPromise = runner.execute('echo "test"');
         expect(Bun.spawn).toHaveBeenCalled();
-        
+
         // Simulate data arriving to finish the test gracefully
         // @ts-expect-error - handleData is private and accessed for testing
         runner.handleData('test\n');

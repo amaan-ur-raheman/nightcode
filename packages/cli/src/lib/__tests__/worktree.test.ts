@@ -37,24 +37,46 @@ describe('worktree-manager', () => {
 
             const path = await setupWorktree('agent-1', '/parent/cwd');
             expect(path).toBe('/parent/cwd');
-            expect(mockRunGit).toHaveBeenCalledWith('/parent/cwd', ['rev-parse', '--is-inside-work-tree']);
+            expect(mockRunGit).toHaveBeenCalledWith('/parent/cwd', [
+                'rev-parse',
+                '--is-inside-work-tree',
+            ]);
         });
 
         it('creates git worktree and applies changes if dirty', async () => {
             // 1. isGitRepository -> true
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: 'true', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'true',
+                stderr: '',
+            });
             // 2. git worktree add -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
             // 3. git diff HEAD -> dirty changes
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: 'diff --git a/file.ts b/file.ts...', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'diff --git a/file.ts b/file.ts...',
+                stderr: '',
+            });
             // 4. git apply -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
 
             const path = await setupWorktree('agent-1', '/parent/cwd');
             expect(path).toContain('/.nightcode/worktrees/worktree-agent_1');
 
             // Verify the git commands executed
-            expect(mockRunGit).toHaveBeenCalledWith('/parent/cwd', ['rev-parse', '--is-inside-work-tree']);
+            expect(mockRunGit).toHaveBeenCalledWith('/parent/cwd', [
+                'rev-parse',
+                '--is-inside-work-tree',
+            ]);
             expect(mockRunGit).toHaveBeenCalledWith('/parent/cwd', [
                 'worktree',
                 'add',
@@ -63,13 +85,21 @@ describe('worktree-manager', () => {
                 expect.stringContaining('worktree-agent_1'),
                 'HEAD',
             ]);
-            expect(mockRunGit).toHaveBeenCalledWith('/parent/cwd', ['diff', 'HEAD']);
+            expect(mockRunGit).toHaveBeenCalledWith('/parent/cwd', [
+                'diff',
+                'HEAD',
+            ]);
         });
     });
 
     describe('teardownWorktree', () => {
         it('does nothing if worktreePath is equal to parentCwd', async () => {
-            await teardownWorktree('agent-1', '/parent/cwd', '/parent/cwd', true);
+            await teardownWorktree(
+                'agent-1',
+                '/parent/cwd',
+                '/parent/cwd',
+                true,
+            );
             expect(mockRunGit).not.toHaveBeenCalled();
         });
 
@@ -78,29 +108,55 @@ describe('worktree-manager', () => {
             const parentCwd = '/parent/cwd';
 
             // 1. git status -> changes exist
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: 'M file.ts', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: 'M file.ts',
+                stderr: '',
+            });
             // 2. git add -A -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
             // 3. git commit -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
             // 4. git merge -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
             // 5. git worktree remove -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
             // 6. git branch -D -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
 
             await teardownWorktree('agent-1', worktreePath, parentCwd, true);
 
-            expect(mockRunGit).toHaveBeenCalledWith(worktreePath, ['status', '--porcelain']);
-            expect(mockRunGit).toHaveBeenCalledWith(worktreePath, ['add', '-A']);
+            expect(mockRunGit).toHaveBeenCalledWith(worktreePath, [
+                'status',
+                '--porcelain',
+            ]);
+            expect(mockRunGit).toHaveBeenCalledWith(worktreePath, [
+                'add',
+                '-A',
+            ]);
             expect(mockRunGit).toHaveBeenCalledWith(
                 worktreePath,
-                [
-                    'commit',
-                    '-m',
-                    'Auto-commit changes from subagent agent-1',
-                ],
+                ['commit', '-m', 'Auto-commit changes from subagent agent-1'],
                 {
                     GIT_AUTHOR_NAME: 'NightCode Agent',
                     GIT_AUTHOR_EMAIL: 'agent@nightcode.ai',
@@ -131,14 +187,28 @@ describe('worktree-manager', () => {
             const parentCwd = '/parent/cwd';
 
             // 1. git worktree remove -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
             // 2. git branch -D -> success
-            mockRunGit.mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+            mockRunGit.mockResolvedValueOnce({
+                exitCode: 0,
+                stdout: '',
+                stderr: '',
+            });
 
             await teardownWorktree('agent-1', worktreePath, parentCwd, false);
 
-            expect(mockRunGit).not.toHaveBeenCalledWith(worktreePath, expect.anything());
-            expect(mockRunGit).not.toHaveBeenCalledWith(parentCwd, expect.arrayContaining(['merge']));
+            expect(mockRunGit).not.toHaveBeenCalledWith(
+                worktreePath,
+                expect.anything(),
+            );
+            expect(mockRunGit).not.toHaveBeenCalledWith(
+                parentCwd,
+                expect.arrayContaining(['merge']),
+            );
             expect(mockRunGit).toHaveBeenCalledWith(parentCwd, [
                 'worktree',
                 'remove',

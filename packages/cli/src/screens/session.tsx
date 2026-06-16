@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { InferResponseType } from 'hono/client';
 import React from 'react';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router';
 
 import { useKeyboard, useSelectionHandler } from '@opentui/react';
@@ -36,6 +36,7 @@ import { UserMessage, ErrorMessage, BotMessage } from '@/components/messages';
 import { QuestionOverlay } from '@/components/question-overlay';
 import { SymbolOutline } from '@/components/symbol-outline';
 import { CodePanel } from '@/components/code-panel';
+import { MessageSearch } from '@/components/message-search';
 
 type SessionData = InferResponseType<
     (typeof apiClient.sessions)[':id']['$get'],
@@ -71,6 +72,8 @@ function ChatMessage({
     msg: Message;
     streaming?: boolean;
 }) {
+    const { colors } = useTheme();
+
     if (msg.role === 'user') {
         const text = msg.parts
             .filter((p) => p.type === 'text')
@@ -92,6 +95,35 @@ function ChatMessage({
                 mode={msg.metadata?.mode ?? 'BUILD'}
                 imageCount={imageAttachments.length}
             />
+        );
+    }
+
+    if (msg.role === 'system') {
+        const text = msg.parts
+            .filter((p) => p.type === 'text')
+            .map((p) => p.text)
+            .join('');
+
+        return (
+            <box
+                paddingLeft={4}
+                paddingRight={2}
+                paddingY={1}
+                width="100%"
+                flexDirection="column"
+                marginBottom={1}
+            >
+                <box
+                    border={['left']}
+                    borderColor={colors.thinkingBorder}
+                    paddingLeft={2}
+                    width="100%"
+                >
+                    <text fg={colors.dimSeparator} attributes={TextAttributes.DIM}>
+                        {text}
+                    </text>
+                </box>
+            </box>
         );
     }
 
@@ -156,6 +188,7 @@ function SessionChat({
         imageAttachments,
         addImageAttachment,
         removeImageAttachment,
+        streamingTokens,
     } = useChat(session.id, initialMessages, initialPrompt?.imageAttachments);
     const hasSubmittedInitialPromptRef = useRef(false);
 
@@ -192,6 +225,13 @@ function SessionChat({
     // Let the user cancel a reply even before the first streamed chunks arrived
     const keyHandlerRef = useRef<((key: any) => void) | undefined>(undefined);
     keyHandlerRef.current = (key) => {
+        // If loading (tool is executing), Escape should interrupt/stop it immediately
+        if (key.name === 'escape' && isTopLayer('base') && isLoading) {
+            key.preventDefault();
+            interrupt();
+            return;
+        }
+
         // Handle chat mode switching & scrolling
         if (activePane === 'chat') {
             if (chatMode === 'insert') {
@@ -233,7 +273,12 @@ function SessionChat({
         // Pane navigation via Ctrl+W cycles focus between Chat input, File tree, Outline, and Code panel.
         if (key.name === 'w' && key.ctrl && isTopLayer('base')) {
             key.preventDefault();
-            const availablePanes: ('file-tree' | 'symbol-outline' | 'code-panel' | 'chat')[] = [];
+            const availablePanes: (
+                | 'file-tree'
+                | 'symbol-outline'
+                | 'code-panel'
+                | 'chat'
+            )[] = [];
             if (showFileTree && !isFullscreenCode) {
                 availablePanes.push('file-tree');
             }
@@ -268,6 +313,12 @@ function SessionChat({
                     return next;
                 });
             }
+        }
+
+        // Message search via Ctrl+H
+        if (key.name === 'h' && key.ctrl && isTopLayer('base')) {
+            key.preventDefault();
+            setIsSearchOpen((prev) => !prev);
         }
 
         if (key.name === 'escape' && isTopLayer('base') && isLoading) {
@@ -463,6 +514,28 @@ function SessionChat({
         number | undefined
     >();
     const [isFullscreenCode, setIsFullscreenCode] = useState(false);
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const handleCloseSearch = useCallback(() => {
+        setIsSearchOpen(false);
+    }, []);
+    const handleJumpToMessage = useCallback(
+        (idx: number) => {
+            const sb = chatScrollRef.current;
+            if (!sb) return;
+
+            // Convert full-message index to position within visibleMessages
+            const offset = messages.length - visibleMessages.length;
+            const visibleIdx = idx - offset;
+
+            if (visibleIdx >= 0 && visibleIdx < visibleMessages.length) {
+                sb.scrollTo(visibleIdx);
+            } else {
+                // Message is outside the visible window; scroll to top as fallback
+                sb.scrollTo(0);
+            }
+        },
+        [messages.length, visibleMessages.length],
+    );
     const [chatMode, setChatMode] = useState<'insert' | 'scroll'>('insert');
     const chatScrollRef = useRef<any>(null);
 
@@ -510,7 +583,12 @@ function SessionChat({
             )}
 
             {renderCodeViewer && (
-                <box flexDirection="row" flexGrow={60} width={isFullscreenCode ? "100%" : "60%"} height="100%">
+                <box
+                    flexDirection="row"
+                    flexGrow={60}
+                    width={isFullscreenCode ? '100%' : '60%'}
+                    height="100%"
+                >
                     {diffMode ? (
                         <FileDiffPanel filePath={selectedFile} />
                     ) : (
@@ -533,7 +611,12 @@ function SessionChat({
             )}
 
             {renderChat && (
-                <box flexDirection="column" flexGrow={renderCodeViewer ? 40 : 1} width={renderCodeViewer ? "40%" : "100%"} height="100%">
+                <box
+                    flexDirection="column"
+                    flexGrow={renderCodeViewer ? 40 : 1}
+                    width={renderCodeViewer ? '40%' : '100%'}
+                    height="100%"
+                >
                     <SessionShell
                         onSubmit={(text) => {
                             requestStartTimeRef.current = Date.now();
@@ -542,6 +625,7 @@ function SessionChat({
                         onClear={clearMessages}
                         loading={isLoading}
                         interruptible={isLoading}
+                        onInterrupt={interrupt}
                         canRetry={
                             !isLoading &&
                             messages.some((m) => m.role === 'user')
@@ -570,7 +654,15 @@ function SessionChat({
                         chatMode={chatMode}
                         messages={messages}
                         lastLatencyMs={lastLatencyMs}
+                        streamingTokens={streamingTokens}
+                        streamingStartTime={requestStartTimeRef.current}
                     >
+                        <MessageSearch
+                            messages={messages}
+                            isOpen={isSearchOpen}
+                            onClose={handleCloseSearch}
+                            onJumpToMessage={handleJumpToMessage}
+                        />
                         {displayMessages.length > MAX_VISIBLE_MESSAGES && (
                             <box paddingX={3} paddingTop={1}>
                                 <text
@@ -595,6 +687,7 @@ function SessionChat({
                             <ErrorMessage
                                 message={error.message}
                                 canRetry={!isLoading}
+                                onRetry={retryLast}
                             />
                         )}
                     </SessionShell>
