@@ -49,7 +49,11 @@ class RequestQueue {
 
     async enqueue<T>(
         execute: () => Promise<T>,
-        options: { priority?: number; maxRetries?: number; userId?: string } = {},
+        options: {
+            priority?: number;
+            maxRetries?: number;
+            userId?: string;
+        } = {},
     ): Promise<T> {
         return new Promise((resolve, reject) => {
             const request: QueuedRequest = {

@@ -1,8 +1,5 @@
 import type { LanguageModelUsage } from 'ai';
-import {
-    findSupportedChatModel,
-    type ModelPricing,
-} from '@nightcode/shared';
+import { findSupportedChatModel, type ModelPricing } from '@nightcode/shared';
 
 type CalculateCreditsForUsageParams = {
     provider: string;

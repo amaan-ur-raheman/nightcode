@@ -18,7 +18,11 @@ import {
 } from '@nightcode/shared';
 import { buildSubagentSystemPrompt } from '../system-prompt';
 import { resolveSubagentChatModel } from '../lib/models';
-import { getAvailableCreditsBalance, ingestAIUsage } from '../lib/polar';
+import {
+    getAvailableCreditsBalance,
+    getCachedCreditsBalance,
+    ingestAIUsage,
+} from '../lib/polar';
 import { calculateCreditsForUsage } from '../lib/credits';
 import { withFallback } from '../lib/fallback';
 import type { AuthenticatedEnv } from '../middleware/require-auth';
@@ -41,6 +45,10 @@ const subagentSchema = z.object({
     model: z.string().min(1, 'Model ID is required'),
     mode: modeSchema,
     agentId: z.string().optional(),
+    projectContext: z.string().optional(),
+    corrections: z.array(z.string()).optional(),
+    positives: z.array(z.string()).optional(),
+    errorWarnings: z.array(z.string()).optional(),
 });
 
 const app = new Hono<AuthenticatedEnv>().post(
@@ -51,7 +59,16 @@ const app = new Hono<AuthenticatedEnv>().post(
     }),
     async (c) => {
         const userId = c.get('userId');
-        const { messages, model, mode, agentId } = c.req.valid('json');
+        const {
+            messages,
+            model,
+            mode,
+            agentId,
+            projectContext,
+            corrections,
+            positives,
+            errorWarnings,
+        } = c.req.valid('json');
         const providerApiKey = c.req.header('x-provider-key') ?? undefined;
 
         const reqId = agentId ?? Math.random().toString(36).slice(2, 8);
@@ -69,8 +86,9 @@ const app = new Hono<AuthenticatedEnv>().post(
             `[subagent:${reqId}]   Message roles: [${uniqueRoles.join(',')}] total=${messages.length}`,
         );
 
-        const creditsBalance = await getAvailableCreditsBalance(userId);
-        if (creditsBalance <= 0) {
+        // Non-blocking credits check: use cache if available, fail-open on first request
+        const cachedBalance = getCachedCreditsBalance(userId);
+        if (cachedBalance !== null && cachedBalance <= 0) {
             console.log(
                 `[subagent:${reqId}] ✗ No credits remaining for user ${userId.slice(0, 8)}`,
             );
@@ -80,6 +98,15 @@ const app = new Hono<AuthenticatedEnv>().post(
                 },
                 402,
             );
+        }
+        if (cachedBalance === null) {
+            // Fire-and-forget refresh for next request
+            getAvailableCreditsBalance(userId).catch((err) => {
+                console.error(
+                    `[subagent:${reqId}] Background credit refresh failed:`,
+                    err,
+                );
+            });
         }
 
         const startTime = Date.now();
@@ -122,10 +149,15 @@ const app = new Hono<AuthenticatedEnv>().post(
                     system: buildSubagentSystemPrompt({
                         mode,
                         currentModel: model,
+                        projectContext,
+                        corrections,
+                        positives,
+                        errorWarnings,
                     }),
                     messages: modelMessages,
                     tools,
                     providerOptions: resolved.providerOptions,
+                    abortSignal: AbortSignal.timeout(180_000),
                     onFinish: (event) => {
                         completedUsage = event.totalUsage;
                     },

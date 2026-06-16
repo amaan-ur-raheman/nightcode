@@ -159,6 +159,9 @@ const submitSchema = z.object({
     model: z.string().min(1, 'Model ID is required'),
     mcpTools: z.array(mcpToolSchema).optional(),
     projectContext: z.string().optional(),
+    corrections: z.array(z.string()).optional(),
+    positives: z.array(z.string()).optional(),
+    errorWarnings: z.array(z.string()).optional(),
 });
 
 const submitValidator = zValidator('json', submitSchema, (result, c) => {
@@ -183,8 +186,17 @@ const app = new Hono<AuthenticatedEnv>().post(
     submitValidator,
     async (c) => {
         const userId = c.get('userId');
-        const { id, messages, mode, model, mcpTools, projectContext } =
-            c.req.valid('json');
+        const {
+            id,
+            messages,
+            mode,
+            model,
+            mcpTools,
+            projectContext,
+            corrections,
+            positives,
+            errorWarnings,
+        } = c.req.valid('json');
         const providerApiKey = c.req.header('x-provider-key') ?? undefined;
 
         const reqId = Math.random().toString(36).slice(2, 8);
@@ -242,6 +254,9 @@ const app = new Hono<AuthenticatedEnv>().post(
             mode,
             projectContext,
             currentModel: model,
+            corrections,
+            positives,
+            errorWarnings,
         });
         const tokenCount = estimateTokens(systemPrompt);
         console.log(
@@ -439,22 +454,22 @@ const app = new Hono<AuthenticatedEnv>().post(
                 };
             },
             async onFinish(event) {
-                // Always persist messages (including partial results from interrupted streams)
-                if (!hasPendingToolCalls(event.responseMessage)) {
-                    try {
-                        await db.session.update({
-                            where: { id, userId },
-                            data: {
-                                messages:
-                                    event.messages as unknown as Prisma.InputJsonValue,
-                            },
-                        });
-                    } catch (saveError) {
-                        console.error(
-                            `[chat:${reqId}] Failed to save messages:`,
-                            saveError,
-                        );
-                    }
+                // Always persist messages — including partial results from interrupted streams.
+                // Pending tool calls are marked in the message metadata so the client
+                // can detect and handle them on reload (e.g. by showing a "resume" prompt).
+                try {
+                    await db.session.update({
+                        where: { id, userId },
+                        data: {
+                            messages:
+                                event.messages as unknown as Prisma.InputJsonValue,
+                        },
+                    });
+                } catch (saveError) {
+                    console.error(
+                        `[chat:${reqId}] Failed to save messages:`,
+                        saveError,
+                    );
                 }
 
                 // Skip title generation and billing for aborted streams
