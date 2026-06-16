@@ -4,7 +4,7 @@ import {
     parseJsonEventStream,
 } from 'ai';
 import { executeLocalTool } from './local-tools';
-import { compressContext } from './context-compression';
+import { compressContext, detectContextMode } from './context-compression';
 import {
     updateSubagentStep,
     incrementToolCall,
@@ -13,7 +13,13 @@ import {
 import { debug } from './debug';
 import { getApiKeyForProvider } from './api-keys';
 import { resolveProviderForModel } from '@nightcode/shared';
-import { ErrorPatternTracker } from './error-pattern-tracker';
+import { ErrorPatternTracker, errorPatternTracker } from './error-pattern-tracker';
+import { correctionTracker } from './correction-tracker';
+import {
+    isCriticalOperation,
+    generateVerificationPrompt,
+    calculateConfidence,
+} from './self-verification';
 import { workspaceLocalStorage, getProjectCwd } from './workspace-context';
 import { setupWorktree, teardownWorktree } from './worktree';
 
@@ -154,6 +160,7 @@ export type SubagentLoopConfig = {
 
 // ── Subagent Checkpoint Persistence ──
 import { mkdir, writeFile, readFile } from 'fs/promises';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
@@ -233,542 +240,709 @@ export async function runSubagentLoop(
     let worktreeCreated = false;
     const activeAgentId = agentId ?? crypto.randomUUID();
 
+    // Read project context (rules) from .agentrules
+    let projectContext: string | undefined;
+    try {
+        const rulesPath = join(parentCwd, '.agentrules');
+        if (existsSync(rulesPath)) {
+            projectContext = readFileSync(rulesPath, 'utf8');
+        }
+    } catch {}
+
+    // Gather learning signals
+    const [corrections, patterns, errorSuggestions] = await Promise.all([
+        correctionTracker.getCorrections(),
+        correctionTracker.getPatterns(),
+        Promise.resolve((errorTracker ?? errorPatternTracker).getSuggestions()),
+    ]);
+
     if (mode === 'BUILD') {
         try {
             worktreePath = await setupWorktree(activeAgentId, parentCwd);
-            worktreeCreated = (worktreePath !== parentCwd);
+            worktreeCreated = worktreePath !== parentCwd;
         } catch (err) {
-            console.error(`[${label}] Failed to setup worktree for agent ${activeAgentId}:`, err);
+            console.error(
+                `[${label}] Failed to setup worktree for agent ${activeAgentId}:`,
+                err,
+            );
             throw err;
         }
     }
 
     let success = false;
     try {
-        const result = await workspaceLocalStorage.run({ cwd: worktreePath, agentId: activeAgentId }, async () => {
+        const result = await workspaceLocalStorage.run(
+            { cwd: worktreePath, agentId: activeAgentId },
+            async () => {
+                // Track files modified in this session for self-verification
+                const filesModified = new Set<string>();
+                const executionErrors: string[] = [];
+                const toolUsageMap = new Map<string, number>();
+                let hasToolResults = false;
+                let verificationAttempts = 0;
 
-    // Track files modified in this session for self-verification
-    const filesModified = new Set<string>();
-    let hasToolResults = false;
-    let verificationAttempts = 0;
+                const messages: any[] = [
+                    {
+                        id: crypto.randomUUID(),
+                        role: 'user' as const,
+                        parts: [{ type: 'text' as const, text: prompt }],
+                    },
+                ];
 
-    const messages: any[] = [
-        {
-            id: crypto.randomUUID(),
-            role: 'user' as const,
-            parts: [{ type: 'text' as const, text: prompt }],
-        },
-    ];
+                // H2: Maximum messages to keep in context to prevent unbounded growth.
+                // Keeps the first user message + last maxContextMessages messages.
+                const MAX_CONTEXT_MESSAGES = maxContextMessages;
 
-    // H2: Maximum messages to keep in context to prevent unbounded growth.
-    // Keeps the first user message + last maxContextMessages messages.
-    const MAX_CONTEXT_MESSAGES = maxContextMessages;
+                // Per-step timeout: if a single step (LLM call + tool execution) takes longer
+                // than this, abort the step to prevent runaway generation (e.g. 3K+ token outputs).
+                const STEP_TIMEOUT_MS = configuredStepTimeout ?? 90_000;
 
-    // Per-step timeout: if a single step (LLM call + tool execution) takes longer
-    // than this, abort the step to prevent runaway generation (e.g. 3K+ token outputs).
-    const STEP_TIMEOUT_MS = configuredStepTimeout ?? 90_000;
+                // Heartbeat watchdog: if no progress for this long, abort to detect hung connections.
+                // Independent of step timeout — detects truly hung connections, not slow steps.
+                const HEARTBEAT_TIMEOUT_MS = 180_000; // 3 minutes default
 
-    // Heartbeat watchdog: if no progress for this long, abort to detect hung connections.
-    // Independent of step timeout — detects truly hung connections, not slow steps.
-    const HEARTBEAT_TIMEOUT_MS = 180_000; // 3 minutes default
+                // Accumulate text output across steps for partial results on timeout
+                let accumulatedText = '';
 
-    // Accumulate text output across steps for partial results on timeout
-    let accumulatedText = '';
-
-    console.log(
-        `[${label}] Starting: mode=${mode} model=${model} maxSteps=${maxSteps}`,
-    );
-    console.log(
-        `[${label}] Task: ${prompt.slice(0, 200)}${prompt.length > 200 ? '...' : ''}`,
-    );
-
-    // Heartbeat watchdog: creates its own AbortController to avoid hijacking the parent signal.
-    // Only monitors the LLM fetch phase — resets before/after tool execution.
-    let lastProgressTime = Date.now();
-    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-    const heartbeatController = new AbortController();
-
-    // Link parent abort to heartbeat controller
-    if (signal.aborted) {
-        heartbeatController.abort(signal.reason);
-    } else {
-        signal.addEventListener(
-            'abort',
-            () => heartbeatController.abort(signal.reason),
-            { once: true },
-        );
-    }
-
-    const resetHeartbeat = () => {
-        lastProgressTime = Date.now();
-    };
-
-    const pauseHeartbeat = () => {
-        // Pause during tool execution — tools have their own timeouts
-        if (heartbeatTimer) {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = null;
-        }
-    };
-
-    const resumeHeartbeat = () => {
-        resetHeartbeat();
-        if (heartbeatTimer) return; // Already running
-        heartbeatTimer = setInterval(() => {
-            const elapsed = Date.now() - lastProgressTime;
-            if (elapsed > HEARTBEAT_TIMEOUT_MS) {
-                debug.log(
-                    label,
-                    `Heartbeat timeout: no progress for ${Math.round(elapsed / 1000)}s, aborting`,
+                console.log(
+                    `[${label}] Starting: mode=${mode} model=${model} maxSteps=${maxSteps}`,
                 );
                 console.log(
-                    `[${label}] Heartbeat timeout: no progress for ${Math.round(elapsed / 1000)}s`,
+                    `[${label}] Task: ${prompt.slice(0, 200)}${prompt.length > 200 ? '...' : ''}`,
                 );
-                // Only abort our own controller — parent signal is untouched
-                heartbeatController.abort();
-            }
-        }, 10_000);
-    };
 
-    resumeHeartbeat();
+                // Heartbeat watchdog: creates its own AbortController to avoid hijacking the parent signal.
+                // Only monitors the LLM fetch phase — resets before/after tool execution.
+                let lastProgressTime = Date.now();
+                let heartbeatTimer: ReturnType<typeof setInterval> | null =
+                    null;
+                const heartbeatController = new AbortController();
 
-    // Cache auth token outside the loop to avoid reading from disk on every step.
-    // Refresh is only attempted on 401 (proactive expiry check + lazy refresh).
-    const { getValidAuth } = await import('@/lib/auth');
-    let currentAuth = auth;
-    let providerKey: string | null = null;
-
-    // Resolve provider API key once — it doesn't change between steps
-    try {
-        const provider = resolveProviderForModel(model);
-        providerKey = await getApiKeyForProvider(provider);
-    } catch {
-        // Provider key is optional — some models don't need one
-    }
-
-    /** Ensure we have a valid token, refreshing if expired or on explicit request. */
-    async function ensureAuth(
-        forceRefresh = false,
-    ): Promise<{ token: string }> {
-        if (!forceRefresh) return currentAuth;
-        const refreshed = await getValidAuth();
-        if (refreshed) {
-            currentAuth = refreshed;
-            return refreshed;
-        }
-        return currentAuth;
-    }
-
-    try {
-        for (let step = 0; step < maxSteps; step++) {
-            if (signal.aborted || heartbeatController.signal.aborted) {
-                // Return partial results instead of throwing on abort
-                if (accumulatedText) {
-                    if (agentId) completeSubagent(agentId, 'completed');
-                    return accumulatedText;
-                }
-                const err = new Error(`${label} aborted`);
-                (err as any).partialResult = accumulatedText || undefined;
-                throw err;
-            }
-
-            // Reset heartbeat at the start of each step
-            resetHeartbeat();
-
-            // Fetch with retry for rate limits, wrapped with per-step timeout.
-            // Auth is cached — only refreshed on 401 (see recovery below).
-            let response: Response | undefined;
-            const stepSignal = AbortSignal.any([
-                signal,
-                AbortSignal.timeout(STEP_TIMEOUT_MS),
-            ]);
-
-            const subagentHeaders: Record<string, string> = {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${currentAuth.token}`,
-            };
-            if (providerKey) {
-                subagentHeaders['x-provider-key'] = providerKey;
-            }
-
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                response = await fetch(`${API_URL}/subagent`, {
-                    method: 'POST',
-                    headers: subagentHeaders,
-                    body: JSON.stringify({ messages, model, mode, agentId }),
-                    signal: stepSignal,
-                });
-                if (response.status !== 429) break;
-                // Wait with abort support before retrying
-                await new Promise<void>((resolve, reject) => {
-                    if (signal.aborted) {
-                        reject(new Error('Aborted'));
-                        return;
-                    }
-                    const t = setTimeout(resolve, (attempt + 1) * 3000);
+                // Link parent abort to heartbeat controller
+                if (signal.aborted) {
+                    heartbeatController.abort(signal.reason);
+                } else {
                     signal.addEventListener(
                         'abort',
-                        () => {
-                            clearTimeout(t);
-                            reject(new Error('Aborted'));
-                        },
+                        () => heartbeatController.abort(signal.reason),
                         { once: true },
                     );
-                });
-            }
-
-            if (!response || !response.ok) {
-                // 401 recovery: attempt token refresh and retry once
-                if (response?.status === 401) {
-                    debug.log(label, 'Got 401 — attempting token refresh');
-                    const refreshed = await ensureAuth(true);
-                    if (refreshed.token !== currentAuth.token) {
-                        // Token was refreshed — retry this step once
-                        console.log(
-                            `[${label}] Token refreshed after 401, retrying step`,
-                        );
-                        subagentHeaders['Authorization'] =
-                            `Bearer ${refreshed.token}`;
-                        response = await fetch(`${API_URL}/subagent`, {
-                            method: 'POST',
-                            headers: subagentHeaders,
-                            body: JSON.stringify({
-                                messages,
-                                model,
-                                mode,
-                                agentId,
-                            }),
-                            signal: stepSignal,
-                        });
-                    }
                 }
 
-                const body = (await response?.json().catch(() => ({}))) as {
-                    error?: string;
+                const resetHeartbeat = () => {
+                    lastProgressTime = Date.now();
                 };
-                if (!response || response.status === 429) {
-                    throw new Error(
-                        'Rate limit hit. Wait a moment and try again.',
-                    );
-                }
-                if (response.status === 401) {
-                    throw new Error('Session expired. Run /login to continue.');
-                }
-                if (response.status === 402) {
-                    throw new Error(
-                        'No credits remaining. Run /upgrade to buy more credits.',
-                    );
-                }
-                throw new Error(
-                    body.error ??
-                        `${label} failed with status ${response.status}`,
-                );
-            }
 
-            if (!response.body) throw new Error('No response body');
-
-            // Parse streaming response
-            const chunkStream = parseJsonEventStream({
-                stream: response.body,
-                schema: uiMessageChunkSchema,
-            }).pipeThrough(
-                new TransformStream({
-                    async transform(chunk, controller) {
-                        if (!chunk.success) throw chunk.error;
-                        controller.enqueue(chunk.value);
-                    },
-                }),
-            );
-
-            const stream = readUIMessageStream({ stream: chunkStream });
-            let assistantMessage: any = null;
-
-            try {
-                for await (const message of stream) {
-                    assistantMessage = message;
-                }
-            } catch (streamErr: any) {
-                const msg = streamErr?.message ?? String(streamErr);
-                if (
-                    msg.includes('429') ||
-                    msg.toLowerCase().includes('too many requests')
-                ) {
-                    throw new Error(
-                        'Rate limit hit. Wait a moment and try again.',
-                        { cause: streamErr },
-                    );
-                }
-                throw streamErr;
-            }
-
-            if (!assistantMessage) {
-                throw new Error(`No message received from ${label}`);
-            }
-
-            // Update message list — always append to accumulate full context
-            messages.push(assistantMessage);
-
-            // Find pending tool calls
-            const toolCallsToExecute = assistantMessage.parts.filter(
-                (part: any) => {
-                    if (
-                        part.type === 'dynamic-tool' ||
-                        part.type.startsWith('tool-')
-                    ) {
-                        return part.state === 'input-available';
+                const pauseHeartbeat = () => {
+                    // Pause during tool execution — tools have their own timeouts
+                    if (heartbeatTimer) {
+                        clearInterval(heartbeatTimer);
+                        heartbeatTimer = null;
                     }
-                    return false;
-                },
-            );
+                };
 
-            console.log(
-                `[${label}] Step ${step + 1}/${maxSteps}: received response (${assistantMessage.parts.length} parts)`,
-            );
+                const resumeHeartbeat = () => {
+                    resetHeartbeat();
+                    if (heartbeatTimer) return; // Already running
+                    heartbeatTimer = setInterval(() => {
+                        const elapsed = Date.now() - lastProgressTime;
+                        if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+                            debug.log(
+                                label,
+                                `Heartbeat timeout: no progress for ${Math.round(elapsed / 1000)}s, aborting`,
+                            );
+                            console.log(
+                                `[${label}] Heartbeat timeout: no progress for ${Math.round(elapsed / 1000)}s`,
+                            );
+                            // Only abort our own controller — parent signal is untouched
+                            heartbeatController.abort();
+                        }
+                    }, 10_000);
+                };
 
-            // Accumulate text from this step for partial results
-            const stepText = assistantMessage.parts
-                .filter((p: any) => p.type === 'text')
-                .map((p: any) => p.text)
-                .join('')
-                .trim();
-            if (stepText) {
-                accumulatedText = accumulatedText
-                    ? `${accumulatedText}\n\n${stepText}`
-                    : stepText;
-            }
+                resumeHeartbeat();
 
-            if (toolCallsToExecute.length === 0) {
-                // No more tool calls — extract text output
-                const textContent = assistantMessage.parts
-                    .filter((p: any) => p.type === 'text')
-                    .map((p: any) => p.text)
-                    .join('')
-                    .trim();
-                if (textContent) {
-                    // Self-verification: if we modified files, inject a verification step
-                    if (
-                        selfVerify &&
-                        mode === 'BUILD' &&
-                        filesModified.size > 0 &&
-                        hasToolResults &&
-                        verificationAttempts < 1 &&
-                        !textContent.toLowerCase().includes('verified')
-                    ) {
-                        verificationAttempts++;
-                        console.log(
-                            `[${label}] Self-verification: files modified but not verified, injecting check`,
-                        );
-                        // Inject a verification prompt as a user message
-                        messages.push({
-                            id: crypto.randomUUID(),
-                            role: 'user' as const,
-                            parts: [
-                                {
-                                    type: 'text' as const,
-                                    text: `Before finishing, please verify your changes: (1) run tests if applicable, (2) check that modified files are syntactically valid, (3) confirm the task requirements are met. If any issues are found, fix them. If everything is correct, briefly confirm.`,
-                                },
-                            ],
-                        });
-                        // Don't return yet — let the loop continue for verification
-                        continue;
-                    }
-                    if (agentId) completeSubagent(agentId, 'completed');
-                    return textContent;
+                // Cache auth token outside the loop to avoid reading from disk on every step.
+                // Refresh is only attempted on 401 (proactive expiry check + lazy refresh).
+                const { getValidAuth } = await import('@/lib/auth');
+                let currentAuth = auth;
+                let providerKey: string | null = null;
+
+                // Resolve provider API key once — it doesn't change between steps
+                try {
+                    const provider = resolveProviderForModel(model);
+                    providerKey = await getApiKeyForProvider(provider);
+                } catch {
+                    // Provider key is optional — some models don't need one
                 }
 
-                const reasoningContent = assistantMessage.parts
-                    .filter((p: any) => p.type === 'reasoning')
-                    .map((p: any) => p.text)
-                    .join('')
-                    .trim();
-                if (reasoningContent) {
-                    if (agentId) completeSubagent(agentId, 'completed');
-                    return reasoningContent;
+                /** Ensure we have a valid token, refreshing if expired or on explicit request. */
+                async function ensureAuth(
+                    forceRefresh = false,
+                ): Promise<{ token: string }> {
+                    if (!forceRefresh) return currentAuth;
+                    const refreshed = await getValidAuth();
+                    if (refreshed) {
+                        currentAuth = refreshed;
+                        return refreshed;
+                    }
+                    return currentAuth;
                 }
 
-                if (agentId) completeSubagent(agentId, 'failed', 'No output');
-                throw new Error(`${label} completed but returned no output.`);
-            }
+                try {
+                    for (let step = 0; step < maxSteps; step++) {
+                        if (
+                            signal.aborted ||
+                            heartbeatController.signal.aborted
+                        ) {
+                            // Return partial results instead of throwing on abort
+                            if (accumulatedText) {
+                                if (agentId)
+                                    completeSubagent(agentId, 'completed');
+                                return accumulatedText;
+                            }
+                            const err = new Error(`${label} aborted`);
+                            (err as any).partialResult =
+                                accumulatedText || undefined;
+                            throw err;
+                        }
 
-            // L1: Report all tool names in progress, not just the first
-            const toolNames = toolCallsToExecute.map((part: any) =>
-                part.type === 'dynamic-tool'
-                    ? part.toolName
-                    : part.type.slice(5),
-            );
-            console.log(
-                `[${label}] Step ${step + 1}/${maxSteps}: executing tools: ${toolNames.join(', ')}`,
-            );
-            debug.log(
-                label,
-                `step ${step + 1}: executing ${toolNames.join(', ')}`,
-            );
-            if (agentId) {
-                updateSubagentStep(
-                    agentId,
-                    step + 1,
-                    toolNames.join(', ') || null,
-                );
-            }
+                        // Reset heartbeat at the start of each step
+                        resetHeartbeat();
 
-            // H2: Progressive tiered context compression
-            // 3-tier system: Tier 1 (full, last 8 msgs), Tier 2 (summarized, 9-20), Tier 3 (metadata, 20+)
-            // Tool-aware: errors always preserved; read outputs get structure extraction.
-            if (messages.length > MAX_CONTEXT_MESSAGES) {
-                const { messages: compressed, stats } = compressContext(
-                    messages,
-                    {
-                        tier1Count: MAX_CONTEXT_MESSAGES - 10, // Tier 1 = last N-10 messages
-                        tier2Count: 10, // Tier 2 = next 10 messages
-                    },
-                );
-                console.log(
-                    `[${label}] Context compressed: ${stats.originalCount} → ${stats.compressedCount} messages (saved ~${stats.tokensSaved} tokens, tier1=${stats.tier1Count} tier2=${stats.tier2Count} tier3=${stats.tier3Count})`,
-                );
-                messages.length = 0;
-                messages.push(...compressed);
-            }
-
-            // Enhanced parallel tool execution with intelligent optimization
-            const toolExecutionPromises = toolCallsToExecute.map(
-                async (part: any) => {
-                    const toolName =
-                        part.type === 'dynamic-tool'
-                            ? part.toolName
-                            : part.type.slice(5);
-                    if (toolName.startsWith('spawn')) {
-                        part.state = 'output-error';
-                        part.errorText =
-                            'Spawn tools are not allowed from within a subagent';
-                        return;
-                    }
-                    try {
-                        // Adaptive tool timeout based on tool type and complexity
-                        const toolTimeout = getOptimizedToolTimeout(
-                            toolName,
-                            mode,
-                        );
-                        const toolSignal = AbortSignal.any([
+                        // Fetch with retry for rate limits, wrapped with per-step timeout.
+                        // Auth is cached — only refreshed on 401 (see recovery below).
+                        let response: Response | undefined;
+                        const stepSignal = AbortSignal.any([
                             signal,
-                            AbortSignal.timeout(toolTimeout),
+                            AbortSignal.timeout(STEP_TIMEOUT_MS),
                         ]);
 
-                        // Execute tool with enhanced error handling and recovery
-                        const output = await executeToolWithRetry(
-                            toolName,
-                            part.input,
-                            mode,
-                            model,
-                            toolSignal,
-                            agentId,
-                            label,
-                        );
-
-                        part.state = 'output-available';
-                        part.output = output;
-                        const inputSummary = summarizeToolInput(
-                            toolName,
-                            part.input,
-                        );
-                        if (agentId)
-                            incrementToolCall(agentId, toolName, inputSummary);
-
-                        // Track modified files for self-verification
-                        if (
-                            toolName === 'writeFile' ||
-                            toolName === 'editFile' ||
-                            toolName === 'searchReplace' ||
-                            toolName === 'patch'
-                        ) {
-                            const filePath =
-                                typeof part.input?.path === 'string'
-                                    ? part.input.path
-                                    : typeof part.input?.file === 'string'
-                                      ? part.input.file
-                                      : '';
-                            if (filePath) filesModified.add(filePath);
+                        const subagentHeaders: Record<string, string> = {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${currentAuth.token}`,
+                        };
+                        if (providerKey) {
+                            subagentHeaders['x-provider-key'] = providerKey;
                         }
-                        hasToolResults = true;
 
-                        // Log successful tool execution for performance monitoring
-                        console.log(
-                            `[${label}] Tool ${toolName} completed successfully`,
-                        );
-                    } catch (error: any) {
-                        part.state = 'output-error';
-                        part.errorText = error?.message || String(error);
-                        // Log tool failures for debugging
-                        console.log(
-                            `[${label}] Tool ${toolName} failed: ${part.errorText}`,
-                        );
-                        // Track error patterns and inject suggestions
-                        if (errorTracker) {
-                            const suggestion = errorTracker.record(error);
-                            if (suggestion) {
-                                part.errorText += `\n\n[Suggestion] ${suggestion}`;
+                        for (let attempt = 0; attempt < maxRetries; attempt++) {
+                            response = await fetch(`${API_URL}/subagent`, {
+                                method: 'POST',
+                                headers: subagentHeaders,
+                                body: JSON.stringify({
+                                    messages,
+                                    model,
+                                    mode,
+                                    agentId,
+                                    projectContext,
+                                    corrections,
+                                    positives: patterns?.positives,
+                                    errorWarnings: errorSuggestions,
+                                }),
+                                signal: stepSignal,
+                            });
+                            if (response.status !== 429) break;
+                            // Wait with abort support before retrying
+                            await new Promise<void>((resolve, reject) => {
+                                if (signal.aborted) {
+                                    reject(new Error('Aborted'));
+                                    return;
+                                }
+                                const t = setTimeout(
+                                    resolve,
+                                    (attempt + 1) * 3000,
+                                );
+                                signal.addEventListener(
+                                    'abort',
+                                    () => {
+                                        clearTimeout(t);
+                                        reject(new Error('Aborted'));
+                                    },
+                                    { once: true },
+                                );
+                            });
+                        }
+
+                        if (!response || !response.ok) {
+                            // 401 recovery: attempt token refresh and retry once
+                            if (response?.status === 401) {
+                                debug.log(
+                                    label,
+                                    'Got 401 — attempting token refresh',
+                                );
+                                const refreshed = await ensureAuth(true);
+                                if (refreshed.token !== currentAuth.token) {
+                                    // Token was refreshed — retry this step once
+                                    console.log(
+                                        `[${label}] Token refreshed after 401, retrying step`,
+                                    );
+                                    subagentHeaders['Authorization'] =
+                                        `Bearer ${refreshed.token}`;
+                                    response = await fetch(
+                                        `${API_URL}/subagent`,
+                                        {
+                                            method: 'POST',
+                                            headers: subagentHeaders,
+                                            body: JSON.stringify({
+                                                messages,
+                                                model,
+                                                mode,
+                                                agentId,
+                                                projectContext,
+                                                corrections,
+                                                positives: patterns?.positives,
+                                                errorWarnings: errorSuggestions,
+                                            }),
+                                            signal: stepSignal,
+                                        },
+                                    );
+                                }
                             }
+
+                            const body = (await response
+                                ?.json()
+                                .catch(() => ({}))) as {
+                                error?: string;
+                            };
+                            if (!response || response.status === 429) {
+                                throw new Error(
+                                    'Rate limit hit. Wait a moment and try again.',
+                                );
+                            }
+                            if (response.status === 401) {
+                                throw new Error(
+                                    'Session expired. Run /login to continue.',
+                                );
+                            }
+                            if (response.status === 402) {
+                                throw new Error(
+                                    'No credits remaining. Run /upgrade to buy more credits.',
+                                );
+                            }
+                            throw new Error(
+                                body.error ??
+                                    `${label} failed with status ${response.status}`,
+                            );
+                        }
+
+                        if (!response.body) throw new Error('No response body');
+
+                        // Parse streaming response
+                        const chunkStream = parseJsonEventStream({
+                            stream: response.body,
+                            schema: uiMessageChunkSchema,
+                        }).pipeThrough(
+                            new TransformStream({
+                                async transform(chunk, controller) {
+                                    if (!chunk.success) throw chunk.error;
+                                    controller.enqueue(chunk.value);
+                                },
+                            }),
+                        );
+
+                        const stream = readUIMessageStream({
+                            stream: chunkStream,
+                        });
+                        let assistantMessage: any = null;
+
+                        try {
+                            for await (const message of stream) {
+                                assistantMessage = message;
+                            }
+                        } catch (streamErr: any) {
+                            const msg = streamErr?.message ?? String(streamErr);
+                            if (
+                                msg.includes('429') ||
+                                msg.toLowerCase().includes('too many requests')
+                            ) {
+                                throw new Error(
+                                    'Rate limit hit. Wait a moment and try again.',
+                                    { cause: streamErr },
+                                );
+                            }
+                            throw streamErr;
+                        }
+
+                        if (!assistantMessage) {
+                            throw new Error(
+                                `No message received from ${label}`,
+                            );
+                        }
+
+                        // Update message list — always append to accumulate full context
+                        messages.push(assistantMessage);
+
+                        // Find pending tool calls
+                        const toolCallsToExecute =
+                            assistantMessage.parts.filter((part: any) => {
+                                if (
+                                    part.type === 'dynamic-tool' ||
+                                    part.type.startsWith('tool-')
+                                ) {
+                                    return part.state === 'input-available';
+                                }
+                                return false;
+                            });
+
+                        console.log(
+                            `[${label}] Step ${step + 1}/${maxSteps}: received response (${assistantMessage.parts.length} parts)`,
+                        );
+
+                        // Accumulate text from this step for partial results
+                        const stepText = assistantMessage.parts
+                            .filter((p: any) => p.type === 'text')
+                            .map((p: any) => p.text)
+                            .join('')
+                            .trim();
+                        if (stepText) {
+                            accumulatedText = accumulatedText
+                                ? `${accumulatedText}\n\n${stepText}`
+                                : stepText;
+                        }
+
+                        if (toolCallsToExecute.length === 0) {
+                            // No more tool calls — extract text output
+                            const textContent = assistantMessage.parts
+                                .filter((p: any) => p.type === 'text')
+                                .map((p: any) => p.text)
+                                .join('')
+                                .trim();
+                            if (textContent) {
+                                // Self-verification: if we modified files, inject a verification step
+                                if (
+                                    selfVerify &&
+                                    mode === 'BUILD' &&
+                                    filesModified.size > 0 &&
+                                    hasToolResults &&
+                                    verificationAttempts < 1 &&
+                                    !textContent
+                                        .toLowerCase()
+                                        .includes('verified')
+                                ) {
+                                    verificationAttempts++;
+
+                                    // Calculate confidence score
+                                    const confidence = calculateConfidence(
+                                        [...filesModified],
+                                        toolUsageMap,
+                                        executionErrors,
+                                    );
+                                    console.log(
+                                        `[${label}] Self-verification: confidence=${confidence.overall.toFixed(2)} (${confidence.explanation.join('; ')})`,
+                                    );
+
+                                    // Build targeted verification prompt based on confidence
+                                    const verifyParts: string[] = [];
+                                    if (confidence.overall < 0.8) {
+                                        verifyParts.push(
+                                            `Confidence score: ${(confidence.overall * 100).toFixed(0)}%`,
+                                            ...confidence.explanation.map(
+                                                (e) => `  - ${e}`,
+                                            ),
+                                            '',
+                                        );
+                                    }
+                                    verifyParts.push(
+                                        'Before finishing, please verify your changes:',
+                                        '1. Check that modified files are syntactically valid (run typecheck/lint if available)',
+                                        '2. Confirm the task requirements are met',
+                                        '3. If any issues are found, fix them',
+                                        '',
+                                        'If everything is correct, respond with "verified". If there are issues, describe them.',
+                                    );
+
+                                    // Inject a verification prompt as a user message
+                                    messages.push({
+                                        id: crypto.randomUUID(),
+                                        role: 'user' as const,
+                                        parts: [
+                                            {
+                                                type: 'text' as const,
+                                                text: verifyParts.join('\n'),
+                                            },
+                                        ],
+                                    });
+                                    // Don't return yet — let the loop continue for verification
+                                    continue;
+                                }
+                                if (agentId)
+                                    completeSubagent(agentId, 'completed');
+                                return textContent;
+                            }
+
+                            const reasoningContent = assistantMessage.parts
+                                .filter((p: any) => p.type === 'reasoning')
+                                .map((p: any) => p.text)
+                                .join('')
+                                .trim();
+                            if (reasoningContent) {
+                                if (agentId)
+                                    completeSubagent(agentId, 'completed');
+                                return reasoningContent;
+                            }
+
+                            if (agentId)
+                                completeSubagent(
+                                    agentId,
+                                    'failed',
+                                    'No output',
+                                );
+                            throw new Error(
+                                `${label} completed but returned no output.`,
+                            );
+                        }
+
+                        // L1: Report all tool names in progress, not just the first
+                        const toolNames = toolCallsToExecute.map((part: any) =>
+                            part.type === 'dynamic-tool'
+                                ? part.toolName
+                                : part.type.slice(5),
+                        );
+                        console.log(
+                            `[${label}] Step ${step + 1}/${maxSteps}: executing tools: ${toolNames.join(', ')}`,
+                        );
+                        debug.log(
+                            label,
+                            `step ${step + 1}: executing ${toolNames.join(', ')}`,
+                        );
+                        if (agentId) {
+                            updateSubagentStep(
+                                agentId,
+                                step + 1,
+                                toolNames.join(', ') || null,
+                            );
+                        }
+
+                        // H2: Progressive tiered context compression
+                        // 3-tier system: Tier 1 (full, last 8 msgs), Tier 2 (summarized, 9-20), Tier 3 (metadata, 20+)
+                        // Tool-aware: errors always preserved; read outputs get structure extraction.
+                        if (messages.length > MAX_CONTEXT_MESSAGES) {
+                            const contextMode = detectContextMode(prompt);
+                            const { messages: compressed, stats } =
+                                compressContext(messages, {
+                                    tier1Count: MAX_CONTEXT_MESSAGES - 10,
+                                    tier2Count: 10,
+                                    contextMode,
+                                });
+                            console.log(
+                                `[${label}] Context compressed (${stats.contextMode}): ${stats.originalCount} → ${stats.compressedCount} messages (saved ~${stats.tokensSaved} tokens, tier1=${stats.tier1Count} tier2=${stats.tier2Count} tier3=${stats.tier3Count})`,
+                            );
+                            messages.length = 0;
+                            messages.push(...compressed);
+                        }
+
+                        // Enhanced parallel tool execution with intelligent optimization
+                        const toolExecutionPromises = toolCallsToExecute.map(
+                            async (part: any) => {
+                                const toolName =
+                                    part.type === 'dynamic-tool'
+                                        ? part.toolName
+                                        : part.type.slice(5);
+
+                                try {
+                                    // Adaptive tool timeout based on tool type and complexity
+                                    const toolTimeout = getOptimizedToolTimeout(
+                                        toolName,
+                                        mode,
+                                    );
+                                    const toolSignal = AbortSignal.any([
+                                        signal,
+                                        AbortSignal.timeout(toolTimeout),
+                                    ]);
+
+                                    // Execute tool with enhanced error handling and recovery
+                                    const output = await executeToolWithRetry(
+                                        toolName,
+                                        part.input,
+                                        mode,
+                                        model,
+                                        toolSignal,
+                                        agentId,
+                                        label,
+                                    );
+
+                                    part.state = 'output-available';
+                                    part.output = output;
+                                    const inputSummary = summarizeToolInput(
+                                        toolName,
+                                        part.input,
+                                    );
+                                    if (agentId)
+                                        incrementToolCall(
+                                            agentId,
+                                            toolName,
+                                            inputSummary,
+                                        );
+
+                                    // Track for correction/acceptance feedback loop
+                                    correctionTracker.recordAction(
+                                        toolName,
+                                        part.input,
+                                        inputSummary,
+                                    );
+
+                                    // Track tool usage for confidence scoring
+                                    toolUsageMap.set(
+                                        toolName,
+                                        (toolUsageMap.get(toolName) ?? 0) + 1,
+                                    );
+
+                                    // Track modified files for self-verification
+                                    if (
+                                        toolName === 'writeFile' ||
+                                        toolName === 'editFile' ||
+                                        toolName === 'searchReplace' ||
+                                        toolName === 'patch'
+                                    ) {
+                                        const filePath =
+                                            typeof part.input?.path === 'string'
+                                                ? part.input.path
+                                                : typeof part.input?.file ===
+                                                    'string'
+                                                  ? part.input.file
+                                                  : '';
+                                        if (filePath)
+                                            filesModified.add(filePath);
+                                    }
+                                    hasToolResults = true;
+
+                                    // Schedule acceptance signal — if user undoes before this fires,
+                                    // the undo records a correction and this acceptance is a weak positive.
+                                    const acceptTool = toolName;
+                                    const acceptInput = part.input;
+                                    const acceptDesc = inputSummary;
+                                    setTimeout(() => {
+                                        correctionTracker
+                                            .onAccept(
+                                                acceptTool,
+                                                acceptInput,
+                                                acceptDesc,
+                                            )
+                                            .catch(() => {});
+                                    }, 5_000);
+
+                                    // Multi-pass verification for critical operations
+                                    if (
+                                        isCriticalOperation(
+                                            toolName,
+                                            part.input,
+                                        )
+                                    ) {
+                                        console.log(
+                                            `[${label}] Critical operation detected: ${toolName}, scheduling verification`,
+                                        );
+                                        const verifyPrompt =
+                                            generateVerificationPrompt(
+                                                toolName,
+                                                part.input,
+                                                output,
+                                            );
+                                        messages.push({
+                                            id: crypto.randomUUID(),
+                                            role: 'user' as const,
+                                            parts: [
+                                                {
+                                                    type: 'text' as const,
+                                                    text: verifyPrompt,
+                                                },
+                                            ],
+                                        });
+                                    }
+
+                                    // Log successful tool execution for performance monitoring
+                                    console.log(
+                                        `[${label}] Tool ${toolName} completed successfully`,
+                                    );
+                                } catch (error: any) {
+                                    part.state = 'output-error';
+                                    part.errorText =
+                                        error?.message || String(error);
+                                    // Track errors for confidence scoring
+                                    executionErrors.push(
+                                        part.errorText.slice(0, 200),
+                                    );
+                                    // Log tool failures for debugging
+                                    console.log(
+                                        `[${label}] Tool ${toolName} failed: ${part.errorText}`,
+                                    );
+                                    // Track error patterns and inject suggestions
+                                    if (errorTracker) {
+                                        const suggestion =
+                                            errorTracker.record(error);
+                                        if (suggestion) {
+                                            part.errorText += `\n\n[Suggestion] ${suggestion}`;
+                                        }
+                                    }
+                                }
+                            },
+                        );
+
+                        // Pause heartbeat during tool execution — tools have their own timeouts
+                        pauseHeartbeat();
+                        // Execute all tool calls in parallel
+                        await Promise.allSettled(toolExecutionPromises);
+                        // Resume heartbeat for the next LLM fetch
+                        resumeHeartbeat();
+
+                        // Save checkpoint after each step for crash recovery (fire-and-forget)
+                        if (checkpointId) {
+                            saveSubagentCheckpoint(
+                                checkpointId,
+                                messages,
+                                step + 1,
+                                accumulatedText,
+                            ).catch(() => {});
                         }
                     }
-                },
-            );
 
-            // Pause heartbeat during tool execution — tools have their own timeouts
-            pauseHeartbeat();
-            // Execute all tool calls in parallel
-            await Promise.allSettled(toolExecutionPromises);
-            // Resume heartbeat for the next LLM fetch
-            resumeHeartbeat();
-
-            // Save checkpoint after each step for crash recovery (fire-and-forget)
-            if (checkpointId) {
-                saveSubagentCheckpoint(
-                    checkpointId,
-                    messages,
-                    step + 1,
-                    accumulatedText,
-                ).catch(() => {});
-            }
-        }
-
-        console.log(`[${label}] Completed after ${maxSteps} steps`);
-        // Return partial results if we have any, instead of throwing
-        if (accumulatedText) {
-            if (agentId) completeSubagent(agentId, 'completed');
-            return accumulatedText;
-        }
-        if (agentId)
-            completeSubagent(
-                agentId,
-                'failed',
-                `Exceeded max steps (${maxSteps})`,
-            );
-        throw new Error(`${label} exceeded maximum steps (${maxSteps})`);
+                    console.log(`[${label}] Completed after ${maxSteps} steps`);
+                    // Return partial results if we have any, instead of throwing
+                    if (accumulatedText) {
+                        if (agentId) completeSubagent(agentId, 'completed');
+                        return accumulatedText;
+                    }
+                    if (agentId)
+                        completeSubagent(
+                            agentId,
+                            'failed',
+                            `Exceeded max steps (${maxSteps})`,
+                        );
+                    throw new Error(
+                        `${label} exceeded maximum steps (${maxSteps})`,
+                    );
+                } finally {
+                    // Save final checkpoint on abort for crash recovery
+                    if (checkpointId && accumulatedText) {
+                        saveSubagentCheckpoint(
+                            checkpointId,
+                            messages,
+                            -1,
+                            accumulatedText,
+                        ).catch(() => {});
+                    }
+                    // Always clean up heartbeat timer and controller
+                    if (heartbeatTimer) {
+                        clearInterval(heartbeatTimer);
+                        heartbeatTimer = null;
+                    }
+                    // Unlink parent abort listener if we added one
+                    // (heartbeatController is GC'd when function exits)
+                }
+            },
+        );
+        success = true;
+        return result;
     } finally {
-        // Save final checkpoint on abort for crash recovery
-        if (checkpointId && accumulatedText) {
-            saveSubagentCheckpoint(
-                checkpointId,
-                messages,
-                -1,
-                accumulatedText,
-            ).catch(() => {});
+        if (worktreeCreated) {
+            await teardownWorktree(
+                activeAgentId,
+                worktreePath,
+                parentCwd,
+                success,
+            );
         }
-        // Always clean up heartbeat timer and controller
-        if (heartbeatTimer) {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = null;
-        }
-        // Unlink parent abort listener if we added one
-        // (heartbeatController is GC'd when function exits)
     }
-});
-success = true;
-return result;
-} finally {
-    if (worktreeCreated) {
-        await teardownWorktree(activeAgentId, worktreePath, parentCwd, success);
-    }
-}
 }
 
 /**
