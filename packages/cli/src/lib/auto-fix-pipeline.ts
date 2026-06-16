@@ -922,7 +922,8 @@ function formatSummary(
     if (errorCount > 0 || warningCount > 0) {
         parts.push('');
         if (errorCount > 0) parts.push(`[ERROR] ${errorCount} error(s)`);
-        if (warningCount > 0) parts.push(`[WARNING] ${warningCount} warning(s)`);
+        if (warningCount > 0)
+            parts.push(`[WARNING] ${warningCount} warning(s)`);
     }
 
     if (autoFixResult) {

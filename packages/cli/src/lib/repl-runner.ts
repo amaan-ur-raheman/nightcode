@@ -158,7 +158,9 @@ export class ReplRunner {
             try {
                 this.ensureInitialized();
             } catch (err) {
-                resolve(`[REPL failed to initialize: ${err instanceof Error ? err.message : String(err)}]`);
+                resolve(
+                    `[REPL failed to initialize: ${err instanceof Error ? err.message : String(err)}]`,
+                );
                 return;
             }
 

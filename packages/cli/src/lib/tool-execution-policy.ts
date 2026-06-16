@@ -162,7 +162,7 @@ export function getToolExecutionPolicy(
             timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
             longRunning: true,
         };
-     }
+    }
 
     if (LONG_RUNNING_TOOLS.has(toolName)) {
         return {

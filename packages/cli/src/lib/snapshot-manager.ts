@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, rename, unlink } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
@@ -39,11 +39,22 @@ class SnapshotManager {
     async save(): Promise<void> {
         await mkdir(SNAPSHOTS_DIR, { recursive: true });
         const entries = Array.from(this.snapshots.values());
-        await writeFile(
-            join(SNAPSHOTS_DIR, 'snapshots.json'),
-            JSON.stringify(entries, null, 2),
-            'utf-8',
-        );
+        const targetPath = join(SNAPSHOTS_DIR, 'snapshots.json');
+        const tmpPath = `${targetPath}.tmp.${Date.now()}`;
+
+        // Atomic write: write to temp file, then rename (atomic on POSIX)
+        try {
+            await writeFile(tmpPath, JSON.stringify(entries, null, 2), 'utf-8');
+            await rename(tmpPath, targetPath);
+        } catch (err) {
+            // Clean up temp file on failure
+            try {
+                await unlink(tmpPath);
+            } catch {
+                // ignore cleanup errors
+            }
+            throw err;
+        }
     }
 
     async match(

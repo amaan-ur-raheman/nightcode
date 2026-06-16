@@ -133,6 +133,7 @@ export function getServerToolCount(serverName: string): number {
 export async function callMcpTool(
     prefixedName: string,
     input: unknown,
+    signal?: AbortSignal,
 ): Promise<unknown> {
     // name format: mcp__<serverName>__<toolName>
     const parts = prefixedName.split('__');
@@ -146,15 +147,45 @@ export async function callMcpTool(
     if (!client) throw new Error(`MCP server "${serverName}" not connected`);
 
     debug.log('mcp', `Calling tool: ${toolName}`, { server: serverName });
-    const result = await client.callTool({
+
+    if (signal?.aborted) {
+        throw new Error(`Tool call aborted`);
+    }
+
+    const callPromise = client.callTool({
         name: toolName,
         arguments: input as Record<string, unknown>,
     });
-    debug.log('mcp', `Tool completed: ${toolName}`, {
-        server: serverName,
-        resultType: typeof result.content,
-    });
-    return result.content;
+
+    if (!signal) {
+        const result = await callPromise;
+        debug.log('mcp', `Tool completed: ${toolName}`, {
+            server: serverName,
+            resultType: typeof result.content,
+        });
+        return result.content;
+    }
+
+    let abortListener: (() => void) | undefined;
+    try {
+        const result = await Promise.race([
+            callPromise,
+            new Promise<never>((_, reject) => {
+                abortListener = () => reject(new Error(`Tool call aborted`));
+                signal.addEventListener('abort', abortListener);
+            }),
+        ]);
+
+        debug.log('mcp', `Tool completed: ${toolName}`, {
+            server: serverName,
+            resultType: typeof result.content,
+        });
+        return result.content;
+    } finally {
+        if (abortListener) {
+            signal.removeEventListener('abort', abortListener);
+        }
+    }
 }
 
 export function getServerForTool(prefixedName: string): string | null {

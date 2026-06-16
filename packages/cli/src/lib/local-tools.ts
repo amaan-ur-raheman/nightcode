@@ -57,6 +57,9 @@ const PLAN_TOOLS = new Set([
     'reviewPr',
     'semanticSearch',
     'profileCode',
+    'suggestTool',
+    'listToolCategories',
+    'declareConfidence',
 ]);
 
 /**
@@ -180,84 +183,148 @@ async function directExecute(
     }
 
     try {
-        const { loadTool } = await import('./tools/index');
-        const tool = await loadTool(toolName);
-        const result = await runWithToolExecutionPolicy(
-            toolName,
-            input,
-            signal,
-            (toolSignal) => tool(input, mode, parentModel, toolSignal, execId),
-            parentModel,
-        );
+        let result: unknown;
+        if (toolName.startsWith('mcp__')) {
+            const { callMcpTool } = await import('./mcp-client');
+            result = await runWithToolExecutionPolicy(
+                toolName,
+                input,
+                signal,
+                (toolSignal) => callMcpTool(toolName, input, toolSignal),
+                parentModel,
+            );
+        } else {
+            const { loadTool } = await import('./tools/index');
+            const tool = await loadTool(toolName);
+            result = await runWithToolExecutionPolicy(
+                toolName,
+                input,
+                signal,
+                (toolSignal) => tool(input, mode, parentModel, toolSignal, execId),
+                parentModel,
+            );
+        }
 
         // Cache the result for future identical calls
         toolOutputCache.set(toolName, input, result);
 
         // Auto-advance task list if applicable
         try {
-            const { getTaskList, taskListTool } = await import('./tools/task-list');
+            const { getTaskList, taskListTool } =
+                await import('./tools/task-list');
             const { basename } = await import('path');
             const state = getTaskList();
             if (state && state.tasks && state.tasks.length > 0) {
                 const pendingOrInProgress = state.tasks.filter(
-                    (t) => t.status === 'pending' || t.status === 'in-progress'
+                    (t) => t.status === 'pending' || t.status === 'in-progress',
                 );
                 if (pendingOrInProgress.length > 0) {
                     let matchedTask: any = null;
                     const inp = input as Record<string, unknown> | undefined;
 
-                    if (['editFile', 'writeFile', 'patch', 'searchReplace'].includes(toolName) && inp) {
+                    if (
+                        [
+                            'editFile',
+                            'writeFile',
+                            'patch',
+                            'searchReplace',
+                        ].includes(toolName) &&
+                        inp
+                    ) {
                         let filePath = '';
-                        if (toolName === 'editFile' || toolName === 'writeFile') {
-                            filePath = typeof inp.path === 'string' ? inp.path : '';
+                        if (
+                            toolName === 'editFile' ||
+                            toolName === 'writeFile'
+                        ) {
+                            filePath =
+                                typeof inp.path === 'string' ? inp.path : '';
                         } else if (toolName === 'searchReplace') {
-                            filePath = typeof inp.glob === 'string' ? inp.glob : '';
+                            filePath =
+                                typeof inp.glob === 'string' ? inp.glob : '';
                         } else if (toolName === 'patch') {
-                            const patchStr = typeof inp.patch === 'string' ? inp.patch : '';
-                            const match = /^\+\+\+\s+b\/([^\t\r\n]+)/m.exec(patchStr);
+                            const patchStr =
+                                typeof inp.patch === 'string' ? inp.patch : '';
+                            const match = /^\+\+\+\s+b\/([^\t\r\n]+)/m.exec(
+                                patchStr,
+                            );
                             filePath = match ? match[1]!.trim() : '';
                         }
 
                         if (filePath) {
                             const name = basename(filePath);
-                            matchedTask = pendingOrInProgress.find(
-                                (t) => t.description.toLowerCase().includes(name.toLowerCase())
+                            matchedTask = pendingOrInProgress.find((t) =>
+                                t.description
+                                    .toLowerCase()
+                                    .includes(name.toLowerCase()),
                             );
                         }
                     } else if (toolName === 'validateCode') {
                         matchedTask = pendingOrInProgress.find((t) => {
                             const desc = t.description.toLowerCase();
-                            return desc.includes('test') || desc.includes('verify') || desc.includes('typecheck') || desc.includes('validate') || desc.includes('lint') || desc.includes('check');
+                            return (
+                                desc.includes('test') ||
+                                desc.includes('verify') ||
+                                desc.includes('typecheck') ||
+                                desc.includes('validate') ||
+                                desc.includes('lint') ||
+                                desc.includes('check')
+                            );
                         });
                     } else if (toolName === 'gitCommit') {
                         matchedTask = pendingOrInProgress.find((t) => {
                             const desc = t.description.toLowerCase();
-                            return desc.includes('commit') || desc.includes('push') || desc.includes('git');
+                            return (
+                                desc.includes('commit') ||
+                                desc.includes('push') ||
+                                desc.includes('git')
+                            );
                         });
-                    } else if (toolName === 'bash' && inp && typeof inp.command === 'string') {
+                    } else if (
+                        toolName === 'bash' &&
+                        inp &&
+                        typeof inp.command === 'string'
+                    ) {
                         const cmd = inp.command.toLowerCase();
-                        if (cmd.includes('test') || cmd.includes('vitest') || cmd.includes('jest')) {
+                        if (
+                            cmd.includes('test') ||
+                            cmd.includes('vitest') ||
+                            cmd.includes('jest')
+                        ) {
                             matchedTask = pendingOrInProgress.find((t) => {
                                 const desc = t.description.toLowerCase();
-                                return desc.includes('test') || desc.includes('verify') || desc.includes('run');
+                                return (
+                                    desc.includes('test') ||
+                                    desc.includes('verify') ||
+                                    desc.includes('run')
+                                );
                             });
                         }
                     }
 
                     if (matchedTask) {
-                        if (typeof matchedTask.id !== 'string' || !matchedTask.id) {
-                            console.warn('[local-tools] Matched task is missing a valid id property:', matchedTask);
+                        if (
+                            typeof matchedTask.id !== 'string' ||
+                            !matchedTask.id
+                        ) {
+                            console.warn(
+                                '[local-tools] Matched task is missing a valid id property:',
+                                matchedTask,
+                            );
                         } else {
                             await taskListTool({
                                 action: 'complete',
-                                taskId: matchedTask.id
+                                taskId: matchedTask.id,
                             });
                         }
                     }
                 }
             }
         } catch (error) {
-            debug.warn('local-tools', 'Failed to auto-advance task list', error);
+            debug.warn(
+                'local-tools',
+                'Failed to auto-advance task list',
+                error,
+            );
         }
 
         // Track file modifications for the auto-fix pipeline and invalidate cache
@@ -268,7 +335,11 @@ async function directExecute(
                 fileWatcher.recordInternalChange(filePath);
             }
             toolOutputCache.clear();
-        } else if (toolName === 'bash' || toolName === 'gitCommit' || toolName === 'gitBranch') {
+        } else if (
+            toolName === 'bash' ||
+            toolName === 'gitCommit' ||
+            toolName === 'gitBranch'
+        ) {
             toolOutputCache.clear();
         }
 
@@ -292,7 +363,7 @@ export async function executeLocalTool(
     signal?: AbortSignal,
     execId?: string,
 ) {
-    if (mode === Mode.PLAN && !PLAN_TOOLS.has(toolName)) {
+    if (mode === Mode.PLAN && !toolName.startsWith('mcp__') && !PLAN_TOOLS.has(toolName)) {
         throw new Error(`Tool ${toolName} is not available in PLAN mode`);
     }
 

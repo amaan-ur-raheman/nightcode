@@ -28,6 +28,8 @@ export function getTransportType(config: McpServerConfig): 'http' | 'stdio' {
     return config.url ? 'http' : 'stdio';
 }
 
+export type AutonomyLevel = 'strict' | 'balanced' | 'full';
+
 export type Settings = {
     mcp?: {
         servers: Record<string, McpServerConfig>;
@@ -43,6 +45,7 @@ export type Settings = {
         enabled: boolean;
         alwaysConfirm?: string[];
         neverConfirm?: string[];
+        autonomyLevel?: AutonomyLevel;
     };
     keychain?: {
         enabled: boolean;
@@ -87,6 +90,10 @@ export type Settings = {
         maxConcurrent?: number;
         maxRetries?: number;
         retryDelay?: number;
+    };
+    accessibility?: {
+        reduceMotion?: boolean;
+        highContrast?: boolean;
     };
 };
 
@@ -133,6 +140,21 @@ export function isConfirmationEnabled(): boolean {
     return settings.confirmations?.enabled ?? true;
 }
 
+export function getAutonomyLevel(): AutonomyLevel {
+    const settings = loadSettings();
+    return settings.confirmations?.autonomyLevel ?? 'strict';
+}
+
+export function setAutonomyLevel(level: AutonomyLevel): void {
+    const settings = loadSettings();
+    settings.confirmations = {
+        ...settings.confirmations,
+        enabled: settings.confirmations?.enabled ?? true,
+        autonomyLevel: level,
+    };
+    saveSettings(settings);
+}
+
 export function toggleConfirmations(): boolean {
     const settings = loadSettings();
     const enabled = !(settings.confirmations?.enabled ?? true);
@@ -176,4 +198,36 @@ export function toggleReasoning(): boolean {
 export function getReasoningMode(): 'auto' | 'always' | 'never' {
     const settings = loadSettings();
     return settings.reasoning?.mode ?? 'auto';
+}
+
+export function isReduceMotionEnabled(): boolean {
+    const settings = loadSettings();
+    return settings.accessibility?.reduceMotion ?? false;
+}
+
+export function toggleReduceMotion(): boolean {
+    const settings = loadSettings();
+    const enabled = !(settings.accessibility?.reduceMotion ?? false);
+    settings.accessibility = {
+        ...settings.accessibility,
+        reduceMotion: enabled,
+    };
+    saveSettings(settings);
+    return enabled;
+}
+
+export function isHighContrastEnabled(): boolean {
+    const settings = loadSettings();
+    return settings.accessibility?.highContrast ?? false;
+}
+
+export function toggleHighContrast(): boolean {
+    const settings = loadSettings();
+    const enabled = !(settings.accessibility?.highContrast ?? false);
+    settings.accessibility = {
+        ...settings.accessibility,
+        highContrast: enabled,
+    };
+    saveSettings(settings);
+    return enabled;
 }
