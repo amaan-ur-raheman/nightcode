@@ -215,10 +215,10 @@ function BashTerminalBlock({
         } else if (trimmed) {
             const highlighted = highlightCode(line, 'shell', colors, true);
             return (
-                <text key={`cmd-l-${idx}`}>
-                    <span fg={colors.dimSeparator}>$ </span>
+                <box key={`cmd-l-${idx}`} flexDirection="row">
+                    <text fg={colors.dimSeparator}>$ </text>
                     {highlighted}
-                </text>
+                </box>
             );
         } else {
             return <text key={`cmd-e-${idx}`}>{''}</text>;
@@ -270,7 +270,7 @@ function BashTerminalBlock({
                 flexDirection="column"
                 paddingX={2}
                 paddingY={1}
-                backgroundColor={colors.dialogSurface}
+                backgroundColor={colors.background}
                 width="100%"
                 marginBottom={1}
             >
@@ -281,11 +281,15 @@ function BashTerminalBlock({
                         {isLong ? (
                             <box flexDirection="column" width="100%">
                                 <box
-                                    {...({ onClick: () => setCollapsed((c) => !c) } as any)}
+                                    {...({
+                                        onClick: () => setCollapsed((c) => !c),
+                                    } as any)}
                                     flexDirection="row"
                                     gap={1}
                                 >
-                                    <text fg={colors.dimSeparator}>{collapsed ? '▸' : '▾'}</text>
+                                    <text fg={colors.dimSeparator}>
+                                        {collapsed ? '▸' : '▾'}
+                                    </text>
                                     <text fg={colors.dimSeparator}>
                                         {collapsed
                                             ? `${renderedOutput.length} lines of output (click to expand)`
@@ -313,6 +317,42 @@ export const BotMessage = React.memo(function BotMessage({
 }: BotMessageProps) {
     const { colors } = useTheme();
     const { activeGraphs } = useOrchestration();
+
+    // Collect tool executions for summary
+    const toolExecutions = React.useMemo(() => {
+        const executions: {
+            name: string;
+            durationMs: number;
+            success: boolean;
+        }[] = [];
+        for (const part of parts) {
+            if (isToolPart(part)) {
+                const toolName =
+                    part.type === 'dynamic-tool'
+                        ? part.toolName
+                        : part.type.slice('tool-'.length);
+                const isRunning =
+                    part.state !== 'output-available' &&
+                    part.state !== 'output-error';
+                const isError = part.state === 'output-error';
+                const isComplete =
+                    part.state === 'output-available' && !isError;
+
+                if (isComplete || isError) {
+                    const startTime = (part as any).startTime;
+                    const endTime = (part as any).endTime;
+                    const duration =
+                        startTime && endTime ? endTime - startTime : 0;
+                    executions.push({
+                        name: toolName,
+                        durationMs: duration,
+                        success: isComplete,
+                    });
+                }
+            }
+        }
+        return executions;
+    }, [parts]);
 
     return (
         <box alignItems="center" width="100%">
@@ -477,9 +517,7 @@ export const BotMessage = React.memo(function BotMessage({
                                                         )?.path ?? '',
                                                     )}
                                                 </em>
-                                            ) : toolName === 'bash' ? (
-                                                null
-                                            ) : (
+                                            ) : toolName === 'bash' ? null : (
                                                 formatToolArgs(part)
                                             )}
                                             {isRunning && <ToolTimer />}
@@ -492,7 +530,10 @@ export const BotMessage = React.memo(function BotMessage({
                                     part.input &&
                                     typeof part.input === 'object' ? (
                                         <BashTerminalBlock
-                                            command={String((part.input as any).command ?? '')}
+                                            command={String(
+                                                (part.input as any).command ??
+                                                    '',
+                                            )}
                                             output={
                                                 isComplete &&
                                                 'output' in part &&
@@ -506,48 +547,71 @@ export const BotMessage = React.memo(function BotMessage({
                                     ) : null}
 
                                     {/* Show inline search matches for grep/codeSearch */}
-                                    {(toolName === 'grep' || toolName === 'codeSearch') &&
+                                    {(toolName === 'grep' ||
+                                        toolName === 'codeSearch') &&
                                     isComplete &&
                                     'output' in part &&
                                     part.output &&
                                     typeof part.output === 'object' ? (
                                         <SearchMatchesBlock
-                                            matches={(part.output as any).matches ?? []}
+                                            matches={
+                                                (part.output as any).matches ??
+                                                []
+                                            }
                                             colors={colors}
                                         />
                                     ) : null}
 
                                     {/* Show inline status for gitStatus/gitStatusExtended */}
-                                    {(toolName === 'gitStatus' || toolName === 'gitStatusExtended') &&
+                                    {(toolName === 'gitStatus' ||
+                                        toolName === 'gitStatusExtended') &&
                                     isComplete &&
                                     'output' in part &&
                                     part.output &&
-                                    typeof part.output === 'object' ? (
-                                        (() => {
-                                            const out = part.output as any;
-                                            if (toolName === 'gitStatus' && typeof out.status === 'string') {
-                                                const parsed = parseGitShortStatus(out.status);
-                                                return (
-                                                    <GitStatusBlock
-                                                        staged={parsed.staged}
-                                                        unstaged={parsed.unstaged}
-                                                        untracked={parsed.untracked}
-                                                        currentBranch={parsed.currentBranch}
-                                                        colors={colors}
-                                                    />
-                                                );
-                                            }
-                                            return (
-                                                <GitStatusBlock
-                                                    staged={out.staged ?? []}
-                                                    unstaged={out.unstaged ?? []}
-                                                    untracked={out.untracked ?? []}
-                                                    currentBranch={out.currentBranch}
-                                                    colors={colors}
-                                                />
-                                            );
-                                        })()
-                                    ) : null}
+                                    typeof part.output === 'object'
+                                        ? (() => {
+                                              const out = part.output as any;
+                                              if (
+                                                  toolName === 'gitStatus' &&
+                                                  typeof out.status === 'string'
+                                              ) {
+                                                  const parsed =
+                                                      parseGitShortStatus(
+                                                          out.status,
+                                                      );
+                                                  return (
+                                                      <GitStatusBlock
+                                                          staged={parsed.staged}
+                                                          unstaged={
+                                                              parsed.unstaged
+                                                          }
+                                                          untracked={
+                                                              parsed.untracked
+                                                          }
+                                                          currentBranch={
+                                                              parsed.currentBranch
+                                                          }
+                                                          colors={colors}
+                                                      />
+                                                  );
+                                              }
+                                              return (
+                                                  <GitStatusBlock
+                                                      staged={out.staged ?? []}
+                                                      unstaged={
+                                                          out.unstaged ?? []
+                                                      }
+                                                      untracked={
+                                                          out.untracked ?? []
+                                                      }
+                                                      currentBranch={
+                                                          out.currentBranch
+                                                      }
+                                                      colors={colors}
+                                                  />
+                                              );
+                                          })()
+                                        : null}
 
                                     {/* Show inline secrets for secretScan */}
                                     {toolName === 'secretScan' &&
@@ -556,7 +620,10 @@ export const BotMessage = React.memo(function BotMessage({
                                     part.output &&
                                     typeof part.output === 'object' ? (
                                         <SecretScanBlock
-                                            secrets={(part.output as any).secrets ?? []}
+                                            secrets={
+                                                (part.output as any).secrets ??
+                                                []
+                                            }
                                             colors={colors}
                                         />
                                     ) : null}
@@ -568,10 +635,22 @@ export const BotMessage = React.memo(function BotMessage({
                                     part.output &&
                                     typeof part.output === 'object' ? (
                                         <ProfileCodeBlock
-                                            summary={String((part.output as any).summary ?? '')}
-                                            hotspots={(part.output as any).hotspots ?? []}
-                                            topPerformers={(part.output as any).topPerformers ?? []}
-                                            durationMs={Number((part.output as any).durationMs ?? 0)}
+                                            summary={String(
+                                                (part.output as any).summary ??
+                                                    '',
+                                            )}
+                                            hotspots={
+                                                (part.output as any).hotspots ??
+                                                []
+                                            }
+                                            topPerformers={
+                                                (part.output as any)
+                                                    .topPerformers ?? []
+                                            }
+                                            durationMs={Number(
+                                                (part.output as any)
+                                                    .durationMs ?? 0,
+                                            )}
                                             colors={colors}
                                         />
                                     ) : null}
@@ -583,7 +662,10 @@ export const BotMessage = React.memo(function BotMessage({
                                     part.output &&
                                     typeof part.output === 'object' ? (
                                         <GitLogTimelineBlock
-                                            commits={(part.output as any).commits ?? []}
+                                            commits={
+                                                (part.output as any).commits ??
+                                                []
+                                            }
                                             colors={colors}
                                         />
                                     ) : null}
@@ -601,7 +683,14 @@ export const BotMessage = React.memo(function BotMessage({
                                                     }
                                                     diff={diffText}
                                                     showLineNumbers
-                                                    filetype={filePath ? filePath.split('.').pop()?.toLowerCase() : undefined}
+                                                    filetype={
+                                                        filePath
+                                                            ? filePath
+                                                                  .split('.')
+                                                                  .pop()
+                                                                  ?.toLowerCase()
+                                                            : undefined
+                                                    }
                                                 />
                                             </box>
                                         )}
@@ -732,6 +821,8 @@ export const BotMessage = React.memo(function BotMessage({
                     })}
                 </box>
             ))}
+
+
 
             <box paddingX={3} paddingY={1} gap={1} width="100%">
                 <box flexDirection="row" gap={2}>

@@ -17,6 +17,7 @@ import {
 } from '@/lib/subagent-progress';
 import { requestQueue, type QueueStats } from '@/lib/request-queue';
 import { orchestratorManager } from '@/lib/orchestrator-manager';
+import { getContextWindow } from '@/lib/model-context-windows';
 
 type StatusBarProps = {
     messageCount?: number;
@@ -24,6 +25,10 @@ type StatusBarProps = {
     messages?: any[];
     isLoading?: boolean;
     lastLatencyMs?: number | null;
+    /** Real-time token count during streaming */
+    streamingTokens?: number;
+    /** Timestamp when streaming started (for calculating tokens/sec) */
+    streamingStartTime?: number | null;
 };
 
 export const StatusBar = React.memo(function StatusBar({
@@ -32,6 +37,8 @@ export const StatusBar = React.memo(function StatusBar({
     messages = [],
     isLoading = false,
     lastLatencyMs,
+    streamingTokens = 0,
+    streamingStartTime,
 }: StatusBarProps) {
     const { mode, model } = usePromptConfig();
     const { colors } = useTheme();
@@ -72,7 +79,8 @@ export const StatusBar = React.memo(function StatusBar({
 
     // Rotating task spinner for parallel tasks
     const [spinnerIdx, setSpinnerIdx] = useState(0);
-    const hasActiveTasks = activeSubagents > 0 || orchestrationCount > 0 || queueStats.running > 0;
+    const hasActiveTasks =
+        activeSubagents > 0 || orchestrationCount > 0 || queueStats.running > 0;
 
     React.useEffect(() => {
         if (!hasActiveTasks) return;
@@ -116,12 +124,38 @@ export const StatusBar = React.memo(function StatusBar({
     }
 
     // Cost estimation: Input $3.00 / M tokens, Output $15.00 / M tokens
-    const cost = (inputTokens / 1_000_000) * 3.00 + (outputTokens / 1_000_000) * 15.00;
+    const cost =
+        (inputTokens / 1_000_000) * 3.0 + (outputTokens / 1_000_000) * 15.0;
+
+    // Context window usage
+    const contextWindow = getContextWindow(model);
+    const totalTokens = inputTokens + outputTokens;
+    const contextUsagePercent = Math.min(
+        100,
+        Math.round((totalTokens / contextWindow) * 100),
+    );
+    const isContextHigh = contextUsagePercent > 80;
+    const isContextCritical = contextUsagePercent > 95;
 
     let latencyStr = '';
     const finalDurationMs = lastLatencyMs ?? lastDurationMs;
     if (!isLoading && finalDurationMs != null) {
-        latencyStr = finalDurationMs >= 1000 ? `${(finalDurationMs / 1000).toFixed(1)}s` : `${finalDurationMs}ms`;
+        latencyStr =
+            finalDurationMs >= 1000
+                ? `${(finalDurationMs / 1000).toFixed(1)}s`
+                : `${finalDurationMs}ms`;
+    }
+
+    // Streaming stats: tokens/sec and estimated time remaining
+    let streamingSpeed = 0;
+    let streamingElapsed = 0;
+    if (isLoading && streamingStartTime && streamingTokens > 0) {
+        streamingElapsed = Date.now() - streamingStartTime;
+        if (streamingElapsed > 0) {
+            streamingSpeed = Math.round(
+                (streamingTokens / streamingElapsed) * 1000,
+            );
+        }
     }
 
     const userMessages = messageCount != null ? messageCount : 0;
@@ -168,11 +202,38 @@ export const StatusBar = React.memo(function StatusBar({
                         <text>{latencyStr}</text>
                     </>
                 ) : null}
+                {isLoading && streamingTokens > 0 && streamingSpeed > 0 ? (
+                    <>
+                        <text
+                            attributes={TextAttributes.DIM}
+                            fg={colors.dimSeparator}
+                        >
+                            ›
+                        </text>
+                        <text fg={colors.info}>
+                            {`${streamingTokens.toLocaleString()} tx · ${streamingSpeed} tx/s`}
+                        </text>
+                    </>
+                ) : null}
             </box>
             <box flexDirection="row" gap={2}>
                 {cost > 0 && (
                     <text attributes={TextAttributes.DIM} fg={colors.success}>
                         {`$${cost.toFixed(4)} (${(inputTokens + outputTokens).toLocaleString()} tx)`}
+                    </text>
+                )}
+                {totalTokens > 0 && (
+                    <text
+                        attributes={TextAttributes.DIM}
+                        fg={
+                            isContextCritical
+                                ? colors.error
+                                : isContextHigh
+                                  ? colors.info
+                                  : colors.dimSeparator
+                        }
+                    >
+                        {`ctx: ${contextUsagePercent}%`}
                     </text>
                 )}
                 {queueStats.queueSize > 0 || queueStats.running > 0 ? (

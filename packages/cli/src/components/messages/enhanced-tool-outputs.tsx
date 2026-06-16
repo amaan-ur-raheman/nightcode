@@ -30,20 +30,59 @@ export function SearchMatchesBlock({
         fileGroups[match.file]!.push(match);
     }
 
+    const MAX_MATCHES_PER_FILE = 5;
+    const MAX_LINE_LENGTH = 140;
+
     return (
         <box paddingLeft={2} width="100%" flexDirection="column">
             {Object.entries(fileGroups).map(([file, fileMatches], fileIdx) => {
+                const visibleMatches = fileMatches.slice(0, MAX_MATCHES_PER_FILE);
+                const remaining = fileMatches.length - MAX_MATCHES_PER_FILE;
                 return (
-                    <box key={`file-${fileIdx}`} flexDirection="column" marginBottom={1} width="100%">
+                    <box
+                        key={`file-${fileIdx}`}
+                        flexDirection="column"
+                        marginBottom={1}
+                        width="100%"
+                    >
                         <text fg={colors.primary}>
-                            [{path.relative(process.cwd(), file) || file}](file://{path.isAbsolute(file) ? file : path.resolve(process.cwd(), file)})
+                            [{path.relative(process.cwd(), file) || file}
+                            ](file://
+                            {path.isAbsolute(file)
+                                ? file
+                                : path.resolve(process.cwd(), file)}
+                            )
                         </text>
-                        {fileMatches.map((m, mIdx) => (
-                            <box key={`match-${mIdx}`} paddingLeft={2} flexDirection="row" width="100%">
-                                <text fg={colors.dimSeparator}>Line {m.line}: </text>
-                                {highlightCode(m.content, file.split('.').pop() || '', colors, true)}
+                        {visibleMatches.map((m, mIdx) => {
+                            const displayContent = m.content.length > MAX_LINE_LENGTH
+                                ? m.content.slice(0, MAX_LINE_LENGTH - 3) + '...'
+                                : m.content;
+                            return (
+                                <box
+                                    key={`match-${mIdx}`}
+                                    paddingLeft={2}
+                                    flexDirection="row"
+                                    width="100%"
+                                >
+                                    <text fg={colors.dimSeparator}>
+                                        Line {m.line}:{' '}
+                                    </text>
+                                    {highlightCode(
+                                        displayContent,
+                                        file.split('.').pop() || '',
+                                        colors,
+                                        true,
+                                    )}
+                                </box>
+                            );
+                        })}
+                        {remaining > 0 && (
+                            <box paddingLeft={2}>
+                                <text fg={colors.dimSeparator}>
+                                    ... and {remaining} more match{remaining > 1 ? 'es' : ''} in this file
+                                </text>
                             </box>
-                        ))}
+                        )}
                     </box>
                 );
             })}
@@ -74,10 +113,18 @@ export function parseGitShortStatus(statusStr: string) {
         if (indexStatus === '?' && workTreeStatus === '?') {
             untracked.push(filePath);
         } else {
-            if (indexStatus !== ' ' && indexStatus !== '?' && indexStatus !== undefined) {
+            if (
+                indexStatus !== ' ' &&
+                indexStatus !== '?' &&
+                indexStatus !== undefined
+            ) {
                 staged.push(filePath);
             }
-            if (workTreeStatus !== ' ' && workTreeStatus !== '?' && workTreeStatus !== undefined) {
+            if (
+                workTreeStatus !== ' ' &&
+                workTreeStatus !== '?' &&
+                workTreeStatus !== undefined
+            ) {
                 unstaged.push(filePath);
             }
         }
@@ -101,6 +148,7 @@ export function GitStatusBlock({
     const hasStaged = staged && staged.length > 0;
     const hasUnstaged = unstaged && unstaged.length > 0;
     const hasUntracked = untracked && untracked.length > 0;
+    const MAX_FILES_SHOWN = 8;
 
     return (
         <box paddingLeft={2} flexDirection="column" width="100%">
@@ -114,11 +162,24 @@ export function GitStatusBlock({
                     <text fg={colors.success} attributes={['bold'] as any}>
                         Staged Changes:
                     </text>
-                    {staged.map((file, idx) => (
-                        <text key={`staged-${idx}`} paddingLeft={2} fg={colors.success}>
-                            ✓ [{file}](file://{path.isAbsolute(file) ? file : path.resolve(process.cwd(), file)})
+                    {staged.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
+                        <text
+                            key={`staged-${idx}`}
+                            paddingLeft={2}
+                            fg={colors.success}
+                        >
+                            ✓ [{file}](file://
+                            {path.isAbsolute(file)
+                                ? file
+                                : path.resolve(process.cwd(), file)}
+                            )
                         </text>
                     ))}
+                    {staged.length > MAX_FILES_SHOWN && (
+                        <text paddingLeft={2} fg={colors.dimSeparator}>
+                            ... and {staged.length - MAX_FILES_SHOWN} more staged file(s)
+                        </text>
+                    )}
                 </box>
             )}
             {hasUnstaged && (
@@ -126,11 +187,24 @@ export function GitStatusBlock({
                     <text fg={colors.error} attributes={['bold'] as any}>
                         Unstaged Changes:
                     </text>
-                    {unstaged.map((file, idx) => (
-                        <text key={`unstaged-${idx}`} paddingLeft={2} fg={colors.error}>
-                            ✗ [{file}](file://{path.isAbsolute(file) ? file : path.resolve(process.cwd(), file)})
+                    {unstaged.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
+                        <text
+                            key={`unstaged-${idx}`}
+                            paddingLeft={2}
+                            fg={colors.error}
+                        >
+                            ✗ [{file}](file://
+                            {path.isAbsolute(file)
+                                ? file
+                                : path.resolve(process.cwd(), file)}
+                            )
                         </text>
                     ))}
+                    {unstaged.length > MAX_FILES_SHOWN && (
+                        <text paddingLeft={2} fg={colors.dimSeparator}>
+                            ... and {unstaged.length - MAX_FILES_SHOWN} more unstaged file(s)
+                        </text>
+                    )}
                 </box>
             )}
             {hasUntracked && (
@@ -138,11 +212,24 @@ export function GitStatusBlock({
                     <text fg={colors.planMode} attributes={['bold'] as any}>
                         Untracked Files:
                     </text>
-                    {untracked.map((file, idx) => (
-                        <text key={`untracked-${idx}`} paddingLeft={2} fg={colors.planMode}>
-                            ? [{file}](file://{path.isAbsolute(file) ? file : path.resolve(process.cwd(), file)})
+                    {untracked.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
+                        <text
+                            key={`untracked-${idx}`}
+                            paddingLeft={2}
+                            fg={colors.planMode}
+                        >
+                            ? [{file}](file://
+                            {path.isAbsolute(file)
+                                ? file
+                                : path.resolve(process.cwd(), file)}
+                            )
                         </text>
                     ))}
+                    {untracked.length > MAX_FILES_SHOWN && (
+                        <text paddingLeft={2} fg={colors.dimSeparator}>
+                            ... and {untracked.length - MAX_FILES_SHOWN} more untracked file(s)
+                        </text>
+                    )}
                 </box>
             )}
             {!hasStaged && !hasUnstaged && !hasUntracked && (
@@ -186,7 +273,8 @@ export function SecretScanBlock({
                 width="100%"
             >
                 <text fg={colors.error} attributes={['bold'] as any}>
-                    Security Scan: {secrets.length} secret{secrets.length > 1 ? 's' : ''} found
+                    Security Scan: {secrets.length} secret
+                    {secrets.length > 1 ? 's' : ''} found
                 </text>
                 <text fg={colors.dimSeparator} marginBottom={1}>
                     Review each finding before staging or committing changes.
@@ -199,18 +287,31 @@ export function SecretScanBlock({
                               ? colors.planMode
                               : colors.info;
                     return (
-                        <box key={`secret-${idx}`} flexDirection="column" marginBottom={idx === secrets.length - 1 ? 0 : 1} width="100%">
+                        <box
+                            key={`secret-${idx}`}
+                            flexDirection="column"
+                            marginBottom={idx === secrets.length - 1 ? 0 : 1}
+                            width="100%"
+                        >
                             <box flexDirection="row" gap={1} width="100%">
-                                <text fg={sevColor} attributes={['bold'] as any}>
+                                <text
+                                    fg={sevColor}
+                                    attributes={['bold'] as any}
+                                >
                                     [{m.severity.toUpperCase()}]
                                 </text>
                                 <text fg={colors.text}>
-                                    [{m.file}:{m.line}](file://{path.isAbsolute(m.file) ? m.file : path.resolve(process.cwd(), m.file)}#L{m.line})
+                                    [{m.file}:{m.line}](file://
+                                    {path.isAbsolute(m.file)
+                                        ? m.file
+                                        : path.resolve(process.cwd(), m.file)}
+                                    #L{m.line})
                                 </text>
                                 <text fg={colors.dimSeparator}>({m.type})</text>
                             </box>
                             <text paddingLeft={2} fg={colors.dimSeparator}>
-                                Snippet: <span fg={colors.text}>{m.snippet}</span>
+                                Snippet:{' '}
+                                <span fg={colors.text}>{m.snippet}</span>
                             </text>
                         </box>
                     );
@@ -245,7 +346,8 @@ export function ProfileCodeBlock({
     durationMs: number;
     colors: ThemeColors;
 }) {
-    const allItems = topPerformers && topPerformers.length > 0 ? topPerformers : hotspots;
+    const allItems =
+        topPerformers && topPerformers.length > 0 ? topPerformers : hotspots;
     if (!allItems || allItems.length === 0) return null;
 
     const maxOps = Math.max(...allItems.map((i) => i.opsPerSec || 1));
@@ -262,18 +364,34 @@ export function ProfileCodeBlock({
                 {allItems.slice(0, 5).map((item, idx) => {
                     const ratio = item.opsPerSec / maxOps;
                     const barLength = Math.max(1, Math.round(ratio * 10));
-                    const bar = '█'.repeat(barLength) + '░'.repeat(10 - barLength);
-                    const displayName = item.name.length > 18 ? item.name.slice(0, 15) + '...' : item.name;
+                    const bar =
+                        '█'.repeat(barLength) + '░'.repeat(10 - barLength);
+                    const displayName =
+                        item.name.length > 18
+                            ? item.name.slice(0, 15) + '...'
+                            : item.name;
                     return (
-                        <box key={`perf-${idx}`} flexDirection="row" gap={2} width="100%">
+                        <box
+                            key={`perf-${idx}`}
+                            flexDirection="row"
+                            gap={2}
+                            width="100%"
+                        >
                             <text fg={colors.text}>
                                 {displayName.padEnd(20)}
                             </text>
                             <text fg={colors.primary}>
-                                {Math.round(item.opsPerSec).toLocaleString().padStart(12)} ops/s
+                                {Math.round(item.opsPerSec)
+                                    .toLocaleString()
+                                    .padStart(12)}{' '}
+                                ops/s
                             </text>
                             <text fg={colors.dimSeparator}>
-                                [{bar}] {Math.round(item.avgTimeNs / 1000).toLocaleString()} µs
+                                [{bar}]{' '}
+                                {Math.round(
+                                    item.avgTimeNs / 1000,
+                                ).toLocaleString()}{' '}
+                                µs
                             </text>
                         </box>
                     );
@@ -308,7 +426,11 @@ export function GitLogTimelineBlock({
             {commits.map((commit, idx) => {
                 const isLast = idx === commits.length - 1;
                 return (
-                    <box key={`commit-${idx}`} flexDirection="column" width="100%">
+                    <box
+                        key={`commit-${idx}`}
+                        flexDirection="column"
+                        width="100%"
+                    >
                         <box flexDirection="row" gap={1} width="100%">
                             <text fg={colors.dimSeparator}>
                                 {idx === 0 ? '┯' : '┠'}
@@ -316,9 +438,7 @@ export function GitLogTimelineBlock({
                             <text fg={colors.primary}>
                                 {commit.hash.slice(0, 7)}
                             </text>
-                            <text fg={colors.text}>
-                                - {commit.message}
-                            </text>
+                            <text fg={colors.text}>- {commit.message}</text>
                         </box>
                         {commit.author && (
                             <box flexDirection="row" gap={1} width="100%">
