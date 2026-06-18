@@ -1,5 +1,7 @@
 import {
     registerLocalModel,
+    CLOUDFLARE_ACCOUNT_ID_KEYCHAIN,
+    keychain,
     type DynamicModel,
     type SupportedProvider,
 } from '@nightcode/shared';
@@ -346,6 +348,69 @@ async function fetchLocalOllama(): Promise<DynamicModel[]> {
     }
 }
 
+// ── Cloudflare Workers AI (requires Account ID + API key) ──
+
+async function fetchCloudflare(clientKey?: string): Promise<DynamicModel[]> {
+    const apiKey = clientKey ?? process.env.CLOUDFLARE_API_KEY ?? '';
+
+    // Resolve Account ID from keychain or env var
+    let accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+    if (!accountId && keychain.isAvailable()) {
+        try {
+            const keychainAccountId = await keychain.getKey(
+                CLOUDFLARE_ACCOUNT_ID_KEYCHAIN,
+            );
+            if (keychainAccountId) accountId = keychainAccountId;
+        } catch {
+            // Ignore keychain errors
+        }
+    }
+
+    if (!apiKey || !accountId) {
+        console.warn(
+            `[model-fetcher] Cloudflare: Missing credentials (apiKey=${apiKey ? 'set' : 'missing'}, accountId=${accountId ? 'set' : 'missing'})`,
+        );
+        return [];
+    }
+    try {
+        const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?task=text-generation&hide_experimental=false&per_page=100`;
+        console.log(`[model-fetcher] Fetching Cloudflare models from: ${url}`);
+        const res = await fetch(url, {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                Accept: 'application/json',
+            },
+            signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) {
+            console.error(
+                `[model-fetcher] Cloudflare API returned ${res.status}: ${await res.text()}`,
+            );
+            return [];
+        }
+        const data = (await res.json()) as any;
+        const models: any[] = data?.result ?? [];
+        console.log(
+            `[model-fetcher] Cloudflare: Found ${models.length} text-generation models`,
+        );
+        return models.map((m) => ({
+            id: `cloudflare/${m.id}` as string,
+            displayName: (m.name as string) ?? deriveDisplayName(m.id),
+            provider: 'cloudflare' as SupportedProvider,
+            pricing: {
+                inputUsdPerMillionTokens: 0,
+                outputUsdPerMillionTokens: 0,
+            },
+        }));
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to fetch models from Cloudflare Workers AI:',
+            err instanceof Error ? err.message : err,
+        );
+        return [];
+    }
+}
+
 // ── Main fetcher ──
 
 const FETCHERS: Array<{ provider: SupportedProvider; fetch: ProviderFetcher }> =
@@ -406,6 +471,7 @@ const FETCHERS: Array<{ provider: SupportedProvider; fetch: ProviderFetcher }> =
                     'lightningai',
                 ),
         },
+        { provider: 'cloudflare', fetch: (key) => fetchCloudflare(key) },
     ];
 
 export async function fetchAllModels(

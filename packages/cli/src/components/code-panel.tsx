@@ -7,7 +7,7 @@ import { basename } from 'path';
 import { useTheme } from '@/providers/theme';
 import { useFileTree } from '@/providers/file-tree';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
-import { EmptyBorder } from '@/components/border';
+import { PanelBorder } from '@/components/border';
 
 interface CodePanelProps {
     filePath: string;
@@ -107,17 +107,13 @@ export function CodePanel({ filePath, highlightedLine }: CodePanelProps) {
             <box
                 border={['bottom']}
                 borderColor={colors.dimSeparator}
-                customBorderChars={{
-                    ...EmptyBorder,
-                    horizontal: '─',
-                }}
+                customBorderChars={PanelBorder}
                 paddingLeft={2}
                 paddingRight={2}
                 paddingTop={0}
                 paddingBottom={0}
             >
                 <text fg={isActive ? colors.primary : colors.dimSeparator}>
-                    {isActive ? '● ' : ''}
                     <em fg={isActive ? colors.primary : colors.info}>File: </em>
                     <em fg={isActive ? colors.text : colors.dimSeparator}>
                         {fileName}
@@ -179,14 +175,11 @@ export function CodePanel({ filePath, highlightedLine }: CodePanelProps) {
             <box
                 border={['top']}
                 borderColor={colors.dimSeparator}
-                customBorderChars={{
-                    ...EmptyBorder,
-                    horizontal: '─',
-                }}
+                customBorderChars={PanelBorder}
                 paddingLeft={2}
                 paddingRight={2}
             >
-                <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
+                <text attributes={TextAttributes.DIM} fg={colors.muted}>
                     {isActive
                         ? 'Esc to close • Left arrow to outline • Up/Down to scroll'
                         : 'Esc to close • click code or press Right from outline to focus'}

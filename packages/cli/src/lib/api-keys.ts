@@ -1,6 +1,7 @@
 import {
     keychain,
     PROVIDER_KEYCHAIN_NAMES,
+    CLOUDFLARE_ACCOUNT_ID_KEYCHAIN,
     type SupportedProvider,
 } from '@nightcode/shared';
 
@@ -30,6 +31,13 @@ export async function getApiKeyStatus(): Promise<ApiKeyStatusResponse> {
         )) {
             if (provider === 'local') {
                 statuses[provider] = true;
+            } else if (provider === 'cloudflare') {
+                // Cloudflare requires both Account ID and API key
+                const key = await keychain.getKey(keychainName);
+                const accountId = await keychain.getKey(
+                    CLOUDFLARE_ACCOUNT_ID_KEYCHAIN,
+                );
+                statuses[provider] = key !== null && accountId !== null;
             } else {
                 const key = await keychain.getKey(keychainName);
                 statuses[provider] = key !== null;
@@ -99,7 +107,37 @@ export async function deleteApiKey(provider: string): Promise<boolean> {
     }
 
     try {
+        // Also delete the Account ID for Cloudflare
+        if (provider === 'cloudflare') {
+            await keychain.deleteKey(CLOUDFLARE_ACCOUNT_ID_KEYCHAIN);
+        }
         return await keychain.deleteKey(keychainName);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Get the Cloudflare Account ID from the OS keychain.
+ */
+export async function getCloudflareAccountId(): Promise<string | null> {
+    if (!keychain.isAvailable()) return null;
+    try {
+        return await keychain.getKey(CLOUDFLARE_ACCOUNT_ID_KEYCHAIN);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Store the Cloudflare Account ID in the OS keychain.
+ */
+export async function setCloudflareAccountId(
+    accountId: string,
+): Promise<boolean> {
+    if (!keychain.isAvailable()) return false;
+    try {
+        return await keychain.setKey(CLOUDFLARE_ACCOUNT_ID_KEYCHAIN, accountId);
     } catch {
         return false;
     }

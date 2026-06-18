@@ -31,7 +31,7 @@ function categorizeError(message: string): ErrorInfo {
     ) {
         return {
             category: 'network',
-            icon: '🔌',
+            icon: '✗',
             suggestion:
                 'Check your internet connection or API endpoint availability',
             originalMessage: message,
@@ -47,7 +47,7 @@ function categorizeError(message: string): ErrorInfo {
     ) {
         return {
             category: 'auth',
-            icon: '🔑',
+            icon: '✗',
             suggestion: 'Run /model to check your API key configuration',
             originalMessage: message,
             shortcuts: ['/model: Switch model', '/setup: Reconfigure'],
@@ -61,7 +61,7 @@ function categorizeError(message: string): ErrorInfo {
     ) {
         return {
             category: 'timeout',
-            icon: '⏳',
+            icon: '✗',
             suggestion: 'Rate limited — wait a moment before retrying',
             originalMessage: message,
             shortcuts: ['Ctrl+R: Retry after delay'],
@@ -76,7 +76,7 @@ function categorizeError(message: string): ErrorInfo {
     ) {
         return {
             category: 'permission',
-            icon: '🔒',
+            icon: '✗',
             suggestion:
                 'Insufficient permissions — check file/folder access rights',
             originalMessage: message,
@@ -91,7 +91,7 @@ function categorizeError(message: string): ErrorInfo {
     ) {
         return {
             category: 'timeout',
-            icon: '⏱️',
+            icon: '✗',
             suggestion:
                 'Operation timed out — try breaking the task into smaller steps',
             originalMessage: message,
@@ -106,7 +106,7 @@ function categorizeError(message: string): ErrorInfo {
     ) {
         return {
             category: 'tool',
-            icon: '🛠️',
+            icon: '✗',
             suggestion:
                 'Tool execution failed — check the command or arguments',
             originalMessage: message,
@@ -116,7 +116,7 @@ function categorizeError(message: string): ErrorInfo {
 
     return {
         category: 'unknown',
-        icon: '⚠️',
+        icon: '⚠',
         suggestion:
             message.length > 100 ? message.slice(0, 97) + '...' : message,
         originalMessage: message,

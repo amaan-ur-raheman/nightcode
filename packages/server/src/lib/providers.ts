@@ -5,6 +5,7 @@ import {
     SUPPORTED_CHAT_MODELS,
     PROVIDER_KEYCHAIN_NAMES,
     PROVIDER_ENV_VARS,
+    CLOUDFLARE_ACCOUNT_ID_KEYCHAIN,
     keychain,
     type SupportedProvider,
 } from '@nightcode/shared';
@@ -196,6 +197,13 @@ const LIGHTNINGAI_PROVIDER: ProviderConfig = {
     models: [],
 };
 
+const CLOUDFLARE_PROVIDER: ProviderConfig = {
+    name: 'cloudflare',
+    baseUrl: `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID ?? ''}/ai/v1`,
+    apiKey: '',
+    models: [],
+};
+
 const ALL_PROVIDERS: ProviderConfig[] = [
     NIM_PROVIDER,
     ANTHROPIC_PROVIDER,
@@ -211,6 +219,7 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     KILO_PROVIDER,
     LOCAL_PROVIDER,
     LIGHTNINGAI_PROVIDER,
+    CLOUDFLARE_PROVIDER,
 ];
 
 // Provider prefix mapping for dynamic model IDs
@@ -226,6 +235,7 @@ const PROVIDER_PREFIXES: Record<string, string> = {
     'kilo/': 'kilo',
     'local/': 'local',
     'lightningai/': 'lightningai',
+    'cloudflare/': 'cloudflare',
 };
 
 function findProviderForModel(modelId: string): ProviderConfig | undefined {
@@ -291,6 +301,24 @@ async function resolveProviderKey(
 }
 
 /**
+ * Resolve the Cloudflare Account ID from keychain or environment variable.
+ */
+async function resolveCloudflareAccountId(): Promise<string> {
+    // First try the OS keychain
+    if (keychain.isAvailable()) {
+        const accountId = await keychain.getKey(CLOUDFLARE_ACCOUNT_ID_KEYCHAIN);
+        if (accountId) return accountId;
+    }
+
+    // Then try environment variable
+    if (process.env.CLOUDFLARE_ACCOUNT_ID) {
+        return process.env.CLOUDFLARE_ACCOUNT_ID;
+    }
+
+    return '';
+}
+
+/**
  * Resolve a provider client for the given model ID.
  *
  * API keys are resolved with the following priority:
@@ -349,6 +377,24 @@ export async function getProviderClient(
                 circuitBreaker.recordSuccess(provider.name);
                 return googleProvider(actualModelId);
             }
+            // Cloudflare requires dynamic base URL with Account ID
+            if (provider.name === 'cloudflare') {
+                const accountId = await resolveCloudflareAccountId();
+                if (!accountId) {
+                    throw new Error(
+                        'No Cloudflare Account ID provided. ' +
+                            'Configure it in your client settings or set CLOUDFLARE_ACCOUNT_ID environment variable.',
+                    );
+                }
+                const baseUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
+                const sdk = getOrCreateProvider(
+                    provider.name,
+                    baseUrl,
+                    resolvedKey,
+                );
+                circuitBreaker.recordSuccess(provider.name);
+                return sdk(actualModelId);
+            }
             const sdk = getOrCreateProvider(
                 provider.name,
                 provider.baseUrl,
@@ -389,6 +435,24 @@ export async function getProviderClient(
     }
 
     try {
+        // Cloudflare requires dynamic base URL with Account ID
+        if (provider.name === 'cloudflare') {
+            const accountId = await resolveCloudflareAccountId();
+            if (!accountId) {
+                throw new Error(
+                    'No Cloudflare Account ID provided. ' +
+                        'Configure it in your client settings or set CLOUDFLARE_ACCOUNT_ID environment variable.',
+                );
+            }
+            const baseUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
+            const sdk = getOrCreateProvider(
+                provider.name,
+                baseUrl,
+                resolvedKey,
+            );
+            circuitBreaker.recordSuccess(provider.name);
+            return sdk(modelId);
+        }
         const sdk = getOrCreateProvider(
             provider.name,
             provider.baseUrl,

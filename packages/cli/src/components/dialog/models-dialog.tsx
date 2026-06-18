@@ -152,7 +152,7 @@ export function ModelsDialogContent({
                     ? 'API key needed'
                     : p.models.length > 0
                       ? `${p.models.length} models`
-                      : 'no models';
+                      : 'fetching...';
                 return {
                     key: p.provider,
                     label: p.displayName,
@@ -190,12 +190,8 @@ export function ModelsDialogContent({
             if (view.kind === 'providers') {
                 const provider = view.providers.find((p) => p.provider === key);
                 if (provider) {
-                    // Prompt for API key if provider has no key or no models
-                    // (some listing endpoints return models without auth, but API calls fail)
-                    if (
-                        !apiKeyStatus[provider.provider] ||
-                        provider.models.length === 0
-                    ) {
+                    // Prompt for API key only if not configured yet
+                    if (!apiKeyStatus[provider.provider]) {
                         setPromptingProvider(provider.provider);
                         return;
                     }

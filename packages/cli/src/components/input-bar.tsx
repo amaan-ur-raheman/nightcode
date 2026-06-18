@@ -20,7 +20,7 @@ import { usePromptConfig } from '@/providers/prompt-config';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
 import { useFileTree } from '@/providers/file-tree';
 
-import { EmptyBorder } from '@/components/border';
+import { MessageBorder } from '@/components/border';
 import { StatusBar } from '@/components/status-bar';
 import { CommandMenu } from '@/components/command-menu';
 import type { Command } from '@/components/command-menu/types';
@@ -586,11 +586,7 @@ export function InputBar({
                         ? getModeColor(mode, colors)
                         : colors.dimSeparator
                 }
-                customBorderChars={{
-                    ...EmptyBorder,
-                    vertical: '┃',
-                    bottomLeft: '╹',
-                }}
+                customBorderChars={MessageBorder}
             >
                 <box
                     position="relative"

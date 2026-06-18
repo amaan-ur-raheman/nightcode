@@ -16,6 +16,7 @@ describe('getModeColor', () => {
         dialogSurface: '#0A0A10',
         thinkingBorder: '#34344A',
         dimSeparator: '#4E4E66',
+        muted: '#8890A0',
         text: '#C0C8D8',
     };
 

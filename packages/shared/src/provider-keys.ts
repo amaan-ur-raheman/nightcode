@@ -20,6 +20,7 @@ export const PROVIDER_KEYCHAIN_NAMES: Record<SupportedProvider, string> = {
     kilo: 'kilo-api-key',
     local: 'local-api-key',
     lightningai: 'lightningai-api-key',
+    cloudflare: 'cloudflare-api-key',
 };
 
 /**
@@ -40,6 +41,7 @@ export const PROVIDER_ENV_VARS: Record<SupportedProvider, string> = {
     kilo: 'KILO_API_KEY',
     local: 'LOCAL_API_KEY',
     lightningai: 'LIGHTNINGAI_API_KEY',
+    cloudflare: 'CLOUDFLARE_API_KEY',
 };
 
 /**
@@ -59,6 +61,7 @@ const PROVIDER_PREFIXES: Record<string, SupportedProvider> = {
     'kilo/': 'kilo',
     'local/': 'local',
     'lightningai/': 'lightningai',
+    'cloudflare/': 'cloudflare',
 };
 
 /**
@@ -94,3 +97,9 @@ export function resolveProviderForModel(modelId: string): SupportedProvider {
 export function getKeychainName(provider: SupportedProvider): string {
     return PROVIDER_KEYCHAIN_NAMES[provider];
 }
+
+/**
+ * Special keychain name for Cloudflare Workers AI Account ID.
+ * This is stored separately from the API key.
+ */
+export const CLOUDFLARE_ACCOUNT_ID_KEYCHAIN = 'cloudflare-account-id';

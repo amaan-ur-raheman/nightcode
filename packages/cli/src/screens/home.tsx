@@ -137,8 +137,10 @@ export function Home({ savedSession: initialSavedSession }: HomeProps) {
                         flexShrink={0}
                         marginLeft="auto"
                     >
-                        <text attributes={TextAttributes.DIM}>↑ history</text>
-                        <text attributes={TextAttributes.DIM}>
+                        <text attributes={TextAttributes.DIM} fg={colors.muted}>
+                            ↑ history
+                        </text>
+                        <text attributes={TextAttributes.DIM} fg={colors.muted}>
                             /help commands
                         </text>
                     </box>

@@ -8,17 +8,13 @@ import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
 import type { Message } from '@/hooks/use-chat';
 import { getModeColor } from '@/lib/mode-utils';
-import {
-    getModelName,
-    getProviderDisplayName,
-    extractProvider,
-} from '@/lib/model-names';
+import { getModelName } from '@/lib/model-names';
 import { highlightCode } from '@/lib/syntax-highlight';
 import { loadSettings } from '@/lib/settings';
 import { toUnifiedDiff } from '@/lib/diff-utils';
 import { type ThemeColors } from '@/theme';
 
-import { EmptyBorder } from '@/components/border';
+import { ToolBorder } from '@/components/border';
 import { MarkdownText } from '@/lib/markdown';
 import { ToolTimer } from '@/components/messages/tool-timer';
 import { SubagentProgressPanel } from '@/components/subagent-progress-panel';
@@ -265,45 +261,45 @@ function BashTerminalBlock({
     const isLong = renderedOutput.length > 15;
 
     return (
-        <box paddingLeft={2} width="100%">
-            <box
-                flexDirection="column"
-                paddingX={2}
-                paddingY={1}
-                backgroundColor={colors.background}
-                width="100%"
-                marginBottom={1}
-            >
-                {renderedCommand}
-                {hasOutput && (
-                    <>
-                        <text>{''}</text>
-                        {isLong ? (
-                            <box flexDirection="column" width="100%">
-                                <box
-                                    {...({
-                                        onClick: () => setCollapsed((c) => !c),
-                                    } as any)}
-                                    flexDirection="row"
-                                    gap={1}
-                                >
-                                    <text fg={colors.dimSeparator}>
-                                        {collapsed ? '▸' : '▾'}
-                                    </text>
-                                    <text fg={colors.dimSeparator}>
-                                        {collapsed
-                                            ? `${renderedOutput.length} lines of output (click to expand)`
-                                            : 'click to collapse output'}
-                                    </text>
+        <box paddingLeft={2} paddingRight={1} width="100%">
+                <box
+                    flexDirection="column"
+                    paddingX={2}
+                    paddingY={1}
+                    backgroundColor={colors.surface}
+                    width="100%"
+                    marginBottom={1}
+                >
+                    {renderedCommand}
+                    {hasOutput && (
+                        <>
+                            <text>{''}</text>
+                            {isLong ? (
+                                <box flexDirection="column" width="100%">
+                                    <box
+                                        {...({
+                                            onClick: () => setCollapsed((c) => !c),
+                                        } as any)}
+                                        flexDirection="row"
+                                        gap={1}
+                                    >
+                                        <text fg={colors.dimSeparator}>
+                                            {collapsed ? '▸' : '▾'}
+                                        </text>
+                                        <text fg={colors.dimSeparator}>
+                                            {collapsed
+                                                ? `${renderedOutput.length} lines of output (click to expand)`
+                                                : 'click to collapse output'}
+                                        </text>
+                                    </box>
+                                    {!collapsed && renderedOutput}
                                 </box>
-                                {!collapsed && renderedOutput}
-                            </box>
-                        ) : (
-                            renderedOutput
-                        )}
-                    </>
-                )}
-            </box>
+                            ) : (
+                                renderedOutput
+                            )}
+                        </>
+                    )}
+                </box>
         </box>
     );
 }
@@ -365,16 +361,12 @@ export const BotMessage = React.memo(function BotMessage({
                                     key={`reasoning-${j}`}
                                     border={['left']}
                                     borderColor={colors.thinkingBorder}
-                                    customBorderChars={{
-                                        ...EmptyBorder,
-                                        vertical: '│',
-                                    }}
+                                    customBorderChars={ToolBorder}
                                     width="100%"
                                     paddingX={2}
                                 >
                                     <text attributes={TextAttributes.DIM}>
                                         <em fg={colors.thinking}>◆ Thinking</em>
-                                        :{streaming && <ToolTimer />}
                                     </text>
                                     <MarkdownText
                                         streaming={streaming}
@@ -492,12 +484,10 @@ export const BotMessage = React.memo(function BotMessage({
                                                   ? colors.success
                                                   : colors.thinkingBorder
                                         }
-                                        customBorderChars={{
-                                            ...EmptyBorder,
-                                            vertical: '│',
-                                        }}
+                                        customBorderChars={ToolBorder}
                                         width="100%"
                                         paddingX={2}
+                                        marginBottom={1}
                                     >
                                         <text>
                                             <em fg={statusColor}>
@@ -675,23 +665,28 @@ export const BotMessage = React.memo(function BotMessage({
                                         !!diffText &&
                                         isComplete && (
                                             <box paddingLeft={2} width="100%">
-                                                <diff
-                                                    view={
-                                                        isWriteFile
-                                                            ? 'unified'
-                                                            : 'split'
-                                                    }
-                                                    diff={diffText}
-                                                    showLineNumbers
-                                                    filetype={
-                                                        filePath
-                                                            ? filePath
-                                                                  .split('.')
-                                                                  .pop()
-                                                                  ?.toLowerCase()
-                                                            : undefined
-                                                    }
-                                                />
+                                                <box
+                                                    backgroundColor={colors.surface}
+                                                    width="100%"
+                                                >
+                                                    <diff
+                                                        view={
+                                                            isWriteFile
+                                                                ? 'unified'
+                                                                : 'split'
+                                                        }
+                                                        diff={diffText}
+                                                        showLineNumbers
+                                                        filetype={
+                                                            filePath
+                                                                ? filePath
+                                                                      .split('.')
+                                                                      .pop()
+                                                                      ?.toLowerCase()
+                                                                : undefined
+                                                        }
+                                                    />
+                                                </box>
                                             </box>
                                         )}
                                     {/* Show inline subagent progress for spawnAgent tools */}
@@ -704,7 +699,7 @@ export const BotMessage = React.memo(function BotMessage({
                                     {isOrchestrator &&
                                     isRunning &&
                                     matchingGraph ? (
-                                        <box paddingLeft={2} width="100%">
+                                        <box width="100%">
                                             <TaskGraphView
                                                 graph={matchingGraph}
                                                 compact
@@ -825,32 +820,15 @@ export const BotMessage = React.memo(function BotMessage({
 
 
             <box paddingX={3} paddingY={1} gap={1} width="100%">
-                <box flexDirection="row" gap={2}>
-                    <text fg={getModeColor(mode, colors)}>◉</text>
-                    <box flexDirection="row" gap={1}>
-                        <text>{mode === Mode.PLAN ? 'Plan' : 'Build'}</text>
-                        <text
-                            attributes={TextAttributes.DIM}
-                            fg={colors.dimSeparator}
-                        >
-                            ›
-                        </text>
-                        <text attributes={TextAttributes.DIM}>
-                            {getModelName(model)}
-                        </text>
-                        <text
-                            attributes={TextAttributes.DIM}
-                            fg={colors.dimSeparator}
-                        >
-                            {getProviderDisplayName(extractProvider(model))}
-                        </text>
-                        {durationMs != null && (
-                            <text attributes={TextAttributes.DIM}>
-                                <em fg={colors.dimSeparator}> › </em>
-                                {prettyMs(durationMs)}
-                            </text>
-                        )}
-                    </box>
+                <box flexDirection="row" gap={1}>
+                    <text>
+                        <em fg={getModeColor(mode, colors)}>◉</em>
+                        <em>{mode === Mode.PLAN ? ' Plan' : ' Build'}</em>
+                    </text>
+                    <text attributes={TextAttributes.DIM} fg={colors.muted}>
+                        {getModelName(model)}
+                        {durationMs != null ? ` · ${prettyMs(durationMs)}` : ''}
+                    </text>
                 </box>
             </box>
         </box>

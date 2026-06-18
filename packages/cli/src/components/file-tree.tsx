@@ -475,10 +475,9 @@ export function FileTree({
                         : colors.dimSeparator
                 }
             >
-                {activePane === 'file-tree' ? '● ' : ''}
                 {diffMode ? 'Changed Files' : 'Files'}
             </text>
-            <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
+            <text attributes={TextAttributes.DIM} fg={colors.muted}>
                 {diffMode
                     ? 'j/k nav • Enter diff • ESC close'
                     : 'j/k nav • Enter open • [/] resize'}
