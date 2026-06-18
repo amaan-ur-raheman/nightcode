@@ -129,6 +129,7 @@ async function resolveSupportedChatModel(
         case 'kilo':
         case 'local':
         case 'lightningai':
+        case 'cloudflare':
             return resolveThirdPartyModel(model, subagent, apiKey);
         default:
             const _exhaustive: never = provider;
@@ -155,7 +156,8 @@ function normalizeModelId(modelId: string): string {
         modelId.startsWith('gemini/') ||
         modelId.startsWith('google/') ||
         modelId.startsWith('kilo/') ||
-        modelId.startsWith('local/')
+        modelId.startsWith('local/') ||
+        modelId.startsWith('cloudflare/')
     ) {
         return modelId;
     }

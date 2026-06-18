@@ -23,6 +23,10 @@ const FALLBACK_CHAINS: Record<string, string[]> = {
         'kilo/openai/gpt-4o',
         'kilo/openai/gpt-4o-mini',
     ],
+    cloudflare: [
+        'nvidia/nemotron-3-ultra-550b-a55b',
+        'nvidia/deepseek-ai/deepseek-v4-pro',
+    ],
 };
 
 export function getFallbackChain(modelId: string): string[] {

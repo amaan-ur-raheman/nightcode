@@ -37,7 +37,8 @@ export type SupportedProvider =
     | 'gemini'
     | 'kilo'
     | 'local'
-    | 'lightningai';
+    | 'lightningai'
+    | 'cloudflare';
 
 type SupportedChatModelDefinition = {
     id: string;

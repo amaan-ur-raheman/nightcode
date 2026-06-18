@@ -75,6 +75,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
     kilo: 'Kilo Gateway',
     local: 'Local Ollama',
     lightningai: 'Lightning AI',
+    cloudflare: 'Cloudflare Workers AI',
 };
 
 /**
@@ -126,6 +127,7 @@ export function extractProvider(modelId: string): string {
         'kilo',
         'local',
         'lightningai',
+        'cloudflare',
     ];
     if (knownProviders.includes(prefix)) return prefix;
     // NIM models: "nvidia/...", "deepseek-ai/...", "qwen/..."
