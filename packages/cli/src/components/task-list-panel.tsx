@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
+
 import {
     getTaskList,
     onTaskListChange,
@@ -45,59 +46,67 @@ export const TaskListPanel = React.memo(function TaskListPanel() {
     const total = tasks.length;
 
     return (
-        <box flexDirection="column" gap={0} paddingLeft={3} width="100%">
-            <box flexDirection="row" gap={1} alignItems="center" width="100%">
-                <text attributes={TextAttributes.BOLD}>Task List</text>
-                <ProgressBar
-                    completed={completed}
-                    total={total}
-                    colors={colors}
-                />
-            </box>
-            {tasks.map((task) => {
-                const symbol =
-                    task.status === 'completed'
-                        ? '✓'
-                        : task.status === 'in-progress'
-                          ? '◉'
-                          : task.status === 'failed'
-                            ? '✗'
-                            : '○';
-
-                const statusColor =
-                    task.status === 'completed'
-                        ? colors.success
-                        : task.status === 'in-progress'
-                          ? colors.info
-                          : task.status === 'failed'
-                            ? colors.error
-                            : colors.dimSeparator;
-
-                const statusLabel =
-                    task.status === 'completed'
-                        ? 'done'
-                        : task.status === 'in-progress'
-                          ? 'current'
-                          : task.status === 'failed'
-                            ? 'failed'
-                            : '';
-
-                return (
-                    <box key={task.id} flexDirection="row" gap={1} width="100%">
-                        <text fg={statusColor}>{symbol}</text>
-                        <text>{task.id}.</text>
-                        <text>{task.description}</text>
-                        {statusLabel && (
-                            <text
-                                attributes={TextAttributes.DIM}
-                                fg={statusColor}
-                            >
-                                ({statusLabel})
-                            </text>
-                        )}
+        <box flexDirection="column" gap={0} paddingLeft={3} paddingRight={3} width="100%">
+            <box
+                    flexDirection="column"
+                    backgroundColor={colors.surface}
+                    width="100%"
+                    paddingX={1}
+                    paddingY={1}
+                >
+                    <box flexDirection="row" gap={1} alignItems="center" width="100%">
+                        <text attributes={TextAttributes.BOLD}>Task List</text>
+                        <ProgressBar
+                            completed={completed}
+                            total={total}
+                            colors={colors}
+                        />
                     </box>
-                );
-            })}
+                    {tasks.map((task) => {
+                        const symbol =
+                            task.status === 'completed'
+                                ? '✓'
+                                : task.status === 'in-progress'
+                                  ? '◉'
+                                  : task.status === 'failed'
+                                    ? '✗'
+                                    : '○';
+
+                        const statusColor =
+                            task.status === 'completed'
+                                ? colors.success
+                                : task.status === 'in-progress'
+                                  ? colors.info
+                                  : task.status === 'failed'
+                                    ? colors.error
+                                    : colors.dimSeparator;
+
+                        const statusLabel =
+                            task.status === 'completed'
+                                ? 'done'
+                                : task.status === 'in-progress'
+                                  ? 'current'
+                                  : task.status === 'failed'
+                                    ? 'failed'
+                                    : '';
+
+                        return (
+                            <box key={task.id} flexDirection="row" gap={1} width="100%">
+                                <text fg={statusColor}>{symbol}</text>
+                                <text>{task.id}.</text>
+                                <text>{task.description}</text>
+                                {statusLabel && (
+                                    <text
+                                        attributes={TextAttributes.DIM}
+                                        fg={statusColor}
+                                    >
+                                        ({statusLabel})
+                                    </text>
+                                )}
+                            </box>
+                        );
+                    })}
+                </box>
         </box>
     );
 });

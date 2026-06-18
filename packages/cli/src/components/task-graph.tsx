@@ -1,6 +1,7 @@
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
+
 import type { TaskGraph, TaskNode } from '@nightcode/shared';
 
 type TaskGraphViewProps = {
@@ -147,40 +148,48 @@ export const TaskGraphView = React.memo(
 
         return (
             <box flexDirection="column" gap={0} width="100%">
-                <box flexDirection="row" gap={1} alignItems="center">
-                    <text attributes={TextAttributes.BOLD}>Orchestration:</text>
-                    <text
-                        attributes={TextAttributes.DIM}
-                        fg={colors.dimSeparator}
-                    >
-                        {graph.name.slice(0, 40)}
-                    </text>
-                </box>
-                <box flexDirection="column" gap={0}>
-                    {sorted.map((node) => (
-                        <TaskNodeRow
-                            key={node.id}
-                            node={node}
-                            compact={compact}
-                        />
-                    ))}
-                </box>
-                {graph.completedAt && (
-                    <text
-                        attributes={TextAttributes.DIM}
-                        fg={colors.dimSeparator}
-                    >
-                        Completed in{' '}
-                        {((graph.completedAt - graph.createdAt) / 1000).toFixed(
-                            1,
+                <box
+                    flexDirection="column"
+                    backgroundColor={colors.surface}
+                    width="100%"
+                    paddingX={1}
+                    paddingY={1}
+                >
+                        <box flexDirection="row" gap={1} alignItems="center">
+                            <text attributes={TextAttributes.BOLD}>Orchestration:</text>
+                            <text
+                                attributes={TextAttributes.DIM}
+                                fg={colors.dimSeparator}
+                            >
+                                {graph.name.slice(0, 40)}
+                            </text>
+                        </box>
+                        <box flexDirection="column" gap={0}>
+                            {sorted.map((node) => (
+                                <TaskNodeRow
+                                    key={node.id}
+                                    node={node}
+                                    compact={compact}
+                                />
+                            ))}
+                        </box>
+                        {graph.completedAt && (
+                            <text
+                                attributes={TextAttributes.DIM}
+                                fg={colors.dimSeparator}
+                            >
+                                Completed in{' '}
+                                {((graph.completedAt - graph.createdAt) / 1000).toFixed(
+                                    1,
+                                )}
+                                s
+                            </text>
                         )}
-                        s
-                    </text>
-                )}
-            </box>
-        );
-    },
-    (prev, next) =>
-        prev.graph.version === next.graph.version &&
-        prev.compact === next.compact,
+                    </box>
+                </box>
+    );
+},
+(prev, next) =>
+    prev.graph.version === next.graph.version &&
+    prev.compact === next.compact,
 );
