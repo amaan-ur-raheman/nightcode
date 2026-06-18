@@ -1,17 +1,11 @@
 import type { ReactNode } from 'react';
 
 import { useTheme } from '@/providers/theme';
-import { EmptyBorder } from '@/components/border';
+import { MessageBorder } from '@/components/border';
 
 type MessageBoxProps = {
     children: ReactNode;
     borderColor: string;
-};
-
-const ThickBorderChars = {
-    ...EmptyBorder,
-    vertical: '┃',
-    bottomLeft: '╹',
 };
 
 export function MessageBox({ children, borderColor }: MessageBoxProps) {
@@ -22,7 +16,7 @@ export function MessageBox({ children, borderColor }: MessageBoxProps) {
             <box
                 border={['left']}
                 borderColor={borderColor}
-                customBorderChars={ThickBorderChars}
+                customBorderChars={MessageBorder}
                 width="100%"
             >
                 <box
