@@ -154,10 +154,9 @@ export function SymbolOutline({
                         : colors.dimSeparator
                 }
             >
-                {activePane === 'symbol-outline' ? '● ' : ''}
                 Outline
             </text>
-            <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
+            <text attributes={TextAttributes.DIM} fg={colors.muted}>
                 {isActive
                     ? 'j/k nav • l/Enter code • h tree'
                     : 'inactive outline'}

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useState, useEffect } from 'react';
 
 import { TextAttributes } from '@opentui/core';
+import { useTheme } from '@/providers/theme';
 import { usePromptConfig } from '@/providers/prompt-config';
 
 import { Spinner } from '@/components/spinner';
@@ -76,6 +77,7 @@ export function SessionShell({
     streamingStartTime,
 }: SessionShellProps) {
     const { mode } = usePromptConfig();
+    const { colors } = useTheme();
     const { active } = usePtySession();
     const { activePane } = useFileTree();
     const [hasPendingConfirmation, setHasPendingConfirmation] = useState(false);
@@ -162,9 +164,13 @@ export function SessionShell({
                             {runningToolName ? (
                                 <text
                                     attributes={TextAttributes.DIM}
+                                    fg={colors.muted}
                                 >{`running ${runningToolName}... (esc/ctrl+c to interrupt)`}</text>
                             ) : interruptible ? (
-                                <text attributes={TextAttributes.DIM}>
+                                <text
+                                    attributes={TextAttributes.DIM}
+                                    fg={colors.muted}
+                                >
                                     esc/ctrl+c to interrupt
                                 </text>
                             ) : null}
