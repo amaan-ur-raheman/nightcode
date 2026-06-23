@@ -196,7 +196,13 @@ export const SubagentProgressPanel = React.memo(function SubagentProgressPanel({
     // In compact mode, show each subagent with its current tool and top tools used
     if (!expanded) {
         return (
-            <box flexDirection="column" gap={0} paddingLeft={2} paddingRight={2} width="100%">
+            <box
+                flexDirection="column"
+                gap={0}
+                paddingLeft={2}
+                paddingRight={2}
+                width="100%"
+            >
                 <box
                     flexDirection="column"
                     backgroundColor={colors.surface}
@@ -204,99 +210,103 @@ export const SubagentProgressPanel = React.memo(function SubagentProgressPanel({
                     paddingX={1}
                 >
                     {/* Summary header */}
-                        {filtered.length > 1 && (
-                            <box flexDirection="row" gap={1} width="100%">
-                                <text
-                                    attributes={TextAttributes.DIM}
-                                    fg={colors.dimSeparator}
-                                >
-                                    {running.length > 0 &&
-                                        `◉ ${running.length} running`}
-                                    {running.length > 0 &&
-                                        completed.length > 0 &&
-                                        ' · '}
-                                    {completed.length > 0 &&
-                                        `✓ ${completed.length} done`}
-                                    {completed.length > 0 && failed.length > 0 && ' · '}
-                                    {failed.length > 0 && `✗ ${failed.length} failed`}
-                                    {totalToolCalls > 0 && ` · ${totalToolCalls} tools`}
-                                </text>
-                            </box>
-                        )}
-                        {[...running, ...completed, ...failed].map((info) => {
-                            const statusSymbol =
-                                info.status === 'completed'
-                                    ? '✓'
-                                    : info.status === 'failed'
-                                      ? '✗'
-                                      : info.status === 'cancelled'
-                                        ? '⊘'
-                                        : '◉';
-                            const statusColor =
-                                info.status === 'completed'
-                                    ? colors.success
-                                    : info.status === 'failed'
-                                      ? colors.error
-                                      : info.status === 'cancelled'
-                                        ? colors.dimSeparator
-                                        : colors.info;
-                            // Top 3 tools by count
-                            const topTools = Object.entries(info.toolsUsed)
-                                .sort(([, a], [, b]) => b - a)
-                                .slice(0, 3);
-                            const totalTools = Object.keys(info.toolsUsed).length;
-
-                            return (
-                                <box
-                                    key={info.id}
-                                    flexDirection="column"
-                                    gap={0}
-                                    width="100%"
-                                >
-                                    <box flexDirection="row" gap={1} width="100%">
-                                        <text fg={statusColor}>{statusSymbol}</text>
-                                        {info.currentTool &&
-                                        info.status === 'running' ? (
-                                            <text
-                                                attributes={TextAttributes.DIM}
-                                                fg={colors.info}
-                                            >
-                                                {formatToolName(info.currentTool)}
-                                                {info.currentToolInput
-                                                    ? ` ${info.currentToolInput}`
-                                                    : ''}
-                                            </text>
-                                        ) : topTools.length > 0 ? (
-                                            <text
-                                                attributes={TextAttributes.DIM}
-                                                fg={colors.dimSeparator}
-                                            >
-                                                {topTools
-                                                    .map(([t, c]) => `${t}×${c}`)
-                                                    .join(' · ')}
-                                                {totalTools > 3
-                                                    ? ` +${totalTools - 3}`
-                                                    : ''}
-                                            </text>
-                                        ) : info.status === 'completed' ? (
-                                            <text
-                                                attributes={TextAttributes.DIM}
-                                                fg={colors.dimSeparator}
-                                            >
-                                                done
-                                            </text>
-                                        ) : info.status === 'failed' ? (
-                                            <text
-                                                attributes={TextAttributes.DIM}
-                                                fg={colors.error}
-                                            >
-                                                failed
-                                            </text>
-                                        ) : null}
-                            </box>
+                    {filtered.length > 1 && (
+                        <box flexDirection="row" gap={1} width="100%">
+                            <text
+                                attributes={TextAttributes.DIM}
+                                fg={colors.dimSeparator}
+                            >
+                                {running.length > 0 &&
+                                    `◉ ${running.length} running`}
+                                {running.length > 0 &&
+                                    completed.length > 0 &&
+                                    ' · '}
+                                {completed.length > 0 &&
+                                    `✓ ${completed.length} done`}
+                                {completed.length > 0 &&
+                                    failed.length > 0 &&
+                                    ' · '}
+                                {failed.length > 0 &&
+                                    `✗ ${failed.length} failed`}
+                                {totalToolCalls > 0 &&
+                                    ` · ${totalToolCalls} tools`}
+                            </text>
                         </box>
-                    );
-                })}
+                    )}
+                    {[...running, ...completed, ...failed].map((info) => {
+                        const statusSymbol =
+                            info.status === 'completed'
+                                ? '✓'
+                                : info.status === 'failed'
+                                  ? '✗'
+                                  : info.status === 'cancelled'
+                                    ? '⊘'
+                                    : '◉';
+                        const statusColor =
+                            info.status === 'completed'
+                                ? colors.success
+                                : info.status === 'failed'
+                                  ? colors.error
+                                  : info.status === 'cancelled'
+                                    ? colors.dimSeparator
+                                    : colors.info;
+                        // Top 3 tools by count
+                        const topTools = Object.entries(info.toolsUsed)
+                            .sort(([, a], [, b]) => b - a)
+                            .slice(0, 3);
+                        const totalTools = Object.keys(info.toolsUsed).length;
+
+                        return (
+                            <box
+                                key={info.id}
+                                flexDirection="column"
+                                gap={0}
+                                width="100%"
+                            >
+                                <box flexDirection="row" gap={1} width="100%">
+                                    <text fg={statusColor}>{statusSymbol}</text>
+                                    {info.currentTool &&
+                                    info.status === 'running' ? (
+                                        <text
+                                            attributes={TextAttributes.DIM}
+                                            fg={colors.info}
+                                        >
+                                            {formatToolName(info.currentTool)}
+                                            {info.currentToolInput
+                                                ? ` ${info.currentToolInput}`
+                                                : ''}
+                                        </text>
+                                    ) : topTools.length > 0 ? (
+                                        <text
+                                            attributes={TextAttributes.DIM}
+                                            fg={colors.dimSeparator}
+                                        >
+                                            {topTools
+                                                .map(([t, c]) => `${t}×${c}`)
+                                                .join(' · ')}
+                                            {totalTools > 3
+                                                ? ` +${totalTools - 3}`
+                                                : ''}
+                                        </text>
+                                    ) : info.status === 'completed' ? (
+                                        <text
+                                            attributes={TextAttributes.DIM}
+                                            fg={colors.dimSeparator}
+                                        >
+                                            done
+                                        </text>
+                                    ) : info.status === 'failed' ? (
+                                        <text
+                                            attributes={TextAttributes.DIM}
+                                            fg={colors.error}
+                                        >
+                                            failed
+                                        </text>
+                                    ) : null}
+                                </box>
+                            </box>
+                        );
+                    })}
                 </box>
             </box>
         );
@@ -312,34 +322,46 @@ export const SubagentProgressPanel = React.memo(function SubagentProgressPanel({
             width="100%"
         >
             <box
-                    flexDirection="column"
-                    backgroundColor={colors.surface}
-                    width="100%"
-                    paddingX={1}
-                    paddingY={1}
-                >
-                    {/* Summary header */}
-                    <box flexDirection="row" gap={1} width="100%">
-                        <text attributes={TextAttributes.BOLD}>Subagents:</text>
-                        <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
-                            {running.length > 0 && `${running.length} running`}
-                            {running.length > 0 && completed.length > 0 && ' · '}
-                            {completed.length > 0 && `${completed.length} done`}
-                            {completed.length > 0 && failed.length > 0 && ' · '}
-                            {failed.length > 0 && `${failed.length} failed`}
-                            {totalToolCalls > 0 && ` · ${totalToolCalls} total tools`}
-                        </text>
-                    </box>
-                    {completed.map((info, i) => (
-                        <SubagentRow key={`done-${info.id}`} info={info} index={i} />
-                    ))}
-                    {running.map((info, i) => (
-                        <SubagentRow key={`run-${info.id}`} info={info} index={i} />
-                    ))}
-                    {failed.map((info, i) => (
-                        <SubagentRow key={`fail-${info.id}`} info={info} index={i} />
-                    ))}
+                flexDirection="column"
+                backgroundColor={colors.surface}
+                width="100%"
+                paddingX={1}
+                paddingY={1}
+            >
+                {/* Summary header */}
+                <box flexDirection="row" gap={1} width="100%">
+                    <text attributes={TextAttributes.BOLD}>Subagents:</text>
+                    <text
+                        attributes={TextAttributes.DIM}
+                        fg={colors.dimSeparator}
+                    >
+                        {running.length > 0 && `${running.length} running`}
+                        {running.length > 0 && completed.length > 0 && ' · '}
+                        {completed.length > 0 && `${completed.length} done`}
+                        {completed.length > 0 && failed.length > 0 && ' · '}
+                        {failed.length > 0 && `${failed.length} failed`}
+                        {totalToolCalls > 0 &&
+                            ` · ${totalToolCalls} total tools`}
+                    </text>
                 </box>
+                {running.map((info, i) => (
+                    <SubagentRow key={`run-${info.id}`} info={info} index={i} />
+                ))}
+                {completed.map((info, i) => (
+                    <SubagentRow
+                        key={`done-${info.id}`}
+                        info={info}
+                        index={i}
+                    />
+                ))}
+                {failed.map((info, i) => (
+                    <SubagentRow
+                        key={`fail-${info.id}`}
+                        info={info}
+                        index={i}
+                    />
+                ))}
+            </box>
         </box>
     );
 });
