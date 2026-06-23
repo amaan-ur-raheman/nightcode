@@ -120,10 +120,14 @@ describe('BatchManager', () => {
             input: { path: `high-file-${i}.ts`, content: 'ok' },
             toolCallId: `high-${i}`,
         }));
-        
-        const highPromise = batchManager.executeParallel(highCostCalls, executor, 'BUILD');
+
+        const highPromise = batchManager.executeParallel(
+            highCostCalls,
+            executor,
+            'BUILD',
+        );
         await highPromise;
-        
+
         // The first batch executed should be capped at 4
         expect(executor).toHaveBeenCalledTimes(4);
 
@@ -136,10 +140,14 @@ describe('BatchManager', () => {
             input: { path: `file-${i}.ts` },
             toolCallId: `low-${i}`,
         }));
-        
-        const lowPromise = batchManager.executeParallel(lowCostCalls, executor, 'BUILD');
+
+        const lowPromise = batchManager.executeParallel(
+            lowCostCalls,
+            executor,
+            'BUILD',
+        );
         await lowPromise;
-        
+
         // Low cost calls should execute all 10 in parallel (since 10 <= 16)
         expect(executor).toHaveBeenCalledTimes(10);
     });

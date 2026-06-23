@@ -22,7 +22,11 @@ describe('injectWorkspaceContext', () => {
 
     it('injects folder contents and recent files from undo history', async () => {
         // Create a fake project structure
-        writeFileSync(join(TEST_DIR, 'index.ts'), 'console.log("hello");', 'utf-8');
+        writeFileSync(
+            join(TEST_DIR, 'index.ts'),
+            'console.log("hello");',
+            'utf-8',
+        );
         writeFileSync(join(TEST_DIR, 'package.json'), '{}', 'utf-8');
 
         // Mock undo history
@@ -38,7 +42,7 @@ describe('injectWorkspaceContext', () => {
         ]);
 
         const result = await injectWorkspaceContext('Solve task X', TEST_DIR);
-        
+
         expect(result).toContain('Solve task X');
         expect(result).toContain('Workspace Context');
         expect(result).toContain('Recently Modified Files');
@@ -51,7 +55,7 @@ describe('injectWorkspaceContext', () => {
     it('returns original task if no context is gathered', async () => {
         // Mock empty directory and no undo history
         vi.spyOn(undoManager, 'getHistory').mockReturnValue([]);
-        
+
         const emptyDir = join(TEST_DIR, 'empty');
         mkdirSync(emptyDir);
 
