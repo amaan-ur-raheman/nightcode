@@ -6,10 +6,7 @@ import { useKeyboardLayer } from '@/providers/keyboard-layer';
 import { useTheme } from '@/providers/theme';
 import type { InputRenderable } from '@opentui/core';
 
-import {
-    setApiKey,
-    setCloudflareAccountId,
-} from '@/lib/api-keys';
+import { setApiKey, setCloudflareAccountId } from '@/lib/api-keys';
 
 type ApiKeyPromptDialogProps = {
     provider: string;
@@ -91,7 +88,12 @@ export function ApiKeyPromptDialog({
         } else {
             handleSubmitApiKey();
         }
-    }, [isCloudflare, cloudflareStep, handleSubmitAccountId, handleSubmitApiKey]);
+    }, [
+        isCloudflare,
+        cloudflareStep,
+        handleSubmitAccountId,
+        handleSubmitApiKey,
+    ]);
 
     useKeyboard((key) => {
         if (!isTopLayer('dialog')) return;
