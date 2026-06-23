@@ -151,8 +151,7 @@ export const ErrorMessage = React.memo(function ErrorMessage({
         <MessageBox borderColor={categoryColors[errorInfo.category]}>
             <box flexDirection="column">
                 <text>
-                    {errorInfo.icon}{' '}
-                    {errorInfo.category.toUpperCase()} error
+                    {errorInfo.icon} {errorInfo.category.toUpperCase()} error
                 </text>
 
                 <text attributes={TextAttributes.DIM} marginTop={1}>

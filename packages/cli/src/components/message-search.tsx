@@ -84,7 +84,10 @@ export function MessageSearch({
         if (key.name === 'escape') {
             key.preventDefault();
             onClose();
-        } else if ((key.name === 'return' || key.name === 'enter') && matches.length > 0) {
+        } else if (
+            (key.name === 'return' || key.name === 'enter') &&
+            matches.length > 0
+        ) {
             key.preventDefault();
             onJumpToMessage(matches[matchIndex]?.messageIndex ?? 0);
         } else if (key.name === 'down' && matches.length > 0) {

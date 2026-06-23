@@ -15,7 +15,9 @@ describe('suggestToolTool', () => {
         const result = await suggestToolTool({
             task: 'search regex patterns in all the repository files',
         });
-        const hasGrep = result.suggestions.some(s => s.name === 'grep' || s.name === 'searchReplace');
+        const hasGrep = result.suggestions.some(
+            (s) => s.name === 'grep' || s.name === 'searchReplace',
+        );
         expect(hasGrep).toBe(true);
     });
 
@@ -25,7 +27,9 @@ describe('suggestToolTool', () => {
             category: 'read-explore',
         });
         expect(result.categories).toEqual(['read-explore']);
-        expect(result.suggestions.every(s => s.category === 'read-explore')).toBe(true);
+        expect(
+            result.suggestions.every((s) => s.category === 'read-explore'),
+        ).toBe(true);
     });
 });
 

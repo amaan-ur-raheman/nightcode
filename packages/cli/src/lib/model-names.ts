@@ -58,6 +58,46 @@ const MODEL_NAMES: Record<string, string> = {
     'opencode/kimi-k2.6': 'Zen: Kimi K2.6',
     'opencode/glm-5.1': 'Zen: GLM 5.1',
     'opencode/qwen3.6-plus': 'Zen: Qwen3.6 Plus',
+
+    // ── xAI (Grok) ──
+    'xai/grok-3': 'Grok 3',
+    'xai/grok-3-mini': 'Grok 3 Mini',
+    'xai/grok-3-fast': 'Grok 3 Fast',
+    'xai/grok-2-1212': 'Grok 2',
+    'xai/grok-code-fast-1': 'Grok Code Fast',
+
+    // ── MiniMax ──
+    'minimax/MiniMax-M3': 'MiniMax M3',
+    'minimax/MiniMax-M2.7': 'MiniMax M2.7',
+
+    // ── SambaNova ──
+    'sambanova/DeepSeek-V3-0324': 'DeepSeek V3 0324 (SambaNova)',
+    'sambanova/Llama-4-Maverick-17B-128E-Instruct':
+        'Llama 4 Maverick (SambaNova)',
+    'sambanova/QwQ-32B': 'QwQ 32B (SambaNova)',
+
+    // ── SiliconFlow ──
+    'siliconflow/Qwen/Qwen3-235B-A22B': 'Qwen3 235B (SiliconFlow)',
+    'siliconflow/deepseek-ai/DeepSeek-V3': 'DeepSeek V3 (SiliconFlow)',
+    'siliconflow/THUDM/GLM-4-9B-Chat': 'GLM-4 9B (SiliconFlow)',
+
+    // ── DeepInfra ──
+    'deepinfra/deepseek-ai/DeepSeek-V3-0324': 'DeepSeek V3 0324 (DeepInfra)',
+    'deepinfra/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8':
+        'Llama 4 Maverick (DeepInfra)',
+    'deepinfra/Qwen/Qwen3-235B-A22B-Instruct-2507': 'Qwen3 235B (DeepInfra)',
+
+    // ── Novita AI ──
+    'novita/deepseek/deepseek-v3-0324': 'DeepSeek V3 0324 (Novita)',
+    'novita/meta-llama/llama-4-maverick-17b-128e-instruct-fp8':
+        'Llama 4 Maverick (Novita)',
+    'novita/qwen/qwen3-235b-a22b-fp8': 'Qwen3 235B (Novita)',
+
+    // ── Nebius ──
+    'nebius/Qwen/Qwen3-235B-A22B': 'Qwen3 235B (Nebius)',
+    'nebius/deepseek-ai/DeepSeek-V3-0324': 'DeepSeek V3 0324 (Nebius)',
+    'nebius/meta-llama/Llama-4-Maverick-17B-128E-Instruct':
+        'Llama 4 Maverick (Nebius)',
 };
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
@@ -76,6 +116,22 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
     local: 'Local Ollama',
     lightningai: 'Lightning AI',
     cloudflare: 'Cloudflare Workers AI',
+    zenmux: 'ZenMux',
+    mistral: 'Mistral AI',
+    qwen: 'Qwen (DashScope)',
+    perplexity: 'Perplexity AI',
+    cohere: 'Cohere',
+    huggingface: 'Hugging Face',
+    zhipu: 'Zhipu AI (GLM)',
+    moonshot: 'Moonshot (Kimi)',
+    lmstudio: 'LM Studio',
+    xai: 'xAI (Grok)',
+    minimax: 'MiniMax',
+    sambanova: 'SambaNova',
+    siliconflow: 'SiliconFlow',
+    deepinfra: 'DeepInfra',
+    novita: 'Novita AI',
+    nebius: 'Nebius',
 };
 
 /**
@@ -128,6 +184,22 @@ export function extractProvider(modelId: string): string {
         'local',
         'lightningai',
         'cloudflare',
+        'zenmux',
+        'mistral',
+        'qwen',
+        'perplexity',
+        'cohere',
+        'huggingface',
+        'zhipu',
+        'moonshot',
+        'lmstudio',
+        'xai',
+        'minimax',
+        'sambanova',
+        'siliconflow',
+        'deepinfra',
+        'novita',
+        'nebius',
     ];
     if (knownProviders.includes(prefix)) return prefix;
     // NIM models: "nvidia/...", "deepseek-ai/...", "qwen/..."

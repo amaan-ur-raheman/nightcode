@@ -72,11 +72,11 @@ class ErrorPatternTracker {
     private persistPath: string;
 
     constructor(persistPath?: string) {
-        this.persistPath = persistPath ?? (
-            (process.env.NODE_ENV === 'test' || process.env.VITEST)
+        this.persistPath =
+            persistPath ??
+            (process.env.NODE_ENV === 'test' || process.env.VITEST
                 ? ':memory:'
-                : join(homedir(), '.nightcode', 'error-patterns.json')
-        );
+                : join(homedir(), '.nightcode', 'error-patterns.json'));
         this.loadFromDisk();
     }
 

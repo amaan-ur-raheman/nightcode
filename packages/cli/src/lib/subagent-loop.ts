@@ -13,7 +13,10 @@ import {
 import { debug } from './debug';
 import { getApiKeyForProvider } from './api-keys';
 import { resolveProviderForModel } from '@nightcode/shared';
-import { ErrorPatternTracker, errorPatternTracker } from './error-pattern-tracker';
+import {
+    ErrorPatternTracker,
+    errorPatternTracker,
+} from './error-pattern-tracker';
 import { correctionTracker } from './correction-tracker';
 import {
     isCriticalOperation,

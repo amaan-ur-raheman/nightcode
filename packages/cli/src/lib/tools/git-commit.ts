@@ -1,9 +1,7 @@
 import { toolInputSchemas } from '@nightcode/shared';
 import { runGit } from './utils';
 import { getProjectCwd } from '../workspace-context';
-import {
-    preCommitSecretScan,
-} from '../git-workflow';
+import { preCommitSecretScan } from '../git-workflow';
 
 export async function gitCommitTool(input: unknown) {
     const { message, files } = toolInputSchemas.gitCommit.parse(input);

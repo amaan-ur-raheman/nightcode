@@ -35,7 +35,8 @@ const TOOL_CATEGORIES: Record<
             {
                 name: 'grep',
                 when: 'Search file contents with regex',
-                example: 'grep({ pattern: "function.*authenticate", include: "*.ts" })',
+                example:
+                    'grep({ pattern: "function.*authenticate", include: "*.ts" })',
             },
             {
                 name: 'codeSearch',
@@ -75,7 +76,8 @@ const TOOL_CATEGORIES: Record<
             {
                 name: 'editFile',
                 when: 'Targeted string replacement in a file (most common)',
-                example: 'editFile({ path: "src/index.ts", oldString: "old code", newString: "new code" })',
+                example:
+                    'editFile({ path: "src/index.ts", oldString: "old code", newString: "new code" })',
             },
             {
                 name: 'writeFile',
@@ -89,12 +91,14 @@ const TOOL_CATEGORIES: Record<
             {
                 name: 'searchReplace',
                 when: 'Bulk regex replacement across multiple files',
-                example: 'searchReplace({ pattern: "foo", replacement: "bar", glob: "src/**/*.ts" })',
+                example:
+                    'searchReplace({ pattern: "foo", replacement: "bar", glob: "src/**/*.ts" })',
             },
             {
                 name: 'renameSymbol',
                 when: 'AST-aware rename of functions/classes/variables across files',
-                example: 'renameSymbol({ oldName: "oldFn", newName: "newFn", glob: "src/**/*.ts" })',
+                example:
+                    'renameSymbol({ oldName: "oldFn", newName: "newFn", glob: "src/**/*.ts" })',
             },
             {
                 name: 'moveFile',
@@ -110,7 +114,7 @@ const TOOL_CATEGORIES: Record<
             },
         ],
     },
-    'git': {
+    git: {
         description: 'Git operations',
         tools: [
             {
@@ -147,13 +151,14 @@ const TOOL_CATEGORIES: Record<
             },
         ],
     },
-    'validate': {
+    validate: {
         description: 'Validation and verification',
         tools: [
             {
                 name: 'validateCode',
                 when: 'Run typecheck, lint, and/or tests',
-                example: 'validateCode({ typecheck: true, lint: true, test: true })',
+                example:
+                    'validateCode({ typecheck: true, lint: true, test: true })',
             },
             {
                 name: 'secretScan',
@@ -169,7 +174,7 @@ const TOOL_CATEGORIES: Record<
             },
         ],
     },
-    'delegate': {
+    delegate: {
         description: 'Delegating work to subagents',
         tools: [
             {
@@ -202,7 +207,7 @@ const TOOL_CATEGORIES: Record<
             },
         ],
     },
-    'knowledge': {
+    knowledge: {
         description: 'Codebase intelligence and analysis',
         tools: [
             {
@@ -235,7 +240,7 @@ const TOOL_CATEGORIES: Record<
             },
         ],
     },
-    'memory': {
+    memory: {
         description: 'Persistent memory and secrets',
         tools: [
             {
@@ -264,7 +269,7 @@ const TOOL_CATEGORIES: Record<
             },
         ],
     },
-    'utility': {
+    utility: {
         description: 'Utility and misc tools',
         tools: [
             {
@@ -331,11 +336,7 @@ export interface ToolSuggestion {
  * Score a tool's relevance to a task description.
  * Returns a score from 0 (irrelevant) to 1 (exact match).
  */
-function scoreRelevance(
-    toolName: string,
-    when: string,
-    task: string,
-): number {
+function scoreRelevance(toolName: string, when: string, task: string): number {
     const taskLower = task.toLowerCase();
     const nameLower = toolName.toLowerCase();
     const whenLower = when.toLowerCase();
@@ -344,9 +345,7 @@ function scoreRelevance(
     if (taskLower.includes(nameLower)) return 1.0;
 
     // Keyword matching
-    const keywords = whenLower
-        .split(/[\s,;.]+/)
-        .filter((w) => w.length > 3);
+    const keywords = whenLower.split(/[\s,;.]+/).filter((w) => w.length > 3);
     let matches = 0;
     for (const kw of keywords) {
         if (taskLower.includes(kw)) matches++;
@@ -398,18 +397,14 @@ export async function suggestToolTool(
     };
 }
 
-export async function listToolCategoriesTool(
-    _input: unknown,
-): Promise<{
+export async function listToolCategoriesTool(_input: unknown): Promise<{
     categories: Array<{ name: string; description: string; toolCount: number }>;
 }> {
     return {
-        categories: Object.entries(TOOL_CATEGORIES).map(
-            ([name, data]) => ({
-                name,
-                description: data.description,
-                toolCount: data.tools.length,
-            }),
-        ),
+        categories: Object.entries(TOOL_CATEGORIES).map(([name, data]) => ({
+            name,
+            description: data.description,
+            toolCount: data.tools.length,
+        })),
     };
 }

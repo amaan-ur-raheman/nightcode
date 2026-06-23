@@ -344,6 +344,22 @@ class CorrectionTracker {
         return corrections;
     }
 
+    /**
+     * Record a suggestion as a correction entry (shows up in "Previous Corrections"
+     * in the system prompt). Unlike onUndo, this doesn't require a prior tool action.
+     * Used for post-hoc learning signals where the agent should have delegated.
+     */
+    async recordSuggestion(suggestion: string, tool?: string): Promise<void> {
+        const key = `${CORRECTION_PREFIX}suggestion:${Date.now()}`;
+        const tags = ['correction', 'suggestion'];
+        if (tool) tags.push(tool);
+        if (this.currentSessionId)
+            tags.push(`session:${this.currentSessionId}`);
+        const scoredPattern = `[score=0.5] ${suggestion}`;
+        await memory.set(key, scoredPattern, tags);
+        await this.enforceLimit('correction', MAX_CORRECTIONS);
+    }
+
     async clearCorrections(): Promise<number> {
         const entries = await memory.list({ tag: 'correction' });
         let count = 0;

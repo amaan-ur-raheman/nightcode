@@ -16,11 +16,14 @@ describe('declareConfidenceTool', () => {
     it('handles low confidence declaration', async () => {
         const result = await declareConfidenceTool({
             confidence: 'low',
-            reasoning: 'I am not completely sure about the syntax in this legacy file.',
+            reasoning:
+                'I am not completely sure about the syntax in this legacy file.',
         });
         expect(result.status).toBe('declared');
         expect(result.confidence).toBe('low');
         expect(result.verificationRequired).toBe(true);
-        expect(result.harnessResponse).toContain('Extra verification will be injected');
+        expect(result.harnessResponse).toContain(
+            'Extra verification will be injected',
+        );
     });
 });

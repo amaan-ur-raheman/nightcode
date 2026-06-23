@@ -262,44 +262,44 @@ function BashTerminalBlock({
 
     return (
         <box paddingLeft={2} paddingRight={1} width="100%">
-                <box
-                    flexDirection="column"
-                    paddingX={2}
-                    paddingY={1}
-                    backgroundColor={colors.surface}
-                    width="100%"
-                    marginBottom={1}
-                >
-                    {renderedCommand}
-                    {hasOutput && (
-                        <>
-                            <text>{''}</text>
-                            {isLong ? (
-                                <box flexDirection="column" width="100%">
-                                    <box
-                                        {...({
-                                            onClick: () => setCollapsed((c) => !c),
-                                        } as any)}
-                                        flexDirection="row"
-                                        gap={1}
-                                    >
-                                        <text fg={colors.dimSeparator}>
-                                            {collapsed ? '▸' : '▾'}
-                                        </text>
-                                        <text fg={colors.dimSeparator}>
-                                            {collapsed
-                                                ? `${renderedOutput.length} lines of output (click to expand)`
-                                                : 'click to collapse output'}
-                                        </text>
-                                    </box>
-                                    {!collapsed && renderedOutput}
+            <box
+                flexDirection="column"
+                paddingX={2}
+                paddingY={1}
+                backgroundColor={colors.surface}
+                width="100%"
+                marginBottom={1}
+            >
+                {renderedCommand}
+                {hasOutput && (
+                    <>
+                        <text>{''}</text>
+                        {isLong ? (
+                            <box flexDirection="column" width="100%">
+                                <box
+                                    {...({
+                                        onClick: () => setCollapsed((c) => !c),
+                                    } as any)}
+                                    flexDirection="row"
+                                    gap={1}
+                                >
+                                    <text fg={colors.dimSeparator}>
+                                        {collapsed ? '▸' : '▾'}
+                                    </text>
+                                    <text fg={colors.dimSeparator}>
+                                        {collapsed
+                                            ? `${renderedOutput.length} lines of output (click to expand)`
+                                            : 'click to collapse output'}
+                                    </text>
                                 </box>
-                            ) : (
-                                renderedOutput
-                            )}
-                        </>
-                    )}
-                </box>
+                                {!collapsed && renderedOutput}
+                            </box>
+                        ) : (
+                            renderedOutput
+                        )}
+                    </>
+                )}
+            </box>
         </box>
     );
 }
@@ -666,7 +666,9 @@ export const BotMessage = React.memo(function BotMessage({
                                         isComplete && (
                                             <box paddingLeft={2} width="100%">
                                                 <box
-                                                    backgroundColor={colors.surface}
+                                                    backgroundColor={
+                                                        colors.surface
+                                                    }
                                                     width="100%"
                                                 >
                                                     <diff
@@ -680,7 +682,9 @@ export const BotMessage = React.memo(function BotMessage({
                                                         filetype={
                                                             filePath
                                                                 ? filePath
-                                                                      .split('.')
+                                                                      .split(
+                                                                          '.',
+                                                                      )
                                                                       .pop()
                                                                       ?.toLowerCase()
                                                                 : undefined
@@ -816,8 +820,6 @@ export const BotMessage = React.memo(function BotMessage({
                     })}
                 </box>
             ))}
-
-
 
             <box paddingX={3} paddingY={1} gap={1} width="100%">
                 <box flexDirection="row" gap={1}>

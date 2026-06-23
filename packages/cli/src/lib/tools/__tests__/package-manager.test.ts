@@ -42,7 +42,11 @@ describe('packageManagerTool', () => {
             packageManager: 'auto',
         });
 
-        expect(mockRunCommand).toHaveBeenCalledWith('bun', ['install'], expect.any(String));
+        expect(mockRunCommand).toHaveBeenCalledWith(
+            'bun',
+            ['install'],
+            expect.any(String),
+        );
         expect(result).toEqual({
             success: true,
             output: 'bun installed successfully',

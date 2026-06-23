@@ -202,9 +202,7 @@ describe('getToolContracts', () => {
 describe('getSubagentToolContracts', () => {
     it('includes spawnAgent for subagents', () => {
         const planTools = getSubagentToolContracts('PLAN');
-        expect(
-            (planTools as Record<string, unknown>).spawnAgent,
-        ).toBeDefined();
+        expect((planTools as Record<string, unknown>).spawnAgent).toBeDefined();
     });
 
     it('excludes orchestrator for subagents', () => {

@@ -58,7 +58,11 @@ describe('self-verification', () => {
         });
 
         it('checks bracket balance in TS/JS files', () => {
-            writeFileSync(tempFile, 'function test() { console.log("hello");', 'utf-8');
+            writeFileSync(
+                tempFile,
+                'function test() { console.log("hello");',
+                'utf-8',
+            );
             const result = verifyFileConsistency(tempFile);
             expect(result.valid).toBe(true); // Balanced is just warning not invalidating
             expect(result.warnings[0]).toContain('Unbalanced braces');
@@ -68,7 +72,9 @@ describe('self-verification', () => {
             writeFileSync(tempFile, '', 'utf-8');
             const result = verifyFileConsistency(tempFile);
             expect(result.valid).toBe(true);
-            expect(result.warnings).toContain('File is empty after modification');
+            expect(result.warnings).toContain(
+                'File is empty after modification',
+            );
         });
     });
 
@@ -77,14 +83,24 @@ describe('self-verification', () => {
             const toolUsage = new Map<string, number>();
             const score = calculateConfidence([], toolUsage, []);
             expect(score.overall).toBe(1.0);
-            expect(score.explanation.some(e => e.includes('High confidence'))).toBe(true);
+            expect(
+                score.explanation.some((e) => e.includes('High confidence')),
+            ).toBe(true);
         });
 
         it('lowers confidence when high edit count or errors are present', () => {
             const toolUsage = new Map<string, number>([['editFile', 15]]);
-            const score = calculateConfidence(['/path/to/nonexistent.ts'], toolUsage, ['some error']);
+            const score = calculateConfidence(
+                ['/path/to/nonexistent.ts'],
+                toolUsage,
+                ['some error'],
+            );
             expect(score.overall).toBeLessThan(0.8);
-            expect(score.explanation.some(e => e.includes('failed consistency checks'))).toBe(true);
+            expect(
+                score.explanation.some((e) =>
+                    e.includes('failed consistency checks'),
+                ),
+            ).toBe(true);
         });
     });
 
@@ -96,9 +112,15 @@ describe('self-verification', () => {
         });
 
         it('identifies critical/destructive bash commands', () => {
-            expect(isCriticalOperation('bash', { command: 'rm -rf foo' })).toBe(true);
-            expect(isCriticalOperation('bash', { command: 'git reset --hard' })).toBe(true);
-            expect(isCriticalOperation('bash', { command: 'npm install' })).toBe(false);
+            expect(isCriticalOperation('bash', { command: 'rm -rf foo' })).toBe(
+                true,
+            );
+            expect(
+                isCriticalOperation('bash', { command: 'git reset --hard' }),
+            ).toBe(true);
+            expect(
+                isCriticalOperation('bash', { command: 'npm install' }),
+            ).toBe(false);
         });
     });
 
@@ -110,7 +132,11 @@ describe('self-verification', () => {
         });
 
         it('creates prompt for deleteFile', () => {
-            const prompt = generateVerificationPrompt('deleteFile', { path: 'foo.ts' }, '');
+            const prompt = generateVerificationPrompt(
+                'deleteFile',
+                { path: 'foo.ts' },
+                '',
+            );
             expect(prompt).toContain('deleted');
             expect(prompt).toContain('foo.ts');
         });
@@ -120,7 +146,9 @@ describe('self-verification', () => {
         it('returns passed=true for clean run', () => {
             const result = runVerification([], new Map(), []);
             expect(result.passed).toBe(true);
-            expect(result.recommendation.toLowerCase()).toContain('pass verification');
+            expect(result.recommendation.toLowerCase()).toContain(
+                'pass verification',
+            );
         });
     });
 });

@@ -38,7 +38,23 @@ export type SupportedProvider =
     | 'kilo'
     | 'local'
     | 'lightningai'
-    | 'cloudflare';
+    | 'cloudflare'
+    | 'zenmux'
+    | 'mistral'
+    | 'qwen'
+    | 'perplexity'
+    | 'cohere'
+    | 'huggingface'
+    | 'zhipu'
+    | 'moonshot'
+    | 'lmstudio'
+    | 'xai'
+    | 'minimax'
+    | 'sambanova'
+    | 'siliconflow'
+    | 'deepinfra'
+    | 'novita'
+    | 'nebius';
 
 type SupportedChatModelDefinition = {
     id: string;
@@ -440,6 +456,196 @@ export const SUPPORTED_CHAT_MODELS = [
         pricing: {
             inputUsdPerMillionTokens: 0,
             outputUsdPerMillionTokens: 0,
+        },
+    },
+
+    // ── xAI (Grok) ──
+    {
+        id: 'xai/grok-3',
+        provider: 'xai',
+        pricing: {
+            inputUsdPerMillionTokens: 3,
+            outputUsdPerMillionTokens: 15,
+        },
+    },
+    {
+        id: 'xai/grok-3-mini',
+        provider: 'xai',
+        pricing: {
+            inputUsdPerMillionTokens: 0.3,
+            outputUsdPerMillionTokens: 0.5,
+        },
+    },
+    {
+        id: 'xai/grok-3-fast',
+        provider: 'xai',
+        pricing: {
+            inputUsdPerMillionTokens: 5,
+            outputUsdPerMillionTokens: 25,
+        },
+    },
+    {
+        id: 'xai/grok-2-1212',
+        provider: 'xai',
+        pricing: {
+            inputUsdPerMillionTokens: 2,
+            outputUsdPerMillionTokens: 10,
+        },
+    },
+    {
+        id: 'xai/grok-code-fast-1',
+        provider: 'xai',
+        pricing: {
+            inputUsdPerMillionTokens: 0.3,
+            outputUsdPerMillionTokens: 0.5,
+        },
+    },
+
+    // ── MiniMax ──
+    {
+        id: 'minimax/MiniMax-M3',
+        provider: 'minimax',
+        pricing: {
+            inputUsdPerMillionTokens: 0.3,
+            outputUsdPerMillionTokens: 1.2,
+        },
+    },
+    {
+        id: 'minimax/MiniMax-M2.7',
+        provider: 'minimax',
+        pricing: {
+            inputUsdPerMillionTokens: 0.3,
+            outputUsdPerMillionTokens: 1.2,
+        },
+    },
+
+    // ── SambaNova ──
+    {
+        id: 'sambanova/DeepSeek-V3-0324',
+        provider: 'sambanova',
+        pricing: {
+            inputUsdPerMillionTokens: 3,
+            outputUsdPerMillionTokens: 4.5,
+        },
+    },
+    {
+        id: 'sambanova/Llama-4-Maverick-17B-128E-Instruct',
+        provider: 'sambanova',
+        pricing: {
+            inputUsdPerMillionTokens: 0.63,
+            outputUsdPerMillionTokens: 1.8,
+        },
+    },
+    {
+        id: 'sambanova/QwQ-32B',
+        provider: 'sambanova',
+        pricing: {
+            inputUsdPerMillionTokens: 0.63,
+            outputUsdPerMillionTokens: 1.8,
+        },
+    },
+
+    // ── SiliconFlow ──
+    {
+        id: 'siliconflow/Qwen/Qwen3-235B-A22B',
+        provider: 'siliconflow',
+        pricing: {
+            inputUsdPerMillionTokens: 0.07,
+            outputUsdPerMillionTokens: 0.28,
+        },
+    },
+    {
+        id: 'siliconflow/deepseek-ai/DeepSeek-V3',
+        provider: 'siliconflow',
+        pricing: {
+            inputUsdPerMillionTokens: 0.14,
+            outputUsdPerMillionTokens: 0.28,
+        },
+    },
+    {
+        id: 'siliconflow/THUDM/GLM-4-9B-Chat',
+        provider: 'siliconflow',
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+
+    // ── DeepInfra ──
+    {
+        id: 'deepinfra/deepseek-ai/DeepSeek-V3-0324',
+        provider: 'deepinfra',
+        pricing: {
+            inputUsdPerMillionTokens: 0.2,
+            outputUsdPerMillionTokens: 0.77,
+        },
+    },
+    {
+        id: 'deepinfra/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+        provider: 'deepinfra',
+        pricing: {
+            inputUsdPerMillionTokens: 0.15,
+            outputUsdPerMillionTokens: 0.6,
+        },
+    },
+    {
+        id: 'deepinfra/Qwen/Qwen3-235B-A22B-Instruct-2507',
+        provider: 'deepinfra',
+        pricing: {
+            inputUsdPerMillionTokens: 0.09,
+            outputUsdPerMillionTokens: 0.1,
+        },
+    },
+
+    // ── Novita AI ──
+    {
+        id: 'novita/deepseek/deepseek-v3-0324',
+        provider: 'novita',
+        pricing: {
+            inputUsdPerMillionTokens: 0.27,
+            outputUsdPerMillionTokens: 1.12,
+        },
+    },
+    {
+        id: 'novita/meta-llama/llama-4-maverick-17b-128e-instruct-fp8',
+        provider: 'novita',
+        pricing: {
+            inputUsdPerMillionTokens: 0.27,
+            outputUsdPerMillionTokens: 0.85,
+        },
+    },
+    {
+        id: 'novita/qwen/qwen3-235b-a22b-fp8',
+        provider: 'novita',
+        pricing: {
+            inputUsdPerMillionTokens: 0.2,
+            outputUsdPerMillionTokens: 0.8,
+        },
+    },
+
+    // ── Nebius ──
+    {
+        id: 'nebius/Qwen/Qwen3-235B-A22B',
+        provider: 'nebius',
+        pricing: {
+            inputUsdPerMillionTokens: 0.2,
+            outputUsdPerMillionTokens: 0.6,
+        },
+    },
+    {
+        id: 'nebius/deepseek-ai/DeepSeek-V3-0324',
+        provider: 'nebius',
+        pricing: {
+            inputUsdPerMillionTokens: 0.5,
+            outputUsdPerMillionTokens: 1.5,
+        },
+    },
+    {
+        id: 'nebius/meta-llama/Llama-4-Maverick-17B-128E-Instruct',
+        provider: 'nebius',
+        pricing: {
+            inputUsdPerMillionTokens: 0.2,
+            outputUsdPerMillionTokens: 0.6,
         },
     },
 ] as const satisfies readonly SupportedChatModelDefinition[];

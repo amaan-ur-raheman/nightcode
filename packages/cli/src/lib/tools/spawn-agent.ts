@@ -89,9 +89,7 @@ export async function injectWorkspaceContext(
         for (const entry of entries.slice(0, 15)) {
             try {
                 const st = statSync(join(cwd, entry));
-                projectStructure.push(
-                    st.isDirectory() ? `${entry}/` : entry,
-                );
+                projectStructure.push(st.isDirectory() ? `${entry}/` : entry);
             } catch {}
         }
     } catch {}
@@ -111,9 +109,7 @@ export async function injectWorkspaceContext(
                 .join('\n')
                 .trim();
             if (firstLines) {
-                fileSummaries.push(
-                    `### ${filePath}\n${firstLines}`,
-                );
+                fileSummaries.push(`### ${filePath}\n${firstLines}`);
             }
         } catch {}
     }
@@ -151,9 +147,7 @@ export async function injectWorkspaceContext(
     }
 
     if (fileSummaries.length > 0) {
-        contextParts.push(
-            `### File Previews\n${fileSummaries.join('\n\n')}`,
-        );
+        contextParts.push(`### File Previews\n${fileSummaries.join('\n\n')}`);
     }
 
     contextParts.push(

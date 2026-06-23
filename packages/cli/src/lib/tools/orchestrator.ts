@@ -283,22 +283,67 @@ async function decomposeTask(
 
 /**
  * Detect tasks simple enough to skip LLM decomposition.
- * Short descriptions with explicit file references or comma-separated subtasks.
+ * Only tasks that modify 1-2 files with a single clear step are "simple".
+ * Everything else should go through decomposition to get proper parallelism.
  */
 function isSimpleTask(task: string): boolean {
     if (task.length > 200) return false;
+
     // Source file references (not URLs, versions, or random dotted strings)
     const srcFileRefs = (
         task.match(
             /(?:\.\/|\.\.\/|\w+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)/g,
         ) ?? []
     ).length;
-    if (srcFileRefs >= 2) return true;
+
+    // Reject if 3+ files — needs decomposition
+    if (srcFileRefs >= 3) return false;
+
+    // Detect multi-step markers
+    const hasMultiStepMarker =
+        /\b(and then|then |followed by|after that|additionally|meanwhile|subsequently|also test|and test|and verify|and validate|and review|and debug)\b/i.test(
+            task,
+        );
+    if (hasMultiStepMarker) return false;
+
+    // Strip file references to avoid matching keywords in filenames
+    // (e.g., "validate-input.ts" leaking "validate", "test.ts" leaking "test")
+    const taskWithoutFileRefs = task.replace(
+        /(?:\.\/|\.\.\/|\w+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)/gi,
+        '',
+    );
+
+    // Detect combined concerns (implement + test, refactor + test, etc.)
+    const hasCombinedConcerns =
+        (/(implement|create|build|add|write|modify|edit|change|update)/i.test(
+            taskWithoutFileRefs,
+        ) &&
+            /(test|spec|verify|validate)/i.test(taskWithoutFileRefs)) ||
+        (/(refactor|clean|extract|simplify|restructure)/i.test(
+            taskWithoutFileRefs,
+        ) &&
+            /(test|spec)/i.test(taskWithoutFileRefs)) ||
+        (/(debug|fix|bug|broken|error|issue)/i.test(taskWithoutFileRefs) &&
+            /(test|verify)/i.test(taskWithoutFileRefs));
+    if (hasCombinedConcerns) return false;
+
+    // 2 file refs with no multi-step markers = simple enough for direct execution
+    if (srcFileRefs === 2) return true;
+
+    // 1 file ref with a single clear action = simple
+    if (srcFileRefs === 1) return true;
+
     // Explicit conjunctions like "and" / "," between short phrases
+    // Only accept if no multi-step or combined-concern signals were found
+    // (hasMultiStepMarker and hasCombinedConcerns already checked above and would have returned)
     const phrases = task.split(/\s*(?:and|then|also)\s+/i).filter(Boolean);
     if (phrases.length >= 2 && phrases.length <= 4 && task.length < 150)
         return true;
-    return false;
+
+    // Long tasks with no file refs — probably complex description, decompose
+    if (task.length > 100) return false;
+
+    return true;
 }
 
 function buildSimpleGraph(task: string, model: string | undefined): TaskGraph {

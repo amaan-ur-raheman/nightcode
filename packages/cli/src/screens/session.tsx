@@ -119,7 +119,10 @@ function ChatMessage({
                     paddingLeft={2}
                     width="100%"
                 >
-                    <text fg={colors.dimSeparator} attributes={TextAttributes.DIM}>
+                    <text
+                        fg={colors.dimSeparator}
+                        attributes={TextAttributes.DIM}
+                    >
                         {text}
                     </text>
                 </box>
@@ -634,7 +637,6 @@ function SessionChat({
                         messageCount={
                             messages.filter((m) => m.role === 'user').length
                         }
-                        sessionTitle={session.title}
                         branchIndicator={
                             <BranchIndicator
                                 branches={branches}

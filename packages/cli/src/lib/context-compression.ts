@@ -569,7 +569,7 @@ function buildAnchor(
             // Extract reasoning chains from text parts
             if (part.type === 'text' && typeof part.text === 'string') {
                 const text = part.text.trim();
-                
+
                 // Capture decision statements with reasoning
                 const decisionPatterns = [
                     /(?:I chose|I decided|I opted|I picked|I selected|Using|Preferring|Going with)[^.]*\./gi,
@@ -579,7 +579,7 @@ function buildAnchor(
                     /(?:This means|This implies|Consequently)[^.]*\./gi,
                     /(?:Let me|I'll|I should|I need to|I'm going to)[^.]*\./gi,
                 ];
-                
+
                 for (const pattern of decisionPatterns) {
                     const matches = text.match(pattern);
                     if (matches) {
@@ -594,7 +594,8 @@ function buildAnchor(
 
                 // Capture multi-sentence reasoning chains (2-4 connected sentences)
                 // These represent thought processes behind decisions
-                const reasoningRegex = /(?:First|Next|Then|Finally|Step \d+)[^.]*\.(?:\s*[A-Z][^.]*\.){0,3}/g;
+                const reasoningRegex =
+                    /(?:First|Next|Then|Finally|Step \d+)[^.]*\.(?:\s*[A-Z][^.]*\.){0,3}/g;
                 const reasoningMatches = text.match(reasoningRegex);
                 if (reasoningMatches) {
                     for (const rm of reasoningMatches) {
@@ -638,16 +639,11 @@ function buildAnchor(
     // Reasoning chains: the most valuable for maintaining context continuity
     const uniqueReasoning = [...new Set(reasoningChains)];
     if (uniqueReasoning.length > 0) {
-        parts.push(
-            `Reasoning chain: ${uniqueReasoning.slice(0, 2).join(' ')}`,
-        );
+        parts.push(`Reasoning chain: ${uniqueReasoning.slice(0, 2).join(' ')}`);
     }
 
     // Key decisions and strategies — the WHY
-    const allDecisions = [
-        ...strategies.slice(0, 2),
-        ...decisions.slice(0, 3),
-    ];
+    const allDecisions = [...strategies.slice(0, 2), ...decisions.slice(0, 3)];
     if (allDecisions.length > 0) {
         parts.push(`Key decisions: ${allDecisions.slice(0, 3).join(' | ')}`);
     }
