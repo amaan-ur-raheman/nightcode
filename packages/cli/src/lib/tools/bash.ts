@@ -102,8 +102,12 @@ export async function bashTool(
 
     // Tee the streams to prevent locked ReadableStream errors when both
     // readStreamToBuffer and ptySessionManager consume them.
-    const [stdout1, stdout2] = proc.stdout ? (proc.stdout as any).tee() : [null, null];
-    const [stderr1, stderr2] = proc.stderr ? (proc.stderr as any).tee() : [null, null];
+    const [stdout1, stdout2] = proc.stdout
+        ? (proc.stdout as any).tee()
+        : [null, null];
+    const [stderr1, stderr2] = proc.stderr
+        ? (proc.stderr as any).tee()
+        : [null, null];
 
     // Collect output directly from process pipes (not the shared PTY singleton)
     // This prevents cross-tool interference when bash calls run in parallel.
