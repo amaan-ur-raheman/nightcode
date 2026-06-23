@@ -18,11 +18,13 @@ module.exports = {
     meta: {
         type: 'problem',
         docs: {
-            description: 'Disallow raw text nodes outside of `<text>` and inline styling tags',
+            description:
+                'Disallow raw text nodes outside of `<text>` and inline styling tags',
             recommended: true,
         },
         messages: {
-            noRawText: 'Unexpected raw text "{{text}}" outside of a <text> element. Wrap text inside a <text> element.',
+            noRawText:
+                'Unexpected raw text "{{text}}" outside of a <text> element. Wrap text inside a <text> element.',
         },
         schema: [],
     },
@@ -47,7 +49,9 @@ module.exports = {
                         node,
                         messageId: 'noRawText',
                         data: {
-                            text: textValue.trim().slice(0, 15) + (textValue.trim().length > 15 ? '...' : ''),
+                            text:
+                                textValue.trim().slice(0, 15) +
+                                (textValue.trim().length > 15 ? '...' : ''),
                         },
                     });
                 }
@@ -63,7 +67,8 @@ module.exports = {
             JSXExpressionContainer(node) {
                 if (
                     node.parent &&
-                    (node.parent.type === 'JSXElement' || node.parent.type === 'JSXFragment')
+                    (node.parent.type === 'JSXElement' ||
+                        node.parent.type === 'JSXFragment')
                 ) {
                     const expr = node.expression;
                     if (!expr) return;
