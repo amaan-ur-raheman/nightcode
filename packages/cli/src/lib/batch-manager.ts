@@ -157,7 +157,7 @@ const TOOL_COST_TIERS: Record<string, 'low' | 'medium' | 'high'> = {
     getKnowledgeNeighbors: 'low',
     getKnowledgeStats: 'low',
     detectKnowledgeCycles: 'low',
-    
+
     // Medium cost — mix of reads and state changes
     webFetch: 'medium',
     bash: 'medium',
@@ -184,7 +184,7 @@ const TOOL_COST_TIERS: Record<string, 'low' | 'medium' | 'high'> = {
     suggestTool: 'low',
     listToolCategories: 'low',
     declareConfidence: 'low',
-    
+
     // High cost — file mutations, complex operations
     writeFile: 'high',
     editFile: 'high',
@@ -216,8 +216,10 @@ const TOOL_COST_TIERS: Record<string, 'low' | 'medium' | 'high'> = {
  * Uses a cost-weighted algorithm so that 8 readFiles == 2 writeFiles in resource usage.
  */
 function getAdaptiveParallelCap(toolCalls: ParallelToolCall[]): number {
-    const tiers = toolCalls.map((tc) => TOOL_COST_TIERS[tc.toolName] ?? 'medium');
-    
+    const tiers = toolCalls.map(
+        (tc) => TOOL_COST_TIERS[tc.toolName] ?? 'medium',
+    );
+
     let weight = 0;
     for (const tier of tiers) {
         switch (tier) {
@@ -232,14 +234,22 @@ function getAdaptiveParallelCap(toolCalls: ParallelToolCall[]): number {
                 break;
         }
     }
-    
+
     // Target total "weight" of ~24 (equivalent to 4 high-cost operations)
     const TARGET_WEIGHT = 24;
     const MIN_CAP = 2;
     const MAX_CAP = 16;
-    
-    const adaptiveCap = Math.max(MIN_CAP, Math.min(MAX_CAP, Math.floor(TARGET_WEIGHT / (weight / Math.max(toolCalls.length, 1)))));
-    
+
+    const adaptiveCap = Math.max(
+        MIN_CAP,
+        Math.min(
+            MAX_CAP,
+            Math.floor(
+                TARGET_WEIGHT / (weight / Math.max(toolCalls.length, 1)),
+            ),
+        ),
+    );
+
     return adaptiveCap;
 }
 
