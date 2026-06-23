@@ -853,6 +853,13 @@ export const toolInputSchemas = {
                 'Optional description of your planned approach if confidence is medium or low',
             ),
     }),
+    shouldDelegate: z.object({
+        task: z
+            .string()
+            .describe(
+                'Describe the task you are about to start. This tool will analyze it and recommend whether to use direct tool calls, a specialized subagent, or the orchestrator.',
+            ),
+    }),
 } as const;
 
 export const readOnlyToolContracts = {
@@ -1094,8 +1101,13 @@ export const readOnlyToolContracts = {
     }),
     declareConfidence: tool({
         description:
-            "Declare your confidence level before making a complex change. Use this to signal how certain you are about the approach. High = proceed normally, Medium = run extra validation, Low = inject verification steps. Helps the harness adjust its safety behavior.",
+            'Declare your confidence level before making a complex change. Use this to signal how certain you are about the approach. High = proceed normally, Medium = run extra validation, Low = inject verification steps. Helps the harness adjust its safety behavior.',
         inputSchema: toolInputSchemas.declareConfidence,
+    }),
+    shouldDelegate: tool({
+        description:
+            "Analyze a task description and recommend whether to use direct tool calls, a specialized subagent, or the orchestrator. Call this when you're unsure if a task is complex enough to warrant delegation. Pass your task description and get a recommendation with rationale.",
+        inputSchema: toolInputSchemas.shouldDelegate,
     }),
 } as const;
 
