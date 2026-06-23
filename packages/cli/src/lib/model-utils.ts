@@ -135,6 +135,22 @@ export function extractProvider(modelId: string): string {
     if (modelId.startsWith('opencode/')) return 'opencode';
     if (modelId.startsWith('kilo/')) return 'kilo';
     if (modelId.startsWith('local/')) return 'local';
+    if (modelId.startsWith('zenmux/')) return 'zenmux';
+    if (modelId.startsWith('mistral/')) return 'mistral';
+    if (modelId.startsWith('qwen/')) return 'qwen';
+    if (modelId.startsWith('perplexity/')) return 'perplexity';
+    if (modelId.startsWith('cohere/')) return 'cohere';
+    if (modelId.startsWith('huggingface/')) return 'huggingface';
+    if (modelId.startsWith('zhipu/')) return 'zhipu';
+    if (modelId.startsWith('moonshot/')) return 'moonshot';
+    if (modelId.startsWith('lmstudio/')) return 'lmstudio';
+    if (modelId.startsWith('xai/')) return 'xai';
+    if (modelId.startsWith('minimax/')) return 'minimax';
+    if (modelId.startsWith('sambanova/')) return 'sambanova';
+    if (modelId.startsWith('siliconflow/')) return 'siliconflow';
+    if (modelId.startsWith('deepinfra/')) return 'deepinfra';
+    if (modelId.startsWith('novita/')) return 'novita';
+    if (modelId.startsWith('nebius/')) return 'nebius';
     if (modelId.startsWith('claude-')) return 'anthropic';
     if (modelId.startsWith('gpt-') || modelId.startsWith('o3')) return 'openai';
     if (modelId.startsWith('llama-') || modelId.startsWith('mixtral-'))
