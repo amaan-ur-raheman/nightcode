@@ -4,7 +4,7 @@
     "type": "module",
     "private": true,
     "bin": {
-        "nightcode": "./bin/nightcode"
+        "nightcode": "./bin/index.js"
     },
     "scripts": {
         "dev": "bun run --watch src/index.tsx",
