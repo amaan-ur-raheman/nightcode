@@ -8,6 +8,142 @@ import { resolve } from 'path';
 import { toolOutputCache } from './tool-output-cache';
 import { debug } from './debug';
 
+// ── Post-hoc Delegation Learning ──
+// Tracks tool usage patterns across a response cycle to detect when
+// the main agent should have delegated to subagents/orchestrator.
+// These are recorded as suggestions that feed back into the system prompt
+// via the corrections-tracking mechanism.
+
+interface ToolUsageWindow {
+    toolCalls: Array<{
+        toolName: string;
+        timestamp: number;
+        input: Record<string, unknown>;
+    }>;
+    firstCallTime: number;
+    windowActive: boolean;
+}
+
+let toolUsageWindow: ToolUsageWindow = {
+    toolCalls: [],
+    firstCallTime: 0,
+    windowActive: false,
+};
+
+/** Minimal suggestion threshold — we only record strong signals to avoid noise. */
+const MIN_SEQUENTIAL_EDITS_FOR_DELEGATION = 5;
+const MIN_FILES_MODIFIED_FOR_ORCHESTRATOR = 3;
+
+/**
+ * Start a new tool usage window. Call this at the beginning of each
+ * response cycle (when the AI starts calling tools).
+ */
+export function startToolUsageWindow(): void {
+    toolUsageWindow = {
+        toolCalls: [],
+        firstCallTime: Date.now(),
+        windowActive: true,
+    };
+}
+
+/**
+ * Record a tool call in the current usage window.
+ */
+export function recordToolCallInWindow(toolName: string, input: unknown): void {
+    if (!toolUsageWindow.windowActive) return;
+    toolUsageWindow.toolCalls.push({
+        toolName,
+        timestamp: Date.now(),
+        input: (input ?? {}) as Record<string, unknown>,
+    });
+}
+
+/**
+ * Analyze the current tool usage window and record learning signals
+ * if the agent should have delegated but didn't. Call this at the end
+ * of each response cycle.
+ */
+export async function analyzeToolUsageWindow(): Promise<void> {
+    if (!toolUsageWindow.windowActive) return;
+    toolUsageWindow.windowActive = false;
+
+    const calls = toolUsageWindow.toolCalls;
+    if (calls.length < 3) return; // Not enough data to analyze
+
+    const { correctionTracker } = await import('./correction-tracker');
+
+    // Count write-type tools
+    const writeTools = ['writeFile', 'editFile', 'patch', 'searchReplace'];
+    const writeCalls = calls.filter((c) => writeTools.includes(c.toolName));
+    const uniqueFiles = new Set(
+        writeCalls
+            .map((c) => {
+                const path =
+                    typeof c.input.path === 'string'
+                        ? c.input.path
+                        : typeof c.input.file === 'string'
+                          ? c.input.file
+                          : typeof c.input.glob === 'string'
+                            ? c.input.glob
+                            : '';
+                return path;
+            })
+            .filter(Boolean),
+    );
+
+    const hasBashTest = calls.some((c) => {
+        if (c.toolName !== 'bash') return false;
+        const cmd =
+            typeof c.input.command === 'string'
+                ? c.input.command.toLowerCase()
+                : '';
+        return (
+            cmd.includes('test') ||
+            cmd.includes('vitest') ||
+            cmd.includes('jest')
+        );
+    });
+
+    // Signal 1: Agent wrote files across 3+ files — should have used orchestrator
+    if (uniqueFiles.size >= MIN_FILES_MODIFIED_FOR_ORCHESTRATOR) {
+        const suggestion = `For tasks modifying ${uniqueFiles.size} files (${Array.from(uniqueFiles).slice(0, 3).join(', ')}...), use the orchestrator tool instead of making edits manually. The orchestrator parallelizes across files and reduces context loss.`;
+        await correctionTracker.recordSuggestion(suggestion, 'orchestrator');
+        console.log(`[delegation-learning] ${suggestion}`);
+    }
+
+    // Signal 2: Agent made many sequential edits — could have used subagent
+    if (
+        writeCalls.length >= MIN_SEQUENTIAL_EDITS_FOR_DELEGATION &&
+        uniqueFiles.size >= 2
+    ) {
+        const suggestion = `Made ${writeCalls.length} edits across ${uniqueFiles.size} files in sequence. Consider delegating parts of this work to subagents (e.g. spawnRefactor for restructuring, spawnTestWriter for test files) and using the orchestrator for parallel execution.`;
+        await correctionTracker.recordSuggestion(suggestion, 'spawnAgent');
+        console.log(`[delegation-learning] ${suggestion}`);
+    }
+
+    // Signal 3: Agent manually wrote tests — should have used spawnTestWriter
+    const manualTestCalls = writeCalls.filter((c) => {
+        const path = typeof c.input.path === 'string' ? c.input.path : '';
+        return path.includes('.test.') || path.includes('.spec.');
+    });
+    if (manualTestCalls.length >= 2) {
+        const suggestion = `Wrote ${manualTestCalls.length} test files manually. Use spawnTestWriter for writing tests — it has an optimized prompt and handles the test-writing workflow more efficiently.`;
+        await correctionTracker.recordSuggestion(suggestion, 'spawnTestWriter');
+        console.log(`[delegation-learning] ${suggestion}`);
+    }
+
+    // Signal 4: Agent combined implementation + testing in same response
+    const hasImplWrite = writeCalls.some((c) => {
+        const path = typeof c.input.path === 'string' ? c.input.path : '';
+        return !path.includes('.test.') && !path.includes('.spec.');
+    });
+    if (hasImplWrite && hasBashTest) {
+        const suggestion = `Combined implementation and testing in one response. Use the orchestrator with parallel coder + tester roles for multi-step features that need both implementation and verification.`;
+        await correctionTracker.recordSuggestion(suggestion, 'orchestrator');
+        console.log(`[delegation-learning] ${suggestion}`);
+    }
+}
+
 const PLAN_TOOLS = new Set([
     'readFile',
     'listDirectory',
@@ -167,6 +303,8 @@ async function directExecute(
     signal?: AbortSignal,
     execId?: string,
 ): Promise<unknown> {
+    recordToolCallInWindow(toolName, input);
+
     const startTime = Date.now();
     let success = true;
 
@@ -200,7 +338,8 @@ async function directExecute(
                 toolName,
                 input,
                 signal,
-                (toolSignal) => tool(input, mode, parentModel, toolSignal, execId),
+                (toolSignal) =>
+                    tool(input, mode, parentModel, toolSignal, execId),
                 parentModel,
             );
         }
@@ -352,6 +491,17 @@ async function directExecute(
         toolAnalytics
             .recordToolCall(toolName, duration, success)
             .catch(() => {});
+
+        // Analyze tool usage window when appropriate
+        // (called from use-chat.ts at response boundaries)
+        // Kept here as a safety net for very long single responses (>100 calls)
+        if (
+            toolUsageWindow.toolCalls.length > 0 &&
+            toolUsageWindow.windowActive &&
+            toolUsageWindow.toolCalls.length % 100 === 0
+        ) {
+            analyzeToolUsageWindow().catch(() => {});
+        }
     }
 }
 
@@ -363,7 +513,11 @@ export async function executeLocalTool(
     signal?: AbortSignal,
     execId?: string,
 ) {
-    if (mode === Mode.PLAN && !toolName.startsWith('mcp__') && !PLAN_TOOLS.has(toolName)) {
+    if (
+        mode === Mode.PLAN &&
+        !toolName.startsWith('mcp__') &&
+        !PLAN_TOOLS.has(toolName)
+    ) {
         throw new Error(`Tool ${toolName} is not available in PLAN mode`);
     }
 
