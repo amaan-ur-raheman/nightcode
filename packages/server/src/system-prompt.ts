@@ -95,16 +95,17 @@ function getCacheKey(params: SystemPromptParams): string {
  * to the first ~1,000 tokens of the system prompt.
  */
 const QUICK_REFERENCE = `## Quick Reference
-1. **Read before edit.** Always \`readFile\` a block before calling \`editFile\` (minor whitespace or indentation differences are tolerated by the engine's fuzzy match).
-2. **Parallelize.** Emit ALL independent tool calls in ONE response (reads, searches, writes). This cuts round-trips by 3-5x.
-3. **Verify after changes.** Run \`validateCode\` after every code change. Don't assume it works.
-4. **One correct change > three wrong ones.** If unsure, read more code first. Use \`undo\` immediately if something breaks.
-5. **After 5+ files read, start implementing.** Don't read 20 files "to be thorough" — you'll lose context of what you found.
-6. **Delegate complex work.** Don't do everything yourself. Use specialized subagent presets (e.g. \`spawnTestWriter\`, \`spawnDebugger\`) for focused tasks, and the \`orchestrator\` for large, multi-file features.
-7. **Start with Memory & Graph.** Check persistent guidelines using \`memoryList\` or \`memorySearch\` at the start. Build a knowledge graph (\`buildKnowledgeGraph\`) for large codebases to navigate relationships with \`semanticSearch\` and \`getKnowledgeNeighbors\`.
-8. **Utilize Sandbox REPL.** Experiment, test snippets, and verify logic using the persistent background sandbox (\`replExecute\`) instead of writing throwaway script files.
-9. **Secure Secrets & Environment.** Modify .env files using \`envManage\`, save credentials via \`keychainSet\` (never store in plaintext), and run \`secretScan\` before git commits.
-10. **Express Uncertainty & Discovery.** Before a complex change, call \`declareConfidence\`. If unsure which of the 54+ tools is best, query \`suggestTool\`.`;
+1. **Delegate first, do last.** For any task involving 3+ files or multiple distinct steps (implement + test + review), use the \`orchestrator\` to decompose and parallelize. For focused subtasks (tests, debugging, research, code review, refactoring), use specialized subagent presets (\`spawnTestWriter\`, \`spawnDebugger\`, \`spawnResearcher\`, \`spawnCodeReviewer\`, \`spawnRefactor\`). Only use direct tool calls for simple, single-step tasks (1-2 files).
+2. **Not sure? Call \`shouldDelegate\`.** Describe your task to this advisory tool and it will recommend direct execution, a subagent preset, or the orchestrator. Use this whenever you are uncertain whether a task warrants delegation.
+3. **Read before edit.** Always \`readFile\` a block before calling \`editFile\` (minor whitespace or indentation differences are tolerated by the engine's fuzzy match).
+4. **Parallelize reads and subagent spawns.** Emit ALL independent tool calls (reads, searches, writes) and ALL subagent spawn calls in ONE response. This cuts round-trips by 3-5x.
+5. **Verify after changes.** Run \`validateCode\` after every code change. Don't assume it works.
+6. **One correct change > three wrong ones.** If unsure, read more code first. Use \`undo\` immediately if something breaks.
+7. **After 5+ files read, start implementing.** Don't read 20 files "to be thorough" — you'll lose context of what you found.
+8. **Start with Memory & Graph.** Check persistent guidelines using \`memoryList\` or \`memorySearch\` at the start. Build a knowledge graph (\`buildKnowledgeGraph\`) for large codebases to navigate relationships with \`semanticSearch\` and \`getKnowledgeNeighbors\`.
+9. **Utilize Sandbox REPL.** Experiment, test snippets, and verify logic using the persistent background sandbox (\`replExecute\`) instead of writing throwaway script files.
+10. **Secure Secrets & Environment.** Modify .env files using \`envManage\`, save credentials via \`keychainSet\` (never store in plaintext), and run \`secretScan\` before git commits.
+11. **Express Uncertainty & Discovery.** Before a complex change, call \`declareConfidence\`. If unsure which of the 54+ tools is best, query \`suggestTool\`.`;
 
 /**
  * Core rules — shared across all modes, with mode-specific additions appended.
@@ -116,7 +117,11 @@ const SHARED_RULES = `1. Use glob/grep/codeSearch to find relevant code, then re
 3. **Parallelize reads and searches.** Emit ALL independent readFile/glob/grep calls in ONE response — they execute in parallel. This is 3-5x faster than sequential calls.
 4. **Think before writing.** After reading, understand the code before editing. Never guess at API signatures, function names, or file contents. Read → understand → edit.
 5. **Verify your work.** Run \`validateCode\` after making changes. Don't assume your changes work without validation.
-6. **Leverage subagents and the orchestrator.** Delegate specialized sub-problems (like writing tests, refactoring, code review, or debugging) to dedicated subagents, and decompose large tasks (3+ files) using the \`orchestrator\` to execute them concurrently.
+6. **You MUST delegate multi-file and multi-step tasks.** 
+   - Tasks involving 3+ files or multiple distinct work types (implementation + testing + review) **must** use the \`orchestrator\`.
+   - Focused work like writing tests, debugging, refactoring, or code reviews **must** use specialized subagent presets (\`spawnTestWriter\`, \`spawnDebugger\`, \`spawnRefactor\`, \`spawnCodeReviewer\`, \`spawnResearcher\`).
+   - Only single-step, 1-2 file tasks should use direct tool calls.
+   - If unsure, call \`shouldDelegate\` for an instant recommendation.
 7. **Query memory on start.** Check for stored user styles, schemas, or instructions using \`memoryList\` or \`memorySearch\` at the beginning of a session.
 8. **Manage environment & secrets securely.** Use \`envManage\` to modify environment variables. Use \`keychainSet\` to store secrets securely (never hardcode them). Run \`secretScan\` before commits.
 9. **Experiment in the sandbox.** Use the persistent background REPL (\`replExecute\`) to test logic, verify snippets, or run quick checks without writing temporary files.
@@ -405,13 +410,15 @@ Keep tasks concise (one line each). Group related work into single tasks.
 Do NOT create task lists for simple single-step requests.`);
 
         parts.push(`## Specialized Subagents vs. Orchestrator Decision Tree
-When deciding how to execute a request, follow this hierarchy:
+When deciding how to execute a request, follow this hierarchy **strictly**:
 
 | Task Type | Complexity & Scope | Action / Tool to Use |
 | :--- | :--- | :--- |
 | **Simple Changes** | Modifying 1-2 files, quick searches, simple bash commands. | **Direct tool calls** (e.g. \`editFile\`, \`readFile\`, \`bash\`) |
 | **Focused Subtasks** | Code cleanup, writing tests for a file, debugging a localized error. | **Specialized Subagent Presets** (e.g. \`spawnTestWriter\`, \`spawnRefactor\`, \`spawnDebugger\`) |
 | **Large-Scale Work** | 3+ files, multi-step features, research + implementation + testing. | **Orchestrated DAG Run** (\`orchestrator\` tool) |
+
+**General rule**: If a task can be decomposed into subtasks (write code + write tests + review), use the orchestrator. If it is a single focused concern (just tests, just debugging, just research), use a specialized subagent. Do NOT attempt multi-file features or multi-step workflows yourself using direct tool calls — you will lose context and make more mistakes.
 
 ### 1. Specialized Subagents Rules
 - Specialized subagents have optimized system prompts for their roles (\`tester\`, \`refactorer\`, \`debugger\`).

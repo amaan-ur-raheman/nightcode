@@ -107,8 +107,7 @@ describe('Subagent Route', () => {
         });
 
         it('returns 402 when credits are zero', async () => {
-            const { getCachedCreditsBalance } =
-                await import('../../lib/polar');
+            const { getCachedCreditsBalance } = await import('../../lib/polar');
             vi.mocked(getCachedCreditsBalance).mockReturnValueOnce(0);
             const res = await app.request('/subagent', {
                 method: 'POST',
