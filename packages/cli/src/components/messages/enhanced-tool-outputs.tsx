@@ -2,7 +2,6 @@ import path from 'path';
 import { type ThemeColors } from '@/theme';
 import { highlightCode } from '@/lib/syntax-highlight';
 
-
 // ==========================================
 // 1. Search Matches Block (grep / codeSearch)
 // ==========================================
@@ -34,17 +33,27 @@ export function SearchMatchesBlock({
     const MAX_LINE_LENGTH = 140;
 
     return (
-        <box paddingLeft={2} paddingRight={2} width="100%" flexDirection="column">
+        <box
+            paddingLeft={2}
+            paddingRight={2}
+            width="100%"
+            flexDirection="column"
+        >
             <box
-                    flexDirection="column"
-                    backgroundColor={colors.surface}
-                    width="100%"
-                    paddingX={2}
-                    paddingY={1}
-                >
-                    {Object.entries(fileGroups).map(([file, fileMatches], fileIdx) => {
-                        const visibleMatches = fileMatches.slice(0, MAX_MATCHES_PER_FILE);
-                        const remaining = fileMatches.length - MAX_MATCHES_PER_FILE;
+                flexDirection="column"
+                backgroundColor={colors.surface}
+                width="100%"
+                paddingX={2}
+                paddingY={1}
+            >
+                {Object.entries(fileGroups).map(
+                    ([file, fileMatches], fileIdx) => {
+                        const visibleMatches = fileMatches.slice(
+                            0,
+                            MAX_MATCHES_PER_FILE,
+                        );
+                        const remaining =
+                            fileMatches.length - MAX_MATCHES_PER_FILE;
                         return (
                             <box
                                 key={`file-${fileIdx}`}
@@ -53,7 +62,8 @@ export function SearchMatchesBlock({
                                 width="100%"
                             >
                                 <text fg={colors.primary}>
-                                    [{path.relative(process.cwd(), file) || file}
+                                    [
+                                    {path.relative(process.cwd(), file) || file}
                                     ](file://
                                     {path.isAbsolute(file)
                                         ? file
@@ -61,9 +71,13 @@ export function SearchMatchesBlock({
                                     )
                                 </text>
                                 {visibleMatches.map((m, mIdx) => {
-                                    const displayContent = m.content.length > MAX_LINE_LENGTH
-                                        ? m.content.slice(0, MAX_LINE_LENGTH - 3) + '...'
-                                        : m.content;
+                                    const displayContent =
+                                        m.content.length > MAX_LINE_LENGTH
+                                            ? m.content.slice(
+                                                  0,
+                                                  MAX_LINE_LENGTH - 3,
+                                              ) + '...'
+                                            : m.content;
                                     return (
                                         <box
                                             key={`match-${mIdx}`}
@@ -86,14 +100,17 @@ export function SearchMatchesBlock({
                                 {remaining > 0 && (
                                     <box paddingLeft={2}>
                                         <text fg={colors.dimSeparator}>
-                                            ... and {remaining} more match{remaining > 1 ? 'es' : ''} in this file
+                                            ... and {remaining} more match
+                                            {remaining > 1 ? 'es' : ''} in this
+                                            file
                                         </text>
                                     </box>
                                 )}
                             </box>
                         );
-                    })}
-                </box>
+                    },
+                )}
+            </box>
         </box>
     );
 }
@@ -159,75 +176,85 @@ export function GitStatusBlock({
     const MAX_FILES_SHOWN = 8;
 
     return (
-        <box paddingLeft={2} paddingRight={2} flexDirection="column" width="100%">
+        <box
+            paddingLeft={2}
+            paddingRight={2}
+            flexDirection="column"
+            width="100%"
+        >
             <box
-                    flexDirection="column"
-                    backgroundColor={colors.surface}
-                    width="100%"
-                    paddingX={2}
-                    paddingY={1}
-                >
-                    {currentBranch && (
-                        <text fg={colors.info}>
-                            On branch: <span fg={colors.primary}>{currentBranch}</span>
+                flexDirection="column"
+                backgroundColor={colors.surface}
+                width="100%"
+                paddingX={2}
+                paddingY={1}
+            >
+                {currentBranch && (
+                    <text fg={colors.info}>
+                        On branch:{' '}
+                        <span fg={colors.primary}>{currentBranch}</span>
+                    </text>
+                )}
+                {hasStaged && (
+                    <box flexDirection="column" marginTop={1} width="100%">
+                        <text fg={colors.success} attributes={['bold'] as any}>
+                            Staged Changes:
                         </text>
-                    )}
-                    {hasStaged && (
-                        <box flexDirection="column" marginTop={1} width="100%">
-                            <text fg={colors.success} attributes={['bold'] as any}>
-                                Staged Changes:
+                        {staged.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
+                            <text
+                                key={`staged-${idx}`}
+                                paddingLeft={2}
+                                fg={colors.success}
+                            >
+                                ✓ [{file}](file://
+                                {path.isAbsolute(file)
+                                    ? file
+                                    : path.resolve(process.cwd(), file)}
+                                )
                             </text>
-                            {staged.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
-                                <text
-                                    key={`staged-${idx}`}
-                                    paddingLeft={2}
-                                    fg={colors.success}
-                                >
-                                    ✓ [{file}](file://
-                                    {path.isAbsolute(file)
-                                        ? file
-                                        : path.resolve(process.cwd(), file)}
-                                    )
-                                </text>
-                            ))}
-                            {staged.length > MAX_FILES_SHOWN && (
-                                <text paddingLeft={2} fg={colors.dimSeparator}>
-                                    ... and {staged.length - MAX_FILES_SHOWN} more staged file(s)
-                                </text>
-                            )}
-                        </box>
-                    )}
-                    {hasUnstaged && (
-                        <box flexDirection="column" marginTop={1} width="100%">
-                            <text fg={colors.error} attributes={['bold'] as any}>
-                                Unstaged Changes:
+                        ))}
+                        {staged.length > MAX_FILES_SHOWN && (
+                            <text paddingLeft={2} fg={colors.dimSeparator}>
+                                ... and {staged.length - MAX_FILES_SHOWN} more
+                                staged file(s)
                             </text>
-                            {unstaged.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
-                                <text
-                                    key={`unstaged-${idx}`}
-                                    paddingLeft={2}
-                                    fg={colors.error}
-                                >
-                                    ✗ [{file}](file://
-                                    {path.isAbsolute(file)
-                                        ? file
-                                        : path.resolve(process.cwd(), file)}
-                                    )
-                                </text>
-                            ))}
-                            {unstaged.length > MAX_FILES_SHOWN && (
-                                <text paddingLeft={2} fg={colors.dimSeparator}>
-                                    ... and {unstaged.length - MAX_FILES_SHOWN} more unstaged file(s)
-                                </text>
-                            )}
-                        </box>
-                    )}
-                    {hasUntracked && (
-                        <box flexDirection="column" marginTop={1} width="100%">
-                            <text fg={colors.planMode} attributes={['bold'] as any}>
-                                Untracked Files:
+                        )}
+                    </box>
+                )}
+                {hasUnstaged && (
+                    <box flexDirection="column" marginTop={1} width="100%">
+                        <text fg={colors.error} attributes={['bold'] as any}>
+                            Unstaged Changes:
+                        </text>
+                        {unstaged.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
+                            <text
+                                key={`unstaged-${idx}`}
+                                paddingLeft={2}
+                                fg={colors.error}
+                            >
+                                ✗ [{file}](file://
+                                {path.isAbsolute(file)
+                                    ? file
+                                    : path.resolve(process.cwd(), file)}
+                                )
                             </text>
-                            {untracked.slice(0, MAX_FILES_SHOWN).map((file, idx) => (
+                        ))}
+                        {unstaged.length > MAX_FILES_SHOWN && (
+                            <text paddingLeft={2} fg={colors.dimSeparator}>
+                                ... and {unstaged.length - MAX_FILES_SHOWN} more
+                                unstaged file(s)
+                            </text>
+                        )}
+                    </box>
+                )}
+                {hasUntracked && (
+                    <box flexDirection="column" marginTop={1} width="100%">
+                        <text fg={colors.planMode} attributes={['bold'] as any}>
+                            Untracked Files:
+                        </text>
+                        {untracked
+                            .slice(0, MAX_FILES_SHOWN)
+                            .map((file, idx) => (
                                 <text
                                     key={`untracked-${idx}`}
                                     paddingLeft={2}
@@ -240,19 +267,20 @@ export function GitStatusBlock({
                                     )
                                 </text>
                             ))}
-                            {untracked.length > MAX_FILES_SHOWN && (
-                                <text paddingLeft={2} fg={colors.dimSeparator}>
-                                    ... and {untracked.length - MAX_FILES_SHOWN} more untracked file(s)
-                                </text>
-                            )}
-                        </box>
-                    )}
-                    {!hasStaged && !hasUnstaged && !hasUntracked && (
-                        <text fg={colors.dimSeparator} marginTop={1}>
-                            Nothing to commit, working tree clean
-                        </text>
-                    )}
-                </box>
+                        {untracked.length > MAX_FILES_SHOWN && (
+                            <text paddingLeft={2} fg={colors.dimSeparator}>
+                                ... and {untracked.length - MAX_FILES_SHOWN}{' '}
+                                more untracked file(s)
+                            </text>
+                        )}
+                    </box>
+                )}
+                {!hasStaged && !hasUnstaged && !hasUntracked && (
+                    <text fg={colors.dimSeparator} marginTop={1}>
+                        Nothing to commit, working tree clean
+                    </text>
+                )}
+            </box>
         </box>
     );
 }
@@ -279,59 +307,64 @@ export function SecretScanBlock({
     if (!secrets || secrets.length === 0) return null;
 
     return (
-        <box paddingLeft={2} paddingRight={2} flexDirection="column" width="100%">
+        <box
+            paddingLeft={2}
+            paddingRight={2}
+            flexDirection="column"
+            width="100%"
+        >
             <box
-                    flexDirection="column"
-                    backgroundColor={colors.surface}
-                    width="100%"
-                    paddingX={2}
-                    paddingY={1}
-                >
-                    <text fg={colors.error} attributes={['bold'] as any}>
-                        Security Scan: {secrets.length} secret
-                        {secrets.length > 1 ? 's' : ''} found
-                    </text>
-                    <text fg={colors.dimSeparator} marginBottom={1}>
-                        Review each finding before staging or committing changes.
-                    </text>
-                    {secrets.map((m, idx) => {
-                        const sevColor =
-                            m.severity === 'high'
-                                ? colors.error
-                                : m.severity === 'medium'
-                                  ? colors.planMode
-                                  : colors.info;
-                        return (
-                            <box
-                                key={`secret-${idx}`}
-                                flexDirection="column"
-                                marginBottom={idx === secrets.length - 1 ? 0 : 1}
-                                width="100%"
-                            >
-                                <box flexDirection="row" gap={1} width="100%">
-                                    <text
-                                        fg={sevColor}
-                                        attributes={['bold'] as any}
-                                    >
-                                        [{m.severity.toUpperCase()}]
-                                    </text>
-                                    <text fg={colors.text}>
-                                        [{m.file}:{m.line}](file://
-                                        {path.isAbsolute(m.file)
-                                            ? m.file
-                                            : path.resolve(process.cwd(), m.file)}
-                                        #L{m.line})
-                                    </text>
-                                    <text fg={colors.dimSeparator}>({m.type})</text>
-                                </box>
-                                <text paddingLeft={2} fg={colors.dimSeparator}>
-                                    Snippet:{' '}
-                                    <span fg={colors.text}>{m.snippet}</span>
+                flexDirection="column"
+                backgroundColor={colors.surface}
+                width="100%"
+                paddingX={2}
+                paddingY={1}
+            >
+                <text fg={colors.error} attributes={['bold'] as any}>
+                    Security Scan: {secrets.length} secret
+                    {secrets.length > 1 ? 's' : ''} found
+                </text>
+                <text fg={colors.dimSeparator} marginBottom={1}>
+                    Review each finding before staging or committing changes.
+                </text>
+                {secrets.map((m, idx) => {
+                    const sevColor =
+                        m.severity === 'high'
+                            ? colors.error
+                            : m.severity === 'medium'
+                              ? colors.planMode
+                              : colors.info;
+                    return (
+                        <box
+                            key={`secret-${idx}`}
+                            flexDirection="column"
+                            marginBottom={idx === secrets.length - 1 ? 0 : 1}
+                            width="100%"
+                        >
+                            <box flexDirection="row" gap={1} width="100%">
+                                <text
+                                    fg={sevColor}
+                                    attributes={['bold'] as any}
+                                >
+                                    [{m.severity.toUpperCase()}]
                                 </text>
+                                <text fg={colors.text}>
+                                    [{m.file}:{m.line}](file://
+                                    {path.isAbsolute(m.file)
+                                        ? m.file
+                                        : path.resolve(process.cwd(), m.file)}
+                                    #L{m.line})
+                                </text>
+                                <text fg={colors.dimSeparator}>({m.type})</text>
                             </box>
-                        );
-                    })}
-                </box>
+                            <text paddingLeft={2} fg={colors.dimSeparator}>
+                                Snippet:{' '}
+                                <span fg={colors.text}>{m.snippet}</span>
+                            </text>
+                        </box>
+                    );
+                })}
+            </box>
         </box>
     );
 }
@@ -368,58 +401,63 @@ export function ProfileCodeBlock({
     const maxOps = Math.max(...allItems.map((i) => i.opsPerSec || 1));
 
     return (
-        <box paddingLeft={2} paddingRight={2} flexDirection="column" width="100%">
+        <box
+            paddingLeft={2}
+            paddingRight={2}
+            flexDirection="column"
+            width="100%"
+        >
             <box
-                    flexDirection="column"
-                    backgroundColor={colors.surface}
-                    width="100%"
-                    paddingX={2}
-                    paddingY={1}
-                >
-                    <text fg={colors.info} attributes={['bold'] as any}>
-                        Profiling Results ({durationMs}ms)
-                    </text>
-                    <text fg={colors.dimSeparator} marginBottom={1}>
-                        {summary}
-                    </text>
-                    <box flexDirection="column" width="100%">
-                        {allItems.slice(0, 5).map((item, idx) => {
-                            const ratio = item.opsPerSec / maxOps;
-                            const barLength = Math.max(1, Math.round(ratio * 10));
-                            const bar =
-                                '█'.repeat(barLength) + '░'.repeat(10 - barLength);
-                            const displayName =
-                                item.name.length > 18
-                                    ? item.name.slice(0, 15) + '...'
-                                    : item.name;
-                            return (
-                                <box
-                                    key={`perf-${idx}`}
-                                    flexDirection="row"
-                                    gap={2}
-                                    width="100%"
-                                >
-                                    <text fg={colors.text}>
-                                        {displayName.padEnd(20)}
-                                    </text>
-                                    <text fg={colors.primary}>
-                                        {Math.round(item.opsPerSec)
-                                            .toLocaleString()
-                                            .padStart(12)}{' '}
-                                        ops/s
-                                    </text>
-                                    <text fg={colors.dimSeparator}>
-                                        [{bar}]{' '}
-                                        {Math.round(
-                                            item.avgTimeNs / 1000,
-                                        ).toLocaleString()}{' '}
-                                        µs
-                                    </text>
-                                </box>
-                            );
-                        })}
-                    </box>
+                flexDirection="column"
+                backgroundColor={colors.surface}
+                width="100%"
+                paddingX={2}
+                paddingY={1}
+            >
+                <text fg={colors.info} attributes={['bold'] as any}>
+                    Profiling Results ({durationMs}ms)
+                </text>
+                <text fg={colors.dimSeparator} marginBottom={1}>
+                    {summary}
+                </text>
+                <box flexDirection="column" width="100%">
+                    {allItems.slice(0, 5).map((item, idx) => {
+                        const ratio = item.opsPerSec / maxOps;
+                        const barLength = Math.max(1, Math.round(ratio * 10));
+                        const bar =
+                            '█'.repeat(barLength) + '░'.repeat(10 - barLength);
+                        const displayName =
+                            item.name.length > 18
+                                ? item.name.slice(0, 15) + '...'
+                                : item.name;
+                        return (
+                            <box
+                                key={`perf-${idx}`}
+                                flexDirection="row"
+                                gap={2}
+                                width="100%"
+                            >
+                                <text fg={colors.text}>
+                                    {displayName.padEnd(20)}
+                                </text>
+                                <text fg={colors.primary}>
+                                    {Math.round(item.opsPerSec)
+                                        .toLocaleString()
+                                        .padStart(12)}{' '}
+                                    ops/s
+                                </text>
+                                <text fg={colors.dimSeparator}>
+                                    [{bar}]{' '}
+                                    {Math.round(
+                                        item.avgTimeNs / 1000,
+                                    ).toLocaleString()}{' '}
+                                    µs
+                                </text>
+                            </box>
+                        );
+                    })}
                 </box>
+            </box>
         </box>
     );
 }
@@ -445,50 +483,55 @@ export function GitLogTimelineBlock({
     if (!commits || commits.length === 0) return null;
 
     return (
-        <box paddingLeft={2} paddingRight={2} flexDirection="column" width="100%">
+        <box
+            paddingLeft={2}
+            paddingRight={2}
+            flexDirection="column"
+            width="100%"
+        >
             <box
-                    flexDirection="column"
-                    backgroundColor={colors.surface}
-                    width="100%"
-                    paddingX={2}
-                    paddingY={1}
-                >
-                    {commits.map((commit, idx) => {
-                        const isLast = idx === commits.length - 1;
-                        return (
-                            <box
-                                key={`commit-${idx}`}
-                                flexDirection="column"
-                                width="100%"
-                            >
+                flexDirection="column"
+                backgroundColor={colors.surface}
+                width="100%"
+                paddingX={2}
+                paddingY={1}
+            >
+                {commits.map((commit, idx) => {
+                    const isLast = idx === commits.length - 1;
+                    return (
+                        <box
+                            key={`commit-${idx}`}
+                            flexDirection="column"
+                            width="100%"
+                        >
+                            <box flexDirection="row" gap={1} width="100%">
+                                <text fg={colors.dimSeparator}>
+                                    {idx === 0 ? '┯' : '┠'}
+                                </text>
+                                <text fg={colors.primary}>
+                                    {commit.hash.slice(0, 7)}
+                                </text>
+                                <text fg={colors.text}>- {commit.message}</text>
+                            </box>
+                            {commit.author && (
                                 <box flexDirection="row" gap={1} width="100%">
                                     <text fg={colors.dimSeparator}>
-                                        {idx === 0 ? '┯' : '┠'}
+                                        {isLast ? ' ' : '┃'}
                                     </text>
-                                    <text fg={colors.primary}>
-                                        {commit.hash.slice(0, 7)}
+                                    <text fg={colors.dimSeparator}>
+                                        Author: {commit.author} ({commit.date})
                                     </text>
-                                    <text fg={colors.text}>- {commit.message}</text>
                                 </box>
-                                {commit.author && (
-                                    <box flexDirection="row" gap={1} width="100%">
-                                        <text fg={colors.dimSeparator}>
-                                            {isLast ? ' ' : '┃'}
-                                        </text>
-                                        <text fg={colors.dimSeparator}>
-                                            Author: {commit.author} ({commit.date})
-                                        </text>
-                                    </box>
-                                )}
-                                {!isLast && (
-                                    <box flexDirection="row" width="100%">
-                                        <text fg={colors.dimSeparator}>┃</text>
-                                    </box>
-                                )}
-                            </box>
-                        );
-                    })}
-                </box>
+                            )}
+                            {!isLast && (
+                                <box flexDirection="row" width="100%">
+                                    <text fg={colors.dimSeparator}>┃</text>
+                                </box>
+                            )}
+                        </box>
+                    );
+                })}
+            </box>
         </box>
     );
 }
