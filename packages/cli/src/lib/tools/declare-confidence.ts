@@ -41,9 +41,7 @@ export const CONFIDENCE_LEVELS = {
     },
 } as const;
 
-export async function declareConfidenceTool(
-    input: unknown,
-): Promise<{
+export async function declareConfidenceTool(input: unknown): Promise<{
     status: string;
     confidence: string;
     harnessResponse: string;

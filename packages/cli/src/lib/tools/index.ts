@@ -77,6 +77,7 @@ export { semanticSearchTool } from './semantic-search';
 export { profileCodeTool } from './profile-code';
 export { suggestToolTool, listToolCategoriesTool } from './suggest-tool';
 export { declareConfidenceTool } from './declare-confidence';
+export { shouldDelegateTool } from './should-delegate';
 
 type ToolFn =
     | ((input: unknown) => Promise<unknown>)
@@ -198,8 +199,12 @@ const LAZY_TOOLS: Record<string, LazyToolLoader> = {
         import('./orchestrator').then((m) => m.getTaskStatusTool),
     cancelTask: () => import('./orchestrator').then((m) => m.cancelTaskTool),
     suggestTool: () => import('./suggest-tool').then((m) => m.suggestToolTool),
-    listToolCategories: () => import('./suggest-tool').then((m) => m.listToolCategoriesTool),
-    declareConfidence: () => import('./declare-confidence').then((m) => m.declareConfidenceTool),
+    listToolCategories: () =>
+        import('./suggest-tool').then((m) => m.listToolCategoriesTool),
+    declareConfidence: () =>
+        import('./declare-confidence').then((m) => m.declareConfidenceTool),
+    shouldDelegate: () =>
+        import('./should-delegate').then((m) => m.shouldDelegateTool),
 };
 
 const toolCache = new Map<string, ToolFn>();
