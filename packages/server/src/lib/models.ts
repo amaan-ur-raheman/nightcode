@@ -130,6 +130,22 @@ async function resolveSupportedChatModel(
         case 'local':
         case 'lightningai':
         case 'cloudflare':
+        case 'zenmux':
+        case 'mistral':
+        case 'qwen':
+        case 'perplexity':
+        case 'cohere':
+        case 'huggingface':
+        case 'zhipu':
+        case 'moonshot':
+        case 'lmstudio':
+        case 'xai':
+        case 'minimax':
+        case 'sambanova':
+        case 'siliconflow':
+        case 'deepinfra':
+        case 'novita':
+        case 'nebius':
             return resolveThirdPartyModel(model, subagent, apiKey);
         default:
             const _exhaustive: never = provider;
@@ -157,7 +173,23 @@ function normalizeModelId(modelId: string): string {
         modelId.startsWith('google/') ||
         modelId.startsWith('kilo/') ||
         modelId.startsWith('local/') ||
-        modelId.startsWith('cloudflare/')
+        modelId.startsWith('cloudflare/') ||
+        modelId.startsWith('zenmux/') ||
+        modelId.startsWith('mistral/') ||
+        modelId.startsWith('qwen/') ||
+        modelId.startsWith('perplexity/') ||
+        modelId.startsWith('cohere/') ||
+        modelId.startsWith('huggingface/') ||
+        modelId.startsWith('zhipu/') ||
+        modelId.startsWith('moonshot/') ||
+        modelId.startsWith('lmstudio/') ||
+        modelId.startsWith('xai/') ||
+        modelId.startsWith('minimax/') ||
+        modelId.startsWith('sambanova/') ||
+        modelId.startsWith('siliconflow/') ||
+        modelId.startsWith('deepinfra/') ||
+        modelId.startsWith('novita/') ||
+        modelId.startsWith('nebius/')
     ) {
         return modelId;
     }

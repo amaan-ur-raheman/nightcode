@@ -348,6 +348,44 @@ async function fetchLocalOllama(): Promise<DynamicModel[]> {
     }
 }
 
+// ── LM Studio (local, no auth required) ──
+
+async function fetchLMStudio(): Promise<DynamicModel[]> {
+    try {
+        const res = await fetch('http://localhost:1234/v1/models', {
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(3000),
+        });
+        if (!res.ok) return [];
+        const data = (await res.json()) as any;
+        const models: any[] = data?.data ?? [];
+        return models
+            .filter((m) => {
+                const id = m.id ?? '';
+                return (
+                    !id.includes('embedding') &&
+                    !id.includes('rerank') &&
+                    !id.includes('moderation') &&
+                    !id.includes('image') &&
+                    !id.includes('tts') &&
+                    !id.includes('stt')
+                );
+            })
+            .map((m) => ({
+                id: `lmstudio/${m.id}` as string,
+                displayName: deriveDisplayName(m.id),
+                provider: 'lmstudio' as SupportedProvider,
+                pricing: {
+                    inputUsdPerMillionTokens: 0,
+                    outputUsdPerMillionTokens: 0,
+                },
+            }));
+    } catch (err) {
+        // LM Studio is local — don't spam errors if it's not running
+        return [];
+    }
+}
+
 // ── Cloudflare Workers AI (requires Account ID + API key) ──
 
 async function fetchCloudflare(clientKey?: string): Promise<DynamicModel[]> {
@@ -472,6 +510,157 @@ const FETCHERS: Array<{ provider: SupportedProvider; fetch: ProviderFetcher }> =
                 ),
         },
         { provider: 'cloudflare', fetch: (key) => fetchCloudflare(key) },
+        {
+            provider: 'zenmux',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'ZenMux',
+                    'https://zenmux.ai/api',
+                    key ?? process.env.ZENMUX_API_KEY ?? '',
+                    'zenmux',
+                ),
+        },
+        {
+            provider: 'mistral',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Mistral AI',
+                    'https://api.mistral.ai',
+                    key ?? process.env.MISTRAL_API_KEY ?? '',
+                    'mistral',
+                ),
+        },
+        {
+            provider: 'qwen',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Qwen (DashScope)',
+                    'https://dashscope.aliyuncs.com/compatible-mode',
+                    key ?? process.env.DASHSCOPE_API_KEY ?? '',
+                    'qwen',
+                ),
+        },
+        {
+            provider: 'perplexity',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Perplexity AI',
+                    'https://api.perplexity.ai',
+                    key ?? process.env.PERPLEXITY_API_KEY ?? '',
+                    'perplexity',
+                ),
+        },
+        {
+            provider: 'cohere',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Cohere',
+                    'https://api.cohere.com',
+                    key ?? process.env.COHERE_API_KEY ?? '',
+                    'cohere',
+                ),
+        },
+        {
+            provider: 'huggingface',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Hugging Face',
+                    'https://api-inference.huggingface.co',
+                    key ?? process.env.HF_API_KEY ?? '',
+                    'huggingface',
+                ),
+        },
+        {
+            provider: 'zhipu',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Zhipu AI',
+                    'https://api.z.ai/api/openai',
+                    key ?? process.env.ZHIPU_API_KEY ?? '',
+                    'zhipu',
+                ),
+        },
+        {
+            provider: 'moonshot',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Moonshot (Kimi)',
+                    'https://api.moonshot.cn',
+                    key ?? process.env.MOONSHOT_API_KEY ?? '',
+                    'moonshot',
+                ),
+        },
+        { provider: 'lmstudio', fetch: fetchLMStudio },
+        {
+            provider: 'xai',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'xAI',
+                    'https://api.x.ai',
+                    key ?? process.env.XAI_API_KEY ?? '',
+                    'xai',
+                ),
+        },
+        {
+            provider: 'minimax',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'MiniMax',
+                    'https://api.minimax.io',
+                    key ?? process.env.MINIMAX_API_KEY ?? '',
+                    'minimax',
+                ),
+        },
+        {
+            provider: 'sambanova',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'SambaNova',
+                    'https://api.sambanova.ai',
+                    key ?? process.env.SAMBANOVA_API_KEY ?? '',
+                    'sambanova',
+                ),
+        },
+        {
+            provider: 'siliconflow',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'SiliconFlow',
+                    'https://api.siliconflow.cn',
+                    key ?? process.env.SILICONFLOW_API_KEY ?? '',
+                    'siliconflow',
+                ),
+        },
+        {
+            provider: 'deepinfra',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'DeepInfra',
+                    'https://api.deepinfra.com/v1/openai',
+                    key ?? process.env.DEEPINFRA_API_TOKEN ?? '',
+                    'deepinfra',
+                ),
+        },
+        {
+            provider: 'novita',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Novita AI',
+                    'https://api.novita.ai/v3/openai',
+                    key ?? process.env.NOVITA_API_KEY ?? '',
+                    'novita',
+                ),
+        },
+        {
+            provider: 'nebius',
+            fetch: (key) =>
+                fetchOpenAICompatible(
+                    'Nebius',
+                    'https://api.studio.nebius.ai',
+                    key ?? process.env.NEBIUS_API_KEY ?? '',
+                    'nebius',
+                ),
+        },
     ];
 
 export async function fetchAllModels(

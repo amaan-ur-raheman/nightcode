@@ -204,6 +204,118 @@ const CLOUDFLARE_PROVIDER: ProviderConfig = {
     models: [],
 };
 
+const ZENMUX_PROVIDER: ProviderConfig = {
+    name: 'zenmux',
+    baseUrl: 'https://zenmux.ai/api/v1',
+    apiKey: '',
+    models: [],
+};
+
+const MISTRAL_PROVIDER: ProviderConfig = {
+    name: 'mistral',
+    baseUrl: 'https://api.mistral.ai/v1',
+    apiKey: '',
+    models: [],
+};
+
+const QWEN_PROVIDER: ProviderConfig = {
+    name: 'qwen',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    apiKey: '',
+    models: [],
+};
+
+const PERPLEXITY_PROVIDER: ProviderConfig = {
+    name: 'perplexity',
+    baseUrl: 'https://api.perplexity.ai',
+    apiKey: '',
+    models: [],
+};
+
+const COHERE_PROVIDER: ProviderConfig = {
+    name: 'cohere',
+    baseUrl: 'https://api.cohere.com/v2',
+    apiKey: '',
+    models: [],
+};
+
+const HUGGINGFACE_PROVIDER: ProviderConfig = {
+    name: 'huggingface',
+    baseUrl: 'https://api-inference.huggingface.co/v1',
+    apiKey: '',
+    models: [],
+};
+
+const ZHIPU_PROVIDER: ProviderConfig = {
+    name: 'zhipu',
+    baseUrl: 'https://api.z.ai/api/openai/v1',
+    apiKey: '',
+    models: [],
+};
+
+const MOONSHOT_PROVIDER: ProviderConfig = {
+    name: 'moonshot',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    apiKey: '',
+    models: [],
+};
+
+const LMSTUDIO_PROVIDER: ProviderConfig = {
+    name: 'lmstudio',
+    baseUrl: 'http://localhost:1234/v1',
+    apiKey: 'lm-studio',
+    models: [],
+};
+
+const XAI_PROVIDER: ProviderConfig = {
+    name: 'xai',
+    baseUrl: 'https://api.x.ai/v1',
+    apiKey: '',
+    models: modelsForProvider('xai'),
+};
+
+const MINIMAX_PROVIDER: ProviderConfig = {
+    name: 'minimax',
+    baseUrl: 'https://api.minimax.io/v1',
+    apiKey: '',
+    models: modelsForProvider('minimax'),
+};
+
+const SAMBANOVA_PROVIDER: ProviderConfig = {
+    name: 'sambanova',
+    baseUrl: 'https://api.sambanova.ai/v1',
+    apiKey: '',
+    models: modelsForProvider('sambanova'),
+};
+
+const SILICONFLOW_PROVIDER: ProviderConfig = {
+    name: 'siliconflow',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    apiKey: '',
+    models: modelsForProvider('siliconflow'),
+};
+
+const DEEPINFRA_PROVIDER: ProviderConfig = {
+    name: 'deepinfra',
+    baseUrl: 'https://api.deepinfra.com/v1/openai',
+    apiKey: '',
+    models: modelsForProvider('deepinfra'),
+};
+
+const NOVITA_PROVIDER: ProviderConfig = {
+    name: 'novita',
+    baseUrl: 'https://api.novita.ai/v3/openai',
+    apiKey: '',
+    models: modelsForProvider('novita'),
+};
+
+const NEBIUS_PROVIDER: ProviderConfig = {
+    name: 'nebius',
+    baseUrl: 'https://api.studio.nebius.ai/v1',
+    apiKey: '',
+    models: modelsForProvider('nebius'),
+};
+
 const ALL_PROVIDERS: ProviderConfig[] = [
     NIM_PROVIDER,
     ANTHROPIC_PROVIDER,
@@ -220,6 +332,22 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     LOCAL_PROVIDER,
     LIGHTNINGAI_PROVIDER,
     CLOUDFLARE_PROVIDER,
+    ZENMUX_PROVIDER,
+    MISTRAL_PROVIDER,
+    QWEN_PROVIDER,
+    PERPLEXITY_PROVIDER,
+    COHERE_PROVIDER,
+    HUGGINGFACE_PROVIDER,
+    ZHIPU_PROVIDER,
+    MOONSHOT_PROVIDER,
+    LMSTUDIO_PROVIDER,
+    XAI_PROVIDER,
+    MINIMAX_PROVIDER,
+    SAMBANOVA_PROVIDER,
+    SILICONFLOW_PROVIDER,
+    DEEPINFRA_PROVIDER,
+    NOVITA_PROVIDER,
+    NEBIUS_PROVIDER,
 ];
 
 // Provider prefix mapping for dynamic model IDs
@@ -236,6 +364,22 @@ const PROVIDER_PREFIXES: Record<string, string> = {
     'local/': 'local',
     'lightningai/': 'lightningai',
     'cloudflare/': 'cloudflare',
+    'zenmux/': 'zenmux',
+    'mistral/': 'mistral',
+    'qwen/': 'qwen',
+    'perplexity/': 'perplexity',
+    'cohere/': 'cohere',
+    'huggingface/': 'huggingface',
+    'zhipu/': 'zhipu',
+    'moonshot/': 'moonshot',
+    'lmstudio/': 'lmstudio',
+    'xai/': 'xai',
+    'minimax/': 'minimax',
+    'sambanova/': 'sambanova',
+    'siliconflow/': 'siliconflow',
+    'deepinfra/': 'deepinfra',
+    'novita/': 'novita',
+    'nebius/': 'nebius',
 };
 
 function findProviderForModel(modelId: string): ProviderConfig | undefined {
