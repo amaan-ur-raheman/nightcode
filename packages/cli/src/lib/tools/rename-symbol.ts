@@ -1,15 +1,25 @@
 import { readFile, writeFile } from 'fs/promises';
 import { resolve, relative } from 'path';
+import { existsSync } from 'fs';
 import { toolInputSchemas } from '@nightcode/shared';
 import { globCache } from '../glob-cache';
 import { undoManager } from '../undo-manager';
 import { generateDiff, formatDiff } from '../diff-utils';
+import { LspClient } from '../lsp-client';
 
 interface RenameMatch {
     line: number;
     oldName: string;
     newName: string;
     context: string;
+}
+
+interface TextEdit {
+    range: {
+        start: { line: number; character: number };
+        end: { line: number; character: number };
+    };
+    newText: string;
 }
 
 /**
@@ -120,6 +130,38 @@ function findRenamesInLine(
     return null;
 }
 
+/**
+ * Apply workspace text edits sorted in reverse order of coordinates (line, column)
+ * to prevent changing offsets of preceding edits in the text.
+ */
+function applyWorkspaceEdits(content: string, edits: TextEdit[]): string {
+    const lines = content.split('\n');
+    const sorted = [...edits].sort((a, b) => {
+        if (b.range.start.line !== a.range.start.line) {
+            return b.range.start.line - a.range.start.line;
+        }
+        return b.range.start.character - a.range.start.character;
+    });
+
+    for (const edit of sorted) {
+        const { start, end } = edit.range;
+        const line = lines[start.line];
+        if (line === undefined) continue;
+
+        if (start.line === end.line) {
+            const before = line.slice(0, start.character);
+            const after = line.slice(end.character);
+            lines[start.line] = before + edit.newText + after;
+        } else {
+            const first = lines[start.line]!.slice(0, start.character);
+            const last = lines[end.line]!.slice(end.character);
+            lines[start.line] = first + edit.newText + last;
+            lines.splice(start.line + 1, end.line - start.line);
+        }
+    }
+    return lines.join('\n');
+}
+
 export async function renameSymbolTool(input: unknown) {
     const {
         oldName,
@@ -146,45 +188,143 @@ export async function renameSymbolTool(input: unknown) {
     const results: { file: string; matches: RenameMatch[] }[] = [];
     const diffs: { path: string; diff: string }[] = [];
 
+    // --- LSP WorkspaceEdit Execution ---
+    let lspUsed = false;
+    let declFile: string | null = null;
+    let declLine = 0;
+    let declChar = 0;
+
+    // First scan files to locate candidate declaration position of the old symbol
     for (const file of files) {
         const resolved = resolve(cwd, file);
-        const relPath = relative(cwd, resolved);
-        if (relPath.startsWith('..')) continue;
-
+        if (!existsSync(resolved)) continue;
         const content = await readFile(resolved, 'utf-8');
         const lines = content.split('\n');
-        const fileMatches: RenameMatch[] = [];
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (line === undefined) continue;
-            const match = findRenamesInLine(line, i + 1, oldName, newName);
-            if (match) {
-                fileMatches.push(match);
-                lines[i] = line.replace(
-                    new RegExp(
-                        `\\b${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-                        'g',
-                    ),
-                    newName,
-                );
+        for (let idx = 0; idx < lines.length; idx++) {
+            const line = lines[idx]!;
+            const escaped = oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (
+                SYMBOL_PATTERNS.variableDecl(escaped).test(line) ||
+                SYMBOL_PATTERNS.functionDecl(escaped).test(line) ||
+                SYMBOL_PATTERNS.classDecl(escaped).test(line) ||
+                SYMBOL_PATTERNS.exportDecl(escaped).test(line)
+            ) {
+                declFile = resolved;
+                declLine = idx + 1;
+                declChar = line.indexOf(oldName);
+                break;
             }
         }
+        if (declFile) break;
+    }
 
-        if (fileMatches.length > 0) {
-            results.push({ file: relPath, matches: fileMatches });
-
-            const updatedContent = lines.join('\n');
-            const diffLines = generateDiff(content, updatedContent);
-            diffs.push({ path: relPath, diff: formatDiff(diffLines) });
-
-            if (!dryRun) {
-                await undoManager.backup(
-                    resolved,
-                    'renameSymbol',
-                    `Rename ${oldName} → ${newName} in ${relPath}`,
+    if (declFile) {
+        const lsp = new LspClient(cwd);
+        const started = await lsp.start();
+        if (started) {
+            try {
+                const workspaceEdit = await lsp.rename(
+                    declFile,
+                    declLine,
+                    declChar,
+                    newName,
                 );
-                await writeFile(resolved, updatedContent, 'utf-8');
+                if (workspaceEdit && workspaceEdit.changes) {
+                    const changes = workspaceEdit.changes as Record<
+                        string,
+                        TextEdit[]
+                    >;
+                    for (const [uri, edits] of Object.entries(changes)) {
+                        const filePath = uri.startsWith('file://')
+                            ? uri.slice(7)
+                            : uri;
+                        const relPath = relative(cwd, filePath);
+
+                        if (relPath.startsWith('..') || !existsSync(filePath))
+                            continue;
+                        const content = await readFile(filePath, 'utf-8');
+                        const updatedContent = applyWorkspaceEdits(
+                            content,
+                            edits,
+                        );
+
+                        const fileMatches: RenameMatch[] = edits.map(
+                            (edit) => ({
+                                line: edit.range.start.line + 1,
+                                oldName,
+                                newName,
+                                context: edit.newText,
+                            }),
+                        );
+
+                        results.push({ file: relPath, matches: fileMatches });
+                        const diffLines = generateDiff(content, updatedContent);
+                        diffs.push({
+                            path: relPath,
+                            diff: formatDiff(diffLines),
+                        });
+
+                        if (!dryRun) {
+                            await undoManager.backup(
+                                filePath,
+                                'renameSymbol',
+                                `LSP Rename ${oldName} → ${newName} in ${relPath}`,
+                            );
+                            await writeFile(filePath, updatedContent, 'utf-8');
+                        }
+                    }
+                    lspUsed = true;
+                }
+            } catch (err) {
+                // Fail silently and fall back to regex
+            } finally {
+                await lsp.shutdown();
+            }
+        }
+    }
+
+    // --- Fallback Regex Execution if LSP is uninitialized/fails ---
+    if (!lspUsed) {
+        for (const file of files) {
+            const resolved = resolve(cwd, file);
+            const relPath = relative(cwd, resolved);
+            if (relPath.startsWith('..') || !existsSync(resolved)) continue;
+
+            const content = await readFile(resolved, 'utf-8');
+            const lines = content.split('\n');
+            const fileMatches: RenameMatch[] = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line === undefined) continue;
+                const match = findRenamesInLine(line, i + 1, oldName, newName);
+                if (match) {
+                    fileMatches.push(match);
+                    lines[i] = line.replace(
+                        new RegExp(
+                            `\\b${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+                            'g',
+                        ),
+                        newName,
+                    );
+                }
+            }
+
+            if (fileMatches.length > 0) {
+                results.push({ file: relPath, matches: fileMatches });
+
+                const updatedContent = lines.join('\n');
+                const diffLines = generateDiff(content, updatedContent);
+                diffs.push({ path: relPath, diff: formatDiff(diffLines) });
+
+                if (!dryRun) {
+                    await undoManager.backup(
+                        resolved,
+                        'renameSymbol',
+                        `Regex Rename ${oldName} → ${newName} in ${relPath}`,
+                    );
+                    await writeFile(resolved, updatedContent, 'utf-8');
+                }
             }
         }
     }
