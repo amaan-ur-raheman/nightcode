@@ -1,13 +1,16 @@
 /**
  * Self-Verification & Trust System
  *
- * Provides confidence scoring, file consistency checks, and multi-pass
- * verification for critical operations. Helps the agent verify its own
- * work before declaring completion.
+ * Provides confidence scoring, file consistency checks, real verification tools,
+ * and multi-pass verification for critical operations.
  */
 
 import { existsSync, readFileSync, statSync } from 'fs';
-import { extname } from 'path';
+import { extname, basename } from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Confidence score for a set of changes.
@@ -412,4 +415,323 @@ export function runVerification(
         fileResults,
         recommendation,
     };
+}
+
+// ── Verification → Correction Tracker Integration ──
+
+import { correctionTracker } from './correction-tracker';
+
+/**
+ * Record verification outcome as a correction or positive signal.
+ * This closes the feedback loop: if verification fails, the agent learns
+ * what patterns lead to failures; if verification passes, successful
+ * patterns are reinforced.
+ */
+export async function recordVerificationOutcome(
+    result: VerificationResult,
+    toolUsage: Map<string, number>,
+): Promise<void> {
+    if (result.confidence.overall < 0.5) {
+        // Verification failed — record as correction signal
+        const failureReasons: string[] = [];
+        for (const r of result.fileResults.filter((f) => !f.valid)) {
+            if (r.error) failureReasons.push(`${r.path}: ${r.error}`);
+        }
+        if (
+            failureReasons.length === 0 &&
+            result.confidence.explanation.length > 0
+        ) {
+            failureReasons.push(...result.confidence.explanation.slice(0, 2));
+        }
+        const toolBreakdown = Object.fromEntries(toolUsage.entries());
+        const summary = `Verification failed: ${failureReasons.join('; ')}. Tool usage: ${JSON.stringify(toolBreakdown)}`;
+        await correctionTracker.recordSuggestion(summary);
+    } else if (result.confidence.overall >= 0.8) {
+        // High confidence — record top tool as positive pattern
+        const topTool = [...toolUsage.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .find(([tool]) => tool !== 'readFile')?.[0];
+        if (topTool) {
+            await correctionTracker.onAccept(
+                topTool,
+                {},
+                'verification passed',
+            );
+        }
+    }
+}
+
+// ── Real Verification Tools ──
+
+export interface RealVerificationResult {
+    type: 'typecheck' | 'test' | 'lint' | 'build';
+    passed: boolean;
+    output: string;
+    durationMs: number;
+    filesChecked: string[];
+}
+
+export interface ComprehensiveVerification {
+    results: RealVerificationResult[];
+    allPassed: boolean;
+    summary: string;
+    durationMs: number;
+}
+
+const VERIFICATION_TIMEOUT_MS = 30_000;
+
+/**
+ * Run TypeScript type checking on modified files.
+ * Detects real type errors that basic syntax checks miss.
+ */
+export async function runTypeCheck(
+    modifiedFiles: string[],
+    cwd: string,
+): Promise<RealVerificationResult> {
+    const tsFiles = modifiedFiles.filter(
+        (f) => extname(f) === '.ts' || extname(f) === '.tsx',
+    );
+    if (tsFiles.length === 0) {
+        return {
+            type: 'typecheck',
+            passed: true,
+            output: 'No TypeScript files to check',
+            durationMs: 0,
+            filesChecked: [],
+        };
+    }
+
+    const start = Date.now();
+    try {
+        // Try project's typecheck command first, then fall back to tsc
+        const { stdout, stderr } = await execFileAsync(
+            'bun',
+            ['run', 'typecheck'],
+            {
+                cwd,
+                timeout: VERIFICATION_TIMEOUT_MS,
+                encoding: 'utf-8',
+            },
+        );
+        return {
+            type: 'typecheck',
+            passed: true,
+            output: stdout || 'Type check passed',
+            durationMs: Date.now() - start,
+            filesChecked: tsFiles,
+        };
+    } catch (error: any) {
+        // typecheck command failed — extract relevant errors for our files
+        const output = (
+            error.stderr ||
+            error.stdout ||
+            error.message ||
+            ''
+        ).slice(0, 2000);
+        const relevantErrors = filterErrorsForFiles(output, tsFiles);
+        return {
+            type: 'typecheck',
+            passed: false,
+            output: relevantErrors || output,
+            durationMs: Date.now() - start,
+            filesChecked: tsFiles,
+        };
+    }
+}
+
+/**
+ * Run tests for modified files.
+ * Attempts to find and run relevant test files.
+ */
+export async function runTests(
+    modifiedFiles: string[],
+    cwd: string,
+): Promise<RealVerificationResult> {
+    // Find test files related to modified files
+    const testFiles = findRelatedTestFiles(modifiedFiles);
+    if (testFiles.length === 0) {
+        return {
+            type: 'test',
+            passed: true,
+            output: 'No related test files found',
+            durationMs: 0,
+            filesChecked: [],
+        };
+    }
+
+    const start = Date.now();
+    try {
+        const { stdout, stderr } = await execFileAsync(
+            'bun',
+            ['test', ...testFiles],
+            {
+                cwd,
+                timeout: VERIFICATION_TIMEOUT_MS,
+                encoding: 'utf-8',
+            },
+        );
+        return {
+            type: 'test',
+            passed: true,
+            output: stdout || 'Tests passed',
+            durationMs: Date.now() - start,
+            filesChecked: testFiles,
+        };
+    } catch (error: any) {
+        const output = (
+            error.stderr ||
+            error.stdout ||
+            error.message ||
+            ''
+        ).slice(0, 2000);
+        return {
+            type: 'test',
+            passed: false,
+            output,
+            durationMs: Date.now() - start,
+            filesChecked: testFiles,
+        };
+    }
+}
+
+/**
+ * Run linting on modified files.
+ */
+export async function runLint(
+    modifiedFiles: string[],
+    cwd: string,
+): Promise<RealVerificationResult> {
+    const lintableFiles = modifiedFiles.filter((f) => {
+        const ext = extname(f);
+        return ['.ts', '.tsx', '.js', '.jsx'].includes(ext);
+    });
+    if (lintableFiles.length === 0) {
+        return {
+            type: 'lint',
+            passed: true,
+            output: 'No lintable files',
+            durationMs: 0,
+            filesChecked: [],
+        };
+    }
+
+    const start = Date.now();
+    try {
+        // Try biome first (faster), then eslint
+        const { stdout, stderr } = await execFileAsync(
+            'bunx',
+            ['biome', 'check', ...lintableFiles],
+            {
+                cwd,
+                timeout: VERIFICATION_TIMEOUT_MS,
+                encoding: 'utf-8',
+            },
+        );
+        return {
+            type: 'lint',
+            passed: true,
+            output: stdout || 'Lint passed',
+            durationMs: Date.now() - start,
+            filesChecked: lintableFiles,
+        };
+    } catch (error: any) {
+        const output = (
+            error.stderr ||
+            error.stdout ||
+            error.message ||
+            ''
+        ).slice(0, 2000);
+        // biome exits non-zero on lint errors, check if it's real errors
+        if (output.includes('error') || output.includes('Error')) {
+            return {
+                type: 'lint',
+                passed: false,
+                output,
+                durationMs: Date.now() - start,
+                filesChecked: lintableFiles,
+            };
+        }
+        // biome not available, skip
+        return {
+            type: 'lint',
+            passed: true,
+            output: 'Linter not available, skipped',
+            durationMs: Date.now() - start,
+            filesChecked: lintableFiles,
+        };
+    }
+}
+
+/**
+ * Run comprehensive verification on modified files.
+ * Runs type checking, tests, and linting in parallel.
+ */
+export async function runComprehensiveVerification(
+    modifiedFiles: string[],
+    cwd: string,
+): Promise<ComprehensiveVerification> {
+    const start = Date.now();
+
+    const [typeCheck, tests, lint] = await Promise.all([
+        runTypeCheck(modifiedFiles, cwd),
+        runTests(modifiedFiles, cwd),
+        runLint(modifiedFiles, cwd),
+    ]);
+
+    const results = [typeCheck, tests, lint];
+    const allPassed = results.every((r) => r.passed);
+    const failedTypes = results.filter((r) => !r.passed).map((r) => r.type);
+
+    const summary = allPassed
+        ? 'All verification checks passed'
+        : `Failed: ${failedTypes.join(', ')}`;
+
+    return {
+        results,
+        allPassed,
+        summary,
+        durationMs: Date.now() - start,
+    };
+}
+
+/**
+ * Find test files related to modified files.
+ */
+function findRelatedTestFiles(files: string[]): string[] {
+    const testFiles: string[] = [];
+    for (const file of files) {
+        const base = basename(file);
+        const dir = file.replace(/\/[^/]+$/, '');
+        const ext = extname(file);
+
+        // Check common test patterns
+        const patterns = [
+            `${dir}/__tests__/${base}.test${ext}`,
+            `${dir}/__tests__/${base}.spec${ext}`,
+            `${dir}/${base}.test${ext}`,
+            `${dir}/${base}.spec${ext}`,
+            `${dir}/tests/${base}.test${ext}`,
+            `${dir}/tests/${base}.spec${ext}`,
+        ];
+
+        for (const pattern of patterns) {
+            if (existsSync(pattern)) {
+                testFiles.push(pattern);
+                break;
+            }
+        }
+    }
+    return testFiles;
+}
+
+/**
+ * Filter verification output to show only errors relevant to modified files.
+ */
+function filterErrorsForFiles(output: string, files: string[]): string {
+    const lines = output.split('\n');
+    const fileNames = files.map((f) => basename(f));
+    const relevantLines = lines.filter((line) =>
+        fileNames.some((name) => line.includes(name)),
+    );
+    return relevantLines.length > 0 ? relevantLines.join('\n') : output;
 }

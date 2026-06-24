@@ -4,16 +4,18 @@
  * Detects repeated error patterns across tool calls and injects
  * suggestions after 3+ similar errors. Persists to disk so the agent
  * learns from past sessions and avoids repeating the same failures.
+ *
+ * Supports both hardcoded known patterns and dynamically learned patterns
+ * discovered from repeated project-specific errors.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 
 const PATTERN_THRESHOLD = 3;
-const PATTERN_WINDOW_MS = 5 * 60_000;
 const MAX_PATTERNS = 20;
-const MAX_PER_PATTERN = 10;
+const MAX_LEARNED_SUGGESTIONS = 10;
 
 /** Half-life for pattern decay (7 days in ms). */
 const DECAY_HALFLIFE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -24,6 +26,8 @@ interface ErrorEntry {
     count: number;
     lastSuggestionAt: number;
     resolved: boolean;
+    /** Whether this pattern was dynamically learned (not hardcoded). */
+    learned?: boolean;
 }
 
 // Known error patterns and their suggestions
@@ -69,6 +73,7 @@ const ERROR_SUGGESTIONS: Record<string, string> = {
 class ErrorPatternTracker {
     private recentErrors: ErrorEntry[] = [];
     private suggestions: string[] = [];
+    private learnedSuggestions: string[] = [];
     private persistPath: string;
 
     constructor(persistPath?: string) {
@@ -80,39 +85,55 @@ class ErrorPatternTracker {
         this.loadFromDisk();
     }
 
-    private loadFromDisk(): void {
+    private async loadFromDisk(): Promise<void> {
         if (this.persistPath === ':memory:') return;
         try {
             if (existsSync(this.persistPath)) {
+                const { readFileSync } = await import('fs');
                 const raw = readFileSync(this.persistPath, 'utf-8');
-                const data = JSON.parse(raw);
-                if (Array.isArray(data)) {
+                const data = JSON.parse(raw) as {
+                    recentErrors?: ErrorEntry[];
+                    learnedSuggestions?: string[];
+                };
+                if (Array.isArray(data.recentErrors)) {
                     // Filter out decayed entries on load
                     const now = Date.now();
-                    this.recentErrors = data.filter((e) => {
+                    this.recentErrors = data.recentErrors.filter((e) => {
                         const age = now - e.timestamp;
                         const decay = Math.pow(0.5, age / DECAY_HALFLIFE_MS);
                         return decay > 0.01; // prune if < 1% strength
                     });
                 }
+                if (Array.isArray(data.learnedSuggestions)) {
+                    this.learnedSuggestions = data.learnedSuggestions;
+                }
             }
         } catch {
             // Corrupted file, start fresh
             this.recentErrors = [];
+            this.learnedSuggestions = [];
         }
     }
 
-    private saveToDisk(): void {
+    private async saveToDisk(): Promise<void> {
         if (this.persistPath === ':memory:') return;
         try {
             const dir = dirname(this.persistPath);
             if (!existsSync(dir)) {
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                require('fs').mkdirSync(dir, { recursive: true });
+                const { mkdirSync } = await import('fs');
+                mkdirSync(dir, { recursive: true });
             }
+            const { writeFileSync } = await import('fs');
             writeFileSync(
                 this.persistPath,
-                JSON.stringify(this.recentErrors, null, 2),
+                JSON.stringify(
+                    {
+                        recentErrors: this.recentErrors,
+                        learnedSuggestions: this.learnedSuggestions,
+                    },
+                    null,
+                    2,
+                ),
                 'utf-8',
             );
         } catch {
@@ -134,6 +155,7 @@ class ErrorPatternTracker {
 
         // Find or create entry
         let entry = this.recentErrors.find((e) => e.pattern === pattern);
+        const isKnown = pattern in ERROR_SUGGESTIONS;
         if (entry) {
             entry.count++;
             entry.timestamp = now;
@@ -144,11 +166,12 @@ class ErrorPatternTracker {
                 count: 1,
                 lastSuggestionAt: 0,
                 resolved: false,
+                learned: !isKnown,
             };
             this.recentErrors.push(entry);
         }
 
-        // Prune old entries outside the window and decayed entries
+        // Prune decayed entries
         this.recentErrors = this.recentErrors.filter((e) => {
             if (e.pattern === pattern) return true;
             const age = now - e.timestamp;
@@ -183,6 +206,15 @@ class ErrorPatternTracker {
                 if (this.suggestions.length > MAX_PATTERNS) {
                     this.suggestions.shift();
                 }
+                // Learn the pattern for future sessions
+                if (!isKnown && !this.learnedSuggestions.includes(suggestion)) {
+                    this.learnedSuggestions.push(suggestion);
+                    if (
+                        this.learnedSuggestions.length > MAX_LEARNED_SUGGESTIONS
+                    ) {
+                        this.learnedSuggestions.shift();
+                    }
+                }
                 this.saveToDisk();
                 return suggestion;
             }
@@ -197,7 +229,11 @@ class ErrorPatternTracker {
         const entry = this.recentErrors.find((e) => e.pattern === pattern);
         if (entry) {
             entry.resolved = true;
-            entry.count = Math.max(0, entry.count - 2);
+            // Fully suppress the pattern so it stops triggering suggestions
+            entry.count = 0;
+            // Remove any active suggestions for this pattern
+            const suggestion = this.getSuggestion(pattern);
+            this.suggestions = this.suggestions.filter((s) => s !== suggestion);
             this.saveToDisk();
         }
     }
@@ -209,11 +245,12 @@ class ErrorPatternTracker {
 
     /** Get a formatted suggestions block for injection into prompts. */
     formatSuggestionsForPrompt(): string {
-        if (this.suggestions.length === 0) return '';
+        const allSuggestions = [...this.suggestions];
+        if (allSuggestions.length === 0) return '';
         return (
             '\n\n### [WARNING] Error Patterns Detected\n' +
             'You have encountered these errors repeatedly. Consider these suggestions:\n\n' +
-            this.suggestions.map((s) => `- ${s}`).join('\n')
+            allSuggestions.map((s) => `- ${s}`).join('\n')
         );
     }
 
@@ -225,9 +262,12 @@ class ErrorPatternTracker {
     }
 
     /** Get top patterns with their strength (for diagnostics). */
-    getTopPatterns(
-        limit = 5,
-    ): Array<{ pattern: string; count: number; strength: number }> {
+    getTopPatterns(limit = 5): Array<{
+        pattern: string;
+        count: number;
+        strength: number;
+        learned: boolean;
+    }> {
         const now = Date.now();
         return this.recentErrors
             .filter((e) => !e.resolved)
@@ -238,6 +278,7 @@ class ErrorPatternTracker {
                     pattern: e.pattern,
                     count: e.count,
                     strength: e.count * decay,
+                    learned: e.learned ?? false,
                 };
             })
             .sort((a, b) => b.strength - a.strength)
@@ -264,13 +305,20 @@ class ErrorPatternTracker {
         if (codeMatch?.[1]) {
             return codeMatch[1];
         }
+        // Learn new patterns: extract first line as a normalized pattern
+        const firstLine = trimmed.split('\n')[0]?.trim();
+        if (firstLine && firstLine.length > 5 && firstLine.length < 200) {
+            // Normalize: lowercase, collapse whitespace
+            const normalized = firstLine.replace(/\s+/g, ' ').slice(0, 100);
+            return `learned:${normalized}`;
+        }
         return null;
     }
 
     private getSuggestion(pattern: string): string {
         return (
             ERROR_SUGGESTIONS[pattern] ??
-            'Review the error message and try a different approach.'
+            `Repeated error: "${pattern.slice(0, 80)}". Try a different approach or check the error details.`
         );
     }
 }

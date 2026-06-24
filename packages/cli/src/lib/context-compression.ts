@@ -36,6 +36,134 @@ const TIER2_OUTPUT_THRESHOLD = 300;
 /** Threshold above which we start Tier 3 compression. */
 const TIER3_TEXT_THRESHOLD = 500;
 
+// ── Importance Scoring ──
+
+/** Importance weights for message scoring. */
+const IMPORTANCE = {
+    /** Messages with errors are critical context. */
+    HAS_ERROR: 3,
+    /** Messages with file modifications (write/edit). */
+    HAS_FILE_EDIT: 2,
+    /** Messages with reasoning/decisions (the WHY). */
+    HAS_REASONING: 2,
+    /** Messages with tool outputs (vs pure text). */
+    HAS_TOOL_OUTPUT: 1,
+    /** Recency bonus: more recent = higher score. */
+    RECENCY_BASE: 0.1,
+    /** Messages with code blocks. */
+    HAS_CODE: 1,
+} as const;
+
+/**
+ * Score a message's importance for retention during compression.
+ * Higher scores = keep this message.
+ */
+function scoreMessageImportance(msg: any, idx: number, total: number): number {
+    if (!msg?.parts) return 0;
+    let score = 0;
+
+    // Recency: linear decay from most recent
+    const recencyFactor = idx / Math.max(1, total - 1);
+    score += IMPORTANCE.RECENCY_BASE * recencyFactor;
+
+    for (const part of msg.parts) {
+        // Error outputs: critical context
+        if (
+            (part.type === 'dynamic-tool' || part.type?.startsWith('tool-')) &&
+            part.state === 'output-available' &&
+            typeof part.output === 'string'
+        ) {
+            if (isErrorResponse(part.output)) {
+                score += IMPORTANCE.HAS_ERROR;
+            }
+        }
+        // File modifications
+        if (part.type === 'dynamic-tool' || part.type?.startsWith('tool-')) {
+            const toolName = getToolName(part);
+            if (isWriteTool(toolName)) {
+                score += IMPORTANCE.HAS_FILE_EDIT;
+            }
+        }
+        // Text with reasoning
+        if (part.type === 'text' && typeof part.text === 'string') {
+            const reasoningPatterns =
+                /(?:I chose|I decided|Therefore|Because|The strategy|The approach|To fix|To implement)/i;
+            if (reasoningPatterns.test(part.text)) {
+                score += IMPORTANCE.HAS_REASONING;
+            }
+            // Code blocks
+            if (part.text.includes('```')) {
+                score += IMPORTANCE.HAS_CODE;
+            }
+        }
+    }
+
+    return score;
+}
+
+/**
+ * Select the best N messages to keep in Tier 1 using importance scoring.
+ * Falls back to recency-based selection if scores are all equal.
+ */
+function selectTopByImportance(
+    messages: any[],
+    count: number,
+): { selected: Set<number>; scores: number[] } {
+    const scores = messages.map((msg, idx) =>
+        scoreMessageImportance(msg, idx, messages.length),
+    );
+
+    // If all scores are equal (or within 0.1), fall back to recency
+    const maxScore = Math.max(...scores);
+    const minScore = Math.min(...scores);
+    if (maxScore - minScore < 0.1) {
+        // Pure recency selection
+        const selected = new Set<number>();
+        for (let i = messages.length - count; i < messages.length; i++) {
+            if (i >= 0) selected.add(i);
+        }
+        return { selected, scores };
+    }
+
+    // Rank by score, break ties by recency (prefer more recent)
+    const ranked = messages
+        .map((_, idx) => ({ idx, score: scores[idx]! }))
+        .sort((a, b) => {
+            if (Math.abs(a.score - b.score) > 0.1) return b.score - a.score;
+            return b.idx - a.idx; // Tie-break: prefer more recent (higher index)
+        });
+
+    const selected = new Set<number>();
+    for (let i = 0; i < count && i < ranked.length; i++) {
+        selected.add(ranked[i]!.idx);
+    }
+
+    return { selected, scores };
+}
+
+/**
+ * Enhanced token estimation using simple heuristics.
+ * Returns estimated token count for a message.
+ */
+export function estimateTokens(msg: any): number {
+    if (!msg?.parts) return 0;
+    let tokens = 0;
+    for (const part of msg.parts) {
+        if (typeof part.text === 'string') {
+            // Rough: ~1 token per 4 chars for English, ~1 per 3 for code
+            const hasCode = part.text.includes('```');
+            tokens += Math.ceil(part.text.length / (hasCode ? 3 : 4));
+        }
+        if (typeof part.output === 'string') {
+            tokens += Math.ceil(part.output.length / 4);
+        }
+        if (typeof part.errorText === 'string') {
+            tokens += Math.ceil(part.errorText.length / 3);
+        }
+    }
+    return tokens;
+}
+
 /** Context modes control how compression is adapted. */
 export type ContextMode = 'code' | 'research' | 'debug' | 'general';
 
@@ -108,6 +236,8 @@ export interface CompressionResult {
 
 /**
  * Apply progressive tiered compression to a message array.
+ * Uses importance scoring to select which messages to keep in Tier 1
+ * instead of just keeping the most recent N messages.
  *
  * @param contextMode - Controls how compression adapts to the task type.
  */
@@ -155,15 +285,30 @@ export function compressContext(
             ? messages.filter((_, i) => i !== firstUserIdx)
             : [...messages];
 
-    // Tier 1 = most recent messages (keep at full fidelity)
-    // Tier 2 = middle messages (compress to summaries)
-    // Tier 3 = oldest messages (compress to metadata-only)
-    const tier1Start = Math.max(0, workingMessages.length - tier1Count);
-    const tier2Start = Math.max(0, tier1Start - tier2Count);
+    // Use importance scoring to select Tier 1 messages
+    const { selected: tier1Indices } = selectTopByImportance(
+        workingMessages,
+        tier1Count,
+    );
 
-    const tier3Messages = workingMessages.slice(0, tier2Start);
-    const tier2Messages = workingMessages.slice(tier2Start, tier1Start);
-    const tier1Messages = workingMessages.slice(tier1Start);
+    // Tier 2 = most recent leftovers (middle messages), Tier 3 = oldest leftovers
+    const remainingIndices = workingMessages
+        .map((_, idx) => idx)
+        .filter((idx) => !tier1Indices.has(idx))
+        .sort((a, b) => b - a); // descending: most recent first
+    const tier2Indices = new Set(remainingIndices.slice(0, tier2Count));
+
+    // Build tier arrays
+    const tier1Messages = [...tier1Indices]
+        .sort((a, b) => a - b)
+        .map((idx) => workingMessages[idx]);
+    const tier2Messages = [...tier2Indices]
+        .sort((a, b) => a - b)
+        .map((idx) => workingMessages[idx]);
+    const tier3Messages = remainingIndices
+        .slice(tier2Count)
+        .sort((a, b) => a - b) // restore chronological order for Tier 3
+        .map((idx) => workingMessages[idx]);
 
     // Compress each tier with mode-aware profiles
     const compressedTier2 = tier2Messages.map((msg) =>
@@ -174,7 +319,7 @@ export function compressContext(
     );
 
     // Build anchor from dropped context
-    const anchor = buildAnchor(tier3Messages, tier2Messages);
+    const anchor = buildAnchor(workingMessages);
 
     // Reassemble: anchor (as system msg) + firstUser + tier3 + tier2 + tier1
     const result: any[] = [];
@@ -357,19 +502,84 @@ function compressByToolType(
 }
 
 /**
+ * Fold function and class bodies to collapse implementations
+ * while preserving declaration signatures.
+ */
+function foldCodeBodies(code: string): string {
+    const lines = code.split('\n');
+    const result: string[] = [];
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i];
+        if (line === undefined) {
+            i++;
+            continue;
+        }
+
+        // Matches function/method/class definitions ending with {
+        const isSignature =
+            /^\s*(?:export\s+|default\s+|async\s+|public\s+|private\s+|protected\s+|static\s+)*(?:function|class|const|let|var|interface|type|\w+\s*\([^)]*\))\b.*\{\s*$/.test(
+                line,
+            ) || /^\s*\w+\s*\([^)]*\)\s*(?::\s*[\w<>|]+)?\s*\{\s*$/.test(line);
+        if (isSignature) {
+            result.push(line);
+            let braceCount = 1;
+            const startIndex = i + 1;
+            let j = i + 1;
+            while (j < lines.length && braceCount > 0) {
+                const curLine = lines[j];
+                if (curLine === undefined) {
+                    j++;
+                    continue;
+                }
+                for (const char of curLine) {
+                    if (char === '{') braceCount++;
+                    else if (char === '}') braceCount--;
+                }
+                j++;
+            }
+            const bodyLinesCount = j - startIndex - 1;
+            if (bodyLinesCount > 4) {
+                const matchIndent = line.match(/^\s*/);
+                const indent = matchIndent ? matchIndent[0] : '';
+                result.push(
+                    `${indent}    // ... [code body folded: ${bodyLinesCount} lines] ...`,
+                );
+                const lastLine = lines[j - 1];
+                if (lastLine !== undefined) result.push(lastLine);
+            } else {
+                for (let k = startIndex; k < j; k++) {
+                    const l = lines[k];
+                    if (l !== undefined) result.push(l);
+                }
+            }
+            i = j;
+        } else {
+            result.push(line);
+            i++;
+        }
+    }
+    return result.join('\n');
+}
+
+/**
  * Compress file read output: keep first N lines + line count summary.
+ * Prioritizes code body folding for structured folding before resorting to truncation.
  */
 function compressFileRead(output: string, maxLen: number): string {
-    const lines = output.split('\n');
-    if (lines.length <= 20) return truncateSmart(output, maxLen);
+    const folded = foldCodeBodies(output);
+    if (folded.length <= maxLen) return folded;
+
+    const lines = folded.split('\n');
+    if (lines.length <= 20) return truncateSmart(folded, maxLen);
 
     // Keep first 15 lines + summary
     const head = lines.slice(0, 15).join('\n');
-    const summary = `\n... [${lines.length} lines total, ${output.length} chars] ...`;
+    const summary = `\n... [${lines.length} lines total, ${folded.length} chars] ...`;
     const tail = lines.slice(-5).join('\n');
 
     const result = `${head}\n${summary}\n${tail}`;
-    return result.length <= maxLen ? result : truncateSmart(output, maxLen);
+    return result.length <= maxLen ? result : truncateSmart(folded, maxLen);
 }
 
 /**
@@ -437,6 +647,8 @@ function compressDirectoryListing(output: string, maxLen: number): string {
 
 /**
  * Compress a text part based on tier and profile.
+ * When preserveCode is true, code blocks are preserved in full and only
+ * surrounding prose is compressed.
  */
 function compressText(
     part: any,
@@ -454,16 +666,22 @@ function compressText(
             codeBlocks.push(match[0]);
         }
         if (codeBlocks.length > 0) {
-            // Keep code blocks, compress surrounding text
-            const textWithoutCode = text.replace(
-                codeBlockRegex,
-                '[code block]',
+            // Keep code blocks intact, compress surrounding text
+            const textWithoutCode = text.replace(codeBlockRegex, '');
+            const proseLen = textWithoutCode.length;
+            const codeLen = codeBlocks.reduce((s, b) => s + b.length, 0);
+            // If prose is short enough, keep everything
+            if (proseLen <= TIER3_TEXT_THRESHOLD * 2) return part;
+            // Compress the prose, keep code blocks verbatim
+            const compressedProse = truncateSmart(
+                textWithoutCode,
+                Math.round(
+                    TIER3_TEXT_THRESHOLD * (1 + (1 - profile.textCompression)),
+                ),
             );
-            if (textWithoutCode.length <= TIER3_TEXT_THRESHOLD * 2) return part;
-            return {
-                ...part,
-                text: truncateSmart(textWithoutCode, TIER2_TOOL_OUTPUT_MAX),
-            };
+            // Reassemble: compressed prose + code blocks
+            const result = [compressedProse, ...codeBlocks].join('\n\n');
+            return { ...part, text: result };
         }
     }
 
@@ -520,16 +738,12 @@ function truncatePreservingError(text: string, maxLen: number): string {
  * Enhanced to preserve reasoning chains (the WHY behind decisions),
  * not just file lists and errors.
  */
-function buildAnchor(
-    tier3Messages: any[],
-    tier2Messages: any[],
-): string | null {
-    if (tier3Messages.length === 0 && tier2Messages.length === 0) return null;
+function buildAnchor(allMessages: any[]): string | null {
+    if (allMessages.length === 0) return null;
 
     const parts: string[] = [];
-    const totalDropped = tier3Messages.length + tier2Messages.length;
     parts.push(
-        `[Context: ${totalDropped} earlier messages compressed to save tokens.]`,
+        `[Context: Earlier conversation history was compressed to save tokens.]`,
     );
 
     // Extract key decisions, reasoning chains, and file operations
@@ -539,7 +753,7 @@ function buildAnchor(
     const toolsUsed = new Set<string>();
     const strategies: string[] = [];
 
-    for (const msg of [...tier3Messages, ...tier2Messages]) {
+    for (const msg of allMessages) {
         if (!msg?.parts) continue;
         for (const part of msg.parts) {
             if (
@@ -694,7 +908,7 @@ function isErrorResponse(output: string): boolean {
 }
 
 /**
- * Rough token estimate for stats (text.length / 4).
+ * Rough token estimate for stats using improved heuristics.
  */
 function estimateTokensSaved(
     originalTier3: any[],
@@ -703,25 +917,14 @@ function estimateTokensSaved(
     compressedTier2: any[],
 ): number {
     const originalSize = [...originalTier3, ...originalTier2].reduce(
-        (sum, msg) => sum + estimateMessageSize(msg),
+        (sum, msg) => sum + estimateTokens(msg),
         0,
     );
     const compressedSize = [...compressedTier3, ...compressedTier2].reduce(
-        (sum, msg) => sum + estimateMessageSize(msg),
+        (sum, msg) => sum + estimateTokens(msg),
         0,
     );
-    return Math.max(0, Math.floor((originalSize - compressedSize) / 4));
-}
-
-function estimateMessageSize(msg: any): number {
-    if (!msg?.parts) return 0;
-    return msg.parts.reduce((sum: number, part: any) => {
-        if (typeof part.text === 'string') return sum + part.text.length;
-        if (typeof part.output === 'string') return sum + part.output.length;
-        if (typeof part.errorText === 'string')
-            return sum + part.errorText.length;
-        return sum;
-    }, 0);
+    return Math.max(0, originalSize - compressedSize);
 }
 
 // ── Progressive Context Loader ──
