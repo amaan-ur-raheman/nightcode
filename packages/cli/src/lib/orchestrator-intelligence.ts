@@ -9,43 +9,262 @@
  */
 
 import type { TaskNode, TaskGraph, AgentRole } from '@nightcode/shared';
+import { getCriticalPath } from '@nightcode/shared';
 
-// ── Task Complexity Scoring ──
+// ── Decomposition Decision ──
+
+export interface DecompositionDecision {
+    /** Whether the task should be decomposed into subtasks */
+    shouldDecompose: boolean;
+    /** Human-readable reason for the decision */
+    reason: string;
+    /** Estimated complexity score (1-10) */
+    complexity: number;
+    /** Whether this is a simple task that can skip LLM decomposition */
+    isSimple: boolean;
+    /** Suggested role breakdown if decomposing */
+    suggestedRoles?: AgentRole[];
+    /** Confidence in this decision (0-1) */
+    confidence: number;
+}
 
 /**
- * Estimate task complexity based on description, file count, and dependencies.
- * Returns a score from 1 (simple) to 10 (very complex).
+ * Analyze a raw task string and produce a structured decomposition decision.
+ * This is the single entry point for deciding whether to decompose.
  */
-export function estimateTaskComplexity(task: TaskNode): number {
+export function analyzeDecomposition(task: string): DecompositionDecision {
+    // ── Simple task fast path ──
+    if (isSimpleTaskString(task)) {
+        return {
+            shouldDecompose: false,
+            reason: 'Simple single-step task',
+            complexity: 1,
+            isSimple: true,
+            confidence: 0.9,
+        };
+    }
+
+    // ── Complexity scoring on raw text ──
+    const complexity = estimateRawTaskComplexity(task);
+
+    if (complexity <= 5) {
+        return {
+            shouldDecompose: false,
+            reason: `Low complexity (${complexity}/10)`,
+            complexity,
+            isSimple: false,
+            confidence: 0.8,
+        };
+    }
+
+    if (complexity > 7) {
+        const suggestedRoles = inferRoles(task);
+        return {
+            shouldDecompose: true,
+            reason: `High complexity (${complexity}/10) — ${describeComplexitySignals(task)}`,
+            complexity,
+            isSimple: false,
+            suggestedRoles,
+            confidence: Math.min(0.5 + complexity * 0.05, 0.95),
+        };
+    }
+
+    // Medium complexity (6-7) — decompose only if multi-concern
+    const hasCombinedConcerns = detectCombinedConcerns(task);
+    if (hasCombinedConcerns) {
+        return {
+            shouldDecompose: true,
+            reason: `Medium complexity with combined concerns (${complexity}/10)`,
+            complexity,
+            isSimple: false,
+            suggestedRoles: inferRoles(task),
+            confidence: 0.7,
+        };
+    }
+
+    return {
+        shouldDecompose: false,
+        reason: `Medium complexity, single concern (${complexity}/10)`,
+        complexity,
+        isSimple: false,
+        confidence: 0.75,
+    };
+}
+
+/**
+ * Estimate complexity from a raw task string (no TaskNode needed).
+ * Used by analyzeDecomposition for pre-graph decisions.
+ */
+function estimateRawTaskComplexity(task: string): number {
     let score = 1;
 
     // File count contribution
-    score += Math.min(task.files.length, 5);
+    const fileRefs = (
+        task.match(
+            /\.(ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)(?::\d+)?/g,
+        ) ?? []
+    ).length;
+    score += Math.min(fileRefs, 5);
 
-    // Description length/complexity
-    const descWords = task.description.split(/\s+/).length;
-    if (descWords > 50) score += 3;
-    else if (descWords > 20) score += 2;
-    else if (descWords > 10) score += 1;
+    // Description word count
+    const words = task.split(/\s+/).length;
+    if (words > 80) score += 4;
+    else if (words > 50) score += 3;
+    else if (words > 25) score += 2;
+    else if (words > 12) score += 1;
 
-    // Dependency count contribution
-    score += Math.min(task.dependencies.length, 3);
-
-    // Role-specific adjustments
-    if (task.type === 'coder' || task.type === 'tester') {
-        score += 1; // Code tasks tend to be more complex
+    // Multi-step markers boost complexity
+    if (
+        /\b(and then|then |followed by|after that|additionally|meanwhile)\b/i.test(
+            task,
+        )
+    ) {
+        score += 2;
     }
+
+    // Combined concerns (implement + test, refactor + test, etc.)
+    if (detectCombinedConcerns(task)) {
+        score += 2;
+    }
+
+    // Multiple distinct action verbs
+    const actionVerbs = [
+        'implement',
+        'create',
+        'build',
+        'refactor',
+        'fix',
+        'update',
+        'delete',
+        'move',
+        'rename',
+        'add',
+        'write',
+        'modify',
+        'test',
+        'verify',
+        'review',
+        'debug',
+    ];
+    const foundVerbs = actionVerbs.filter((v) =>
+        task.toLowerCase().includes(v),
+    );
+    if (foundVerbs.length >= 3) score += 1;
+    if (foundVerbs.length >= 5) score += 1;
 
     return Math.min(score, 10);
 }
 
 /**
- * Check if a task should be decomposed into subtasks.
- * Returns true if complexity exceeds the threshold.
+ * Detect if a task combines multiple concerns (e.g., implement + test).
  */
-export function shouldDecompose(task: TaskNode): boolean {
-    const complexity = estimateTaskComplexity(task);
-    return complexity > 7;
+function detectCombinedConcerns(task: string): boolean {
+    const lower = task.toLowerCase();
+    const hasImplementation =
+        /\b(implement|create|build|add|write|refactor|modify|change|update)\b/i.test(
+            lower,
+        );
+    const hasTesting = /\b(test|spec|verify|validate)\b/i.test(lower);
+    const hasDebug = /\b(debug|fix|bug|broken|error|issue)\b/i.test(lower);
+    const hasReview = /\b(review|audit|check)\b/i.test(lower);
+
+    return (
+        (hasImplementation && hasTesting) ||
+        (hasImplementation && hasReview) ||
+        (hasDebug && hasTesting)
+    );
+}
+
+/**
+ * Infer suggested roles from task content.
+ */
+function inferRoles(task: string): AgentRole[] {
+    const lower = task.toLowerCase();
+    const roles: AgentRole[] = [];
+
+    if (
+        /\b(implement|create|build|add|write|modify|change|update|refactor)\b/i.test(
+            lower,
+        )
+    ) {
+        roles.push('coder');
+    }
+    if (/\b(test|spec|verify|validate)\b/i.test(lower)) {
+        roles.push('tester');
+    }
+    if (/\b(review|audit|check|security|quality)\b/i.test(lower)) {
+        roles.push('reviewer');
+    }
+    if (
+        /\b(debug|fix|bug|broken|error|issue|investigate|root cause)\b/i.test(
+            lower,
+        )
+    ) {
+        roles.push('debugger');
+    }
+    if (/\b(research|analyze|understand|document|explore)\b/i.test(lower)) {
+        roles.push('researcher');
+    }
+
+    return roles.length > 0 ? roles : ['coder'];
+}
+
+/**
+ * Describe what makes a task complex (for the reason field).
+ */
+function describeComplexitySignals(task: string): string {
+    const signals: string[] = [];
+    const fileRefs = (
+        task.match(
+            /\.(ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)/g,
+        ) ?? []
+    ).length;
+    if (fileRefs >= 3) signals.push(`${fileRefs} files`);
+    const words = task.split(/\s+/).length;
+    if (words > 50) signals.push(`detailed description (${words} words)`);
+    if (detectCombinedConcerns(task)) signals.push('combined concerns');
+    if (/\b(and then|then |followed by|after that)\b/i.test(task))
+        signals.push('multi-step');
+    return signals.length > 0 ? signals.join(', ') : 'high word count';
+}
+
+/**
+ * Fast check if a raw task string is simple enough to skip LLM decomposition.
+ * Returns true for single-step, 1-2 file tasks.
+ */
+function isSimpleTaskString(task: string): boolean {
+    if (task.length > 200) return false;
+
+    const srcFileRefs = (
+        task.match(
+            /(?:\.\/|\.\.\/|\w+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)/g,
+        ) ?? []
+    ).length;
+
+    if (srcFileRefs >= 3) return false;
+
+    const hasMultiStepMarker =
+        /\b(and then|then |followed by|after that|additionally|meanwhile|subsequently|also test|and test|and verify|and validate|and review|and debug)\b/i.test(
+            task,
+        );
+    if (hasMultiStepMarker) return false;
+
+    const taskWithoutFileRefs = task.replace(
+        /(?:\.\/|\.\.\/|\w+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)/gi,
+        '',
+    );
+
+    if (detectCombinedConcerns(taskWithoutFileRefs)) return false;
+
+    if (srcFileRefs <= 2) return true;
+
+    const phrases = task.split(/\s*(?:and|then|also)\s+/i).filter(Boolean);
+    if (phrases.length >= 2 && phrases.length <= 4 && task.length < 150)
+        return true;
+
+    if (task.length > 100) return false;
+
+    return true;
 }
 
 // ── Task Priority Scoring ──
@@ -249,6 +468,34 @@ export function getRetryStrategy(
     return base;
 }
 
+// ── Task Complexity Scoring (backward-compatible, operates on TaskNode) ──
+
+/**
+ * Estimate task complexity based on description, file count, and dependencies.
+ * Returns a score from 1 (simple) to 10 (very complex).
+ * For raw string analysis, use analyzeDecomposition() instead.
+ */
+export function estimateTaskComplexity(task: TaskNode): number {
+    let score = 1;
+    score += Math.min(task.files.length, 5);
+    const descWords = task.description.split(/\s+/).length;
+    if (descWords > 50) score += 3;
+    else if (descWords > 20) score += 2;
+    else if (descWords > 10) score += 1;
+    score += Math.min(task.dependencies.length, 3);
+    if (task.type === 'coder' || task.type === 'tester') score += 1;
+    return Math.min(score, 10);
+}
+
+/**
+ * Check if a task should be decomposed into subtasks.
+ * Returns true if complexity exceeds the threshold.
+ * For richer analysis, use analyzeDecomposition() instead.
+ */
+export function shouldDecompose(task: TaskNode): boolean {
+    return estimateTaskComplexity(task) > 7;
+}
+
 // ── Task Decomposition Hints ──
 
 /**
@@ -256,7 +503,8 @@ export function getRetryStrategy(
  * Returns null if decomposition is not needed, or a list of subtask descriptions.
  */
 export function suggestDecomposition(task: TaskNode): string[] | null {
-    if (!shouldDecompose(task)) return null;
+    const decision = analyzeDecomposition(task.description);
+    if (!decision.shouldDecompose) return null;
 
     const suggestions: string[] = [];
     const desc = task.description;
@@ -276,13 +524,10 @@ export function suggestDecomposition(task: TaskNode): string[] | null {
         'remove',
         'move',
     ];
-
     const foundActions = actionVerbs.filter((v) =>
         desc.toLowerCase().includes(v),
     );
-
     if (foundActions.length >= 3) {
-        // Suggest splitting by action type
         suggestions.push(
             `Consider splitting into: ${foundActions.slice(0, 3).join(', ')}`,
         );
@@ -298,6 +543,13 @@ export function suggestDecomposition(task: TaskNode): string[] | null {
                 `Split by module: ${modules.slice(0, 3).join(', ')}`,
             );
         }
+    }
+
+    // Add role-based suggestion from the decision
+    if (decision.suggestedRoles && decision.suggestedRoles.length > 1) {
+        suggestions.push(
+            `Suggested roles: ${decision.suggestedRoles.join(', ')}`,
+        );
     }
 
     return suggestions.length > 0 ? suggestions : null;
@@ -323,7 +575,7 @@ export interface GraphInsights {
 
 export function analyzeGraph(graph: TaskGraph): GraphInsights {
     const tasks = Object.values(graph.nodes);
-    const criticalPath: string[] = []; // Would need full critical path algo
+    const criticalPath = getCriticalPath(graph);
     let totalComplexity = 0;
     const decomposableTasks: string[] = [];
     const bottlenecks: Array<{ taskId: string; downstream: number }> = [];
