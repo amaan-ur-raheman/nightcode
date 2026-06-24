@@ -4,10 +4,52 @@ import { MAX_OUTPUT, truncate } from './utils';
 import { ptySessionManager } from '../pty-session';
 import { getProjectCwd } from '../workspace-context';
 
+import { loadSettings } from '../settings';
+
 const MAX_STREAM_BUFFER = 50_000;
 const TRIM_STREAM_BUFFER = 30_000;
 
+export function wrapCommandWithDocker(
+    command: string,
+    cwd: string,
+    env: Record<string, string> = {},
+): string[] {
+    const settings = loadSettings();
+    const sandboxImage = settings.sandbox?.image ?? 'node:18-alpine';
+
+    // Construct docker run command
+    const args = [
+        'run',
+        '--rm',
+        '-i',
+        '-v',
+        `${cwd}:/workspace`,
+        '-w',
+        '/workspace',
+    ];
+
+    // Add environment variables
+    for (const [key, val] of Object.entries(env)) {
+        if (['PATH', 'HOME', 'USER', 'SHELL', 'EDITOR', 'TERM'].includes(key))
+            continue;
+        args.push('-e', `${key}=${val}`);
+    }
+
+    args.push(sandboxImage, 'sh', '-c', command);
+    return args;
+}
+
 export function spawnCommand(command: string, options: Record<string, any>) {
+    const settings = loadSettings();
+    if (settings.sandbox?.enabled) {
+        const cwd = options.cwd ?? getProjectCwd();
+        const env = options.env ?? {};
+        const dockerArgs = wrapCommandWithDocker(command, cwd, env);
+        return Bun.spawn(['docker', ...dockerArgs], {
+            ...options,
+            cwd: undefined, // Let the docker CLI command run in process context
+        });
+    }
     return Bun.spawn(['bash', '-c', command], options);
 }
 
