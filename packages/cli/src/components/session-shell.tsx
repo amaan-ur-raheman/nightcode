@@ -21,7 +21,7 @@ type SessionShellProps = {
     children?: ReactNode;
     onSubmit: (text: string) => void;
     onClear?: () => void;
-        inputDisabled?: boolean;
+    inputDisabled?: boolean;
     loading?: boolean;
     interruptible?: boolean;
     onInterrupt?: () => void;

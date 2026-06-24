@@ -491,8 +491,15 @@ const app = new Hono<AuthenticatedEnv>().post(
 
                 if (hasPendingToolCalls(event.responseMessage)) return;
 
-                // Auto-generate title on first exchange (session had no prior messages)
-                if (previousMessage.length === 0) {
+                // Auto-generate title on the first completed exchange of the session.
+                // Key off durationMs which is only set on successful finish via messageMetadata,
+                // not on aborted/partial assistant messages that also get persisted.
+                const hasCompletedExchange = previousMessage.some(
+                    (m) =>
+                        m.role === 'assistant' &&
+                        (m.metadata as ChatMessageMetadata)?.durationMs != null,
+                );
+                if (!hasCompletedExchange) {
                     const firstUserText =
                         messages
                             .find((m) => m.role === 'user')

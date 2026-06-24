@@ -9,7 +9,10 @@ import { useKeyboardLayer } from '@/providers/keyboard-layer';
 import { EmptyBorder } from '@/components/border';
 import { KeyHint } from '@/components/key-hint';
 
-import type { ConfirmationManager } from '@/lib/tools/dangerous-ops';
+import type {
+    ConfirmationManager,
+    ConfirmationRequest,
+} from '@/lib/tools/dangerous-ops';
 
 interface ToolConfirmationOverlayProps {
     manager: ConfirmationManager;
@@ -30,16 +33,9 @@ export function ToolConfirmationOverlay({
     const [selectedIndex, setSelectedIndex] = useState(0);
     const { push, pop, isTopLayer } = useKeyboardLayer();
     const pushedRef = useRef(false);
-    const [requests, setRequests] = useState<
-        Array<{
-            id: string;
-            toolName: string;
-            reason: string;
-            details: string;
-            accessPath?: string;
-            patterns?: string[];
-        }>
-    >(() => Array.from(manager.pending.values()));
+    const [requests, setRequests] = useState<ConfirmationRequest[]>(() =>
+        Array.from(manager.pending.values()),
+    );
 
     useEffect(() => {
         // Sync from manager on every change (covers late subscriptions)
@@ -180,6 +176,37 @@ export function ToolConfirmationOverlay({
                                 {pattern}
                             </text>
                         ))}
+                    </box>
+                )}
+
+                {/* Preview Diff */}
+                {request.diff && (
+                    <box
+                        flexDirection="column"
+                        border={['top', 'bottom', 'left', 'right']}
+                        borderColor={colors.dimSeparator}
+                        customBorderChars={{
+                            ...EmptyBorder,
+                            horizontal: '─',
+                            vertical: '│',
+                            topLeft: '┌',
+                            topRight: '┐',
+                            bottomLeft: '└',
+                            bottomRight: '┘',
+                        }}
+                        width="100%"
+                        height={12}
+                        overflow="hidden"
+                    >
+                        <diff
+                            view="unified"
+                            diff={request.diff}
+                            showLineNumbers
+                            filetype={request.accessPath
+                                ?.split('.')
+                                .pop()
+                                ?.toLowerCase()}
+                        />
                     </box>
                 )}
 

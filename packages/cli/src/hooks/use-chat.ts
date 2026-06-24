@@ -1,18 +1,13 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import {
     DefaultChatTransport,
-    type InferUITools,
     lastAssistantMessageIsCompleteWithToolCalls,
-    type LanguageModelUsage,
-    type UIMessage,
 } from 'ai';
 
 import { useChat as useAIChat } from '@ai-sdk/react';
 import {
     type ModeType,
     type SupportedChatModelId,
-    type ToolContracts,
-    type ConversationBranch,
     DEFAULT_CHAT_MODEL_ID,
     Mode,
 } from '@nightcode/shared';
@@ -21,245 +16,35 @@ import { getValidAuth } from '@/lib/auth';
 import { apiClient } from '@/lib/api-client';
 import { getApiKeyForProvider } from '@/lib/api-keys';
 import { resolveProviderForModel } from '@nightcode/shared';
-import { executeLocalTool, startToolUsageWindow, analyzeToolUsageWindow } from '@/lib/local-tools';
+import {
+    startToolUsageWindow,
+    analyzeToolUsageWindow,
+} from '@/lib/local-tools';
 import { correctionTracker } from '@/lib/correction-tracker';
 import { ErrorPatternTracker } from '@/lib/error-pattern-tracker';
-import {
-    loadMcpTools,
-    callMcpTool,
-    getServerForTool,
-    reconnectServer,
-    type McpToolSchema,
-} from '@/lib/mcp-client';
-import { auditLog } from '@/lib/audit-log';
+import { loadMcpTools, type McpToolSchema } from '@/lib/mcp-client';
 import { debug } from '@/lib/debug';
-import { batchManager } from '@/lib/batch-manager';
-import {
-    ConfirmationManager,
-    getConfirmationLevel,
-    formatToolInput,
-    getAccessPath,
-    getPatterns,
-} from '@/lib/tools/dangerous-ops';
+import { ConfirmationManager } from '@/lib/tools/dangerous-ops';
 import { questionManager } from '@/lib/tools/question-manager';
-import { isConfirmationEnabled } from '@/lib/settings';
 import { getProjectCwd } from '@/lib/workspace-context';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import {
-    setCurrentToolCallContext,
-    getCurrentToolCallContext,
-    setExecutionContext,
-} from '@/lib/subagent-progress';
-import { safeStringify } from '@/lib/safe-json';
 import { timelineManager } from '@/lib/timeline-manager';
 import { fileWatcher } from '@/lib/file-watcher';
 
-const MAX_SUBAGENT_OUTPUT_CHARS = 8000;
+import {
+    type ChatMessageMetadata,
+    type ChatTools,
+    type Message,
+    type ImageAttachment,
+    type PendingToolCall,
+} from './use-chat/types';
+import { pruneOldMessages } from './use-chat/prune';
+import { triageRequest } from './use-chat/triage';
+import { useBranchManager } from './use-chat/branch-manager';
+import { useToolExecution } from './use-chat/tool-execution';
 
-/**
- * Pre-flight Triage: Analyzes the user's request before it reaches the LLM
- * and injects a system notice suggesting delegation when appropriate.
- * This works regardless of the model's natural bias to do everything itself.
- */
-function triageRequest(userText: string, mode: ModeType): string | null {
-    if (mode === Mode.PLAN) return null;
-
-    const lower = userText.toLowerCase();
-
-    // Count source file references
-    const fileRefs = (
-        userText.match(
-            /\.(ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)(?::\d+)?/g,
-        ) || []
-    ).length;
-
-    // Detect multi-step markers
-    const hasMultiStep =
-        /\b(and then|then |followed by|after that|additionally|meanwhile|also test|and test|and verify|and review|and debug)\b/i.test(
-            lower,
-        );
-
-    // Detect test-related requests
-    const hasTestRequest =
-        /\b(write test|add test|create test|unit test|integration test|test for|spec for)\b/i.test(
-            lower,
-        );
-
-    // Detect combined concerns (implement + test, refactor + test)
-    const hasImplementation =
-        /\b(implement|create|build|add|write|refactor|modify|change)\b/i.test(
-            lower,
-        );
-    const hasCombinedConcerns = hasImplementation && hasTestRequest;
-
-    // Detect debugging
-    const hasDebugRequest =
-        /\b(debug|fix the bug|investigate .* issue|root cause|why is .* broken|trace .* error)\b/i.test(
-            lower,
-        );
-
-    // Detect research
-    const hasResearchRequest =
-        /\b(research|investigate|understand how|how does|explain the architecture|document|analyze)\b/i.test(
-            lower,
-        ) && !hasImplementation;
-
-    // Detect code review
-    const hasReviewRequest =
-        /\b(review|audit|check for bugs|security review|code quality)\b/i.test(
-            lower,
-        );
-
-    // Build triage notice
-    const notices: string[] = [];
-
-    // 3+ files or multi-step = orchestrator territory
-    if (fileRefs >= 3 || hasCombinedConcerns) {
-        notices.push(
-            `[Suggestion: This request involves ${fileRefs >= 3 ? `${fileRefs} files` : 'both implementation and testing'}. Consider using the \`orchestrator\` tool to decompose this into parallel subtasks (e.g., coder + tester roles).]`,
-        );
-    } else if (hasMultiStep && fileRefs >= 2) {
-        notices.push(
-            `[Suggestion: This request has multiple steps across ${fileRefs} files. Consider using the \`orchestrator\` tool to execute steps in parallel.]`,
-        );
-    }
-
-    // Subagent territory
-    if (hasTestRequest && fileRefs <= 2 && !hasCombinedConcerns) {
-        notices.push(
-            `[Suggestion: For writing tests, consider using \`spawnTestWriter\` which has an optimized test-writing prompt.]`,
-        );
-    }
-    if (hasDebugRequest) {
-        notices.push(
-            `[Suggestion: For debugging, consider using \`spawnDebugger\` which will investigate root cause and apply a fix autonomously.]`,
-        );
-    }
-    if (hasResearchRequest) {
-        notices.push(
-            `[Suggestion: For research or investigation, consider using \`spawnResearcher\` to explore the codebase in PLAN mode.]`,
-        );
-    }
-    if (hasReviewRequest) {
-        notices.push(
-            `[Suggestion: For code review, consider using \`spawnCodeReviewer\` which produces structured review reports.]`,
-        );
-    }
-
-    // General reminder for moderately complex tasks
-    if (notices.length === 0 && fileRefs >= 2 && hasMultiStep) {
-        notices.push(
-            `[Suggestion: This task involves multiple files and steps. If it feels too large to handle directly, use \`shouldDelegate\` for an instant recommendation on which tool to use.]`,
-        );
-    }
-
-    if (notices.length === 0) return null;
-    return notices.join('\n');
-}
-
-/**
- * Maximum number of spawn tools (spawnAgent, spawnResearcher, etc.) that can
- * execute per AI response. Prevents runaway spawning where the AI emits
- * 80+ spawn calls in a single turn, wasting hundreds of thousands of tokens.
- * Excess spawn calls are rejected with an error.
- */
-const MAX_SPAWNS_PER_RESPONSE = 5;
-
-// Cost constants removed — pricing is derived from shared/src/credits.ts
-// using SUPPORTED_CHAT_MODELS.pricing as the single source of truth
-
-/**
- * Prune subagent tool outputs that exceed the size limit.
- * Keeps the first and last portion, replacing the middle with a truncation notice.
- */
-function pruneToolOutput(output: unknown): unknown {
-    if (output == null) return output;
-    if (typeof output === 'object' && 'result' in output) {
-        const result = (output as { result: string }).result;
-        if (
-            typeof result === 'string' &&
-            result.length > MAX_SUBAGENT_OUTPUT_CHARS
-        ) {
-            const head = result.slice(0, MAX_SUBAGENT_OUTPUT_CHARS / 2);
-            const tail = result.slice(-MAX_SUBAGENT_OUTPUT_CHARS / 2);
-            return {
-                ...output,
-                result: `${head}\n\n... [truncated ${result.length - MAX_SUBAGENT_OUTPUT_CHARS} chars] ...\n\n${tail}`,
-            };
-        }
-    }
-    return output;
-}
-
-/**
- * Prune old messages to keep context size manageable.
- * For messages older than the last 10, truncate large tool outputs.
- */
-function pruneOldMessages(messages: Message[]): Message[] {
-    if (messages.length <= 10) return messages;
-    const recentCount = 10;
-    const oldMessages = messages.slice(0, messages.length - recentCount);
-    const recentMessages = messages.slice(messages.length - recentCount);
-
-    return [
-        ...oldMessages.map((msg) => {
-            if (msg.role !== 'assistant' || !Array.isArray(msg.parts))
-                return msg;
-            return {
-                ...msg,
-                parts: msg.parts.map((part) => {
-                    if (
-                        part.type === 'dynamic-tool' ||
-                        (typeof part.type === 'string' &&
-                            part.type.startsWith('tool-'))
-                    ) {
-                        const toolPart = part as any;
-                        if (
-                            toolPart.state === 'output-available' &&
-                            toolPart.output != null
-                        ) {
-                            return {
-                                ...toolPart,
-                                output: pruneToolOutput(toolPart.output),
-                            };
-                        }
-                    }
-                    return part;
-                }),
-            };
-        }),
-        ...recentMessages,
-    ];
-}
-
-export type ChatMessageMetadata = {
-    mode?: ModeType;
-    model?: SupportedChatModelId | string;
-    durationMs?: number;
-    usage?: LanguageModelUsage;
-};
-
-type ChatTools = {
-    [Name in keyof InferUITools<ToolContracts>]: {
-        input: InferUITools<ToolContracts>[Name]['input'];
-        output: unknown;
-    };
-};
-
-export type Message = UIMessage<ChatMessageMetadata, any, ChatTools>;
-
-export type ImageAttachment = {
-    dataUrl: string;
-    mimeType: string;
-    name: string;
-};
-
-type PendingToolCall = {
-    toolName: string;
-    input: unknown;
-    toolCallId: string;
-};
+export type { Message, ImageAttachment };
 
 export function useChat(
     sessionId: string,
@@ -293,12 +78,11 @@ export function useChat(
         initialImageAttachments ?? [],
     );
 
-    // ─── Branch state ──────────────────────────────────────────────────────
-    const [branches, setBranches] = useState<ConversationBranch[]>([]);
-    const [activeBranchId, setActiveBranchId] = useState<string>('main');
-    const [branchMessages, setBranchMessages] = useState<
-        Record<string, Message[]>
-    >({});
+    // ─── Branch state (delegated) ─────────────────────────────────────────
+    const branchManager = useBranchManager(
+        sessionId,
+        () => chatRef.current?.messages ?? [],
+    );
 
     useEffect(() => {
         loadMcpTools().then((tools) => {
@@ -306,29 +90,6 @@ export function useChat(
             debug.log('chat', 'MCP tools loaded', { count: tools.length });
         });
     }, []);
-
-    // Load branches from server on mount
-    useEffect(() => {
-        let ignore = false;
-        (async () => {
-            try {
-                const res = await apiClient.sessions[':id'].branches.$get({
-                    param: { id: sessionId },
-                });
-                if (ignore || !res.ok) return;
-                const data = await res.json();
-                if (!ignore) {
-                    setBranches(data.branches);
-                    setActiveBranchId(data.activeBranchId);
-                }
-            } catch {
-                // Branches may not exist yet, that's fine
-            }
-        })();
-        return () => {
-            ignore = true;
-        };
-    }, [sessionId]);
 
     // Clean up branch-specific state when switching branches
     // Prevents pending tool calls, snapshots, and usage from leaking across branches
@@ -346,7 +107,7 @@ export function useChat(
         };
         activeToolControllers.current.forEach((c) => c.abort());
         activeToolControllers.current.clear();
-    }, [activeBranchId]);
+    }, [branchManager.activeBranchId]);
 
     const transport = useMemo(() => {
         return new DefaultChatTransport<Message>({
@@ -475,21 +236,15 @@ export function useChat(
                 .find((m) => m.metadata?.mode && m.metadata?.model);
             const mode = lastWithMeta?.metadata?.mode ?? 'BUILD';
             const model = lastWithMeta?.metadata?.model;
-            const isMcpTool = toolCall.toolName.startsWith('mcp__');
 
-            pendingToolCallsRef.current.set(toolCall.toolCallId, {
-                toolName: toolCall.toolName,
-                input: toolCall.input,
-                toolCallId: toolCall.toolCallId,
-                isMcpTool,
-            });
+            toolExecution.handleToolCall(toolCall);
 
             if (pendingToolCallsTimer.current) {
                 clearTimeout(pendingToolCallsTimer.current);
             }
             pendingToolCallsTimer.current = setTimeout(() => {
                 pendingToolCallsTimer.current = null;
-                flushPendingToolCalls(mode, model);
+                toolExecution.flushPendingToolCalls(mode, model);
             }, 50);
         },
         sendAutomaticallyWhen: (msgs) => {
@@ -621,368 +376,26 @@ export function useChat(
         }
     }, [isLoading, chat]);
 
-    // Flush collected tool calls — executes single tools directly, batches multiple via batchManager
-    const flushPendingToolCalls = useCallback(
-        (mode: ModeType, model: SupportedChatModelId | string | undefined) => {
-            const pending = Array.from(pendingToolCallsRef.current.values());
-            pendingToolCallsRef.current.clear();
-
-            if (pending.length === 0) return;
-
-            // Enforce per-response spawn cap to prevent runaway spawning
-            const spawnCount = pending.filter((tc) =>
-                tc.toolName.startsWith('spawn'),
-            ).length;
-            if (spawnCount > MAX_SPAWNS_PER_RESPONSE) {
-                debug.log(
-                    'chat',
-                    `Capping spawns: ${spawnCount} requested, ${MAX_SPAWNS_PER_RESPONSE} allowed`,
-                );
-                const kept: typeof pending = [];
-                const rejected: typeof pending = [];
-                let spawnsKept = 0;
-                for (const tc of pending) {
-                    const isSpawn = tc.toolName.startsWith('spawn');
-                    if (isSpawn && spawnsKept >= MAX_SPAWNS_PER_RESPONSE) {
-                        rejected.push(tc);
-                    } else {
-                        if (isSpawn) spawnsKept++;
-                        kept.push(tc);
-                    }
-                }
-                // Report errors for rejected spawn calls
-                for (const tc of rejected) {
-                    chat.addToolOutput({
-                        tool: tc.toolName as keyof ChatTools,
-                        toolCallId: tc.toolCallId,
-                        state: 'output-error',
-                        errorText: `Spawn cap reached (${MAX_SPAWNS_PER_RESPONSE} per response). Too many subagents requested — batch related work into fewer, broader subagent calls instead.`,
-                    });
-                }
-                pending.length = 0;
-                pending.push(...kept);
-            }
-
-            debug.log(
-                'chat',
-                `Flushing ${pending.length} pending tool call(s): ${pending.map((t) => t.toolName).join(', ')}`,
-            );
-
-            const runTool = async (
-                tc: PendingToolCall & { isMcpTool: boolean },
-            ) => {
-                const abortController = new AbortController();
-                activeToolControllers.current.set(
-                    tc.toolCallId,
-                    abortController,
-                );
-
-                if (!tc.isMcpTool && isConfirmationEnabled()) {
-                    const { level, reason } = getConfirmationLevel(
-                        tc.toolName,
-                        tc.input,
-                    );
-                    if (level === 'confirm') {
-                        const details = formatToolInput(tc.toolName, tc.input);
-                        const confirmed =
-                            await confirmationManagerRef.current.request(
-                                tc.toolName,
-                                reason,
-                                details,
-                                getAccessPath(tc.toolName, tc.input),
-                                getPatterns(tc.toolName, tc.input),
-                            );
-                        if (!confirmed) {
-                            return { output: 'Action cancelled by user' };
-                        }
-                    }
-                }
-
-                const execId = setExecutionContext(tc.toolCallId);
-                setCurrentToolCallContext(tc.toolCallId);
-                try {
-                    return tc.isMcpTool
-                        ? callMcpTool(
-                              tc.toolName,
-                              tc.input,
-                              abortController.signal,
-                          )
-                        : executeLocalTool(
-                              tc.toolName,
-                              tc.input,
-                              mode,
-                              model,
-                              abortController.signal,
-                              execId,
-                          );
-                } finally {
-                    // Only clear if this tool still owns the context (prevents clobbering
-                    // context set by orchestratorTool or other tools that set their own)
-                    if (getCurrentToolCallContext() === tc.toolCallId) {
-                        setCurrentToolCallContext(null);
-                    }
-                }
-            };
-
-            const reportResult = (
-                tc: PendingToolCall & { isMcpTool: boolean },
-                output: unknown,
-                startTime: number,
-            ) => {
-                activeToolControllers.current.delete(tc.toolCallId);
-                auditLog.log({
-                    sessionId,
-                    tool: tc.toolName,
-                    input: tc.input,
-                    output: safeStringify(output),
-                    duration: Date.now() - startTime,
-                    success: true,
-                });
-                chat.addToolOutput({
-                    tool: tc.toolName as keyof ChatTools,
-                    toolCallId: tc.toolCallId,
-                    output:
-                        typeof output === 'object' &&
-                        output !== null &&
-                        'output' in output
-                            ? (output as { output: unknown }).output
-                            : output,
-                });
-            };
-
-            const reportError = (
-                tc: PendingToolCall & { isMcpTool: boolean },
-                error: Error,
-                startTime: number,
-            ) => {
-                activeToolControllers.current.delete(tc.toolCallId);
-                if (tc.isMcpTool) {
-                    const serverName = getServerForTool(tc.toolName);
-                    if (serverName) {
-                        debug.log(
-                            'mcp',
-                            `Tool call failed, attempting reconnect for ${serverName}`,
-                        );
-                        void reconnectServer(serverName);
-                    }
-                }
-                auditLog.log({
-                    sessionId,
-                    tool: tc.toolName,
-                    input: tc.input,
-                    error: error.message,
-                    duration: Date.now() - startTime,
-                    success: false,
-                });
-                chat.addToolOutput({
-                    tool: tc.toolName as keyof ChatTools,
-                    toolCallId: tc.toolCallId,
-                    state: 'output-error',
-                    errorText: error.message,
-                });
-            };
-
-            // Single tool call — execute directly
-            if (pending.length === 1) {
-                const tc = pending[0]!;
-                const startTime = Date.now();
-                void runTool(tc)
-                    .then((output) => reportResult(tc, output, startTime))
-                    .catch((error) =>
-                        reportError(
-                            tc,
-                            error instanceof Error
-                                ? error
-                                : new Error(String(error)),
-                            startTime,
-                        ),
-                    );
-                return;
-            }
-
-            // Multiple tool calls — execute in parallel via batchManager
-            if (batchManager.getConfig().parallelExecutionEnabled) {
-                const startTime = Date.now();
-                debug.log(
-                    'chat',
-                    `Parallel execution: ${pending.length} tools`,
-                    {
-                        tools: pending.map((t) => t.toolName),
-                    },
-                );
-
-                const toolCalls = pending.map((tc) => {
-                    const abortController = new AbortController();
-                    activeToolControllers.current.set(
-                        tc.toolCallId,
-                        abortController,
-                    );
-                    return {
-                        toolName: tc.toolName,
-                        input: tc.input,
-                        toolCallId: tc.toolCallId,
-                        signal: abortController.signal,
-                    };
-                });
-
-                const reportedIds = new Set<string>();
-
-                void batchManager
-                    .executeParallel(
-                        toolCalls,
-                        async (
-                            toolName,
-                            input,
-                            execMode,
-                            execModel,
-                            execSignal,
-                            toolCallId,
-                        ) => {
-                            const tc = pending.find(
-                                (t) => t.toolCallId === toolCallId,
-                            );
-                            const isMcp =
-                                tc?.isMcpTool ?? toolName.startsWith('mcp__');
-                            if (!isMcp && isConfirmationEnabled()) {
-                                const { level, reason } = getConfirmationLevel(
-                                    toolName,
-                                    input,
-                                );
-                                if (level === 'confirm') {
-                                    const details = formatToolInput(
-                                        toolName,
-                                        input,
-                                    );
-                                    const confirmed =
-                                        await confirmationManagerRef.current.request(
-                                            toolName,
-                                            reason,
-                                            details,
-                                            getAccessPath(toolName, input),
-                                            getPatterns(toolName, input),
-                                        );
-                                    if (!confirmed)
-                                        return {
-                                            output: 'Action cancelled by user',
-                                        };
-                                }
-                            }
-                            const execId = tc
-                                ? setExecutionContext(tc.toolCallId)
-                                : undefined;
-                            setCurrentToolCallContext(tc?.toolCallId ?? null);
-                            try {
-                                return isMcp
-                                    ? callMcpTool(toolName, input, execSignal)
-                                    : executeLocalTool(
-                                          toolName,
-                                          input,
-                                          execMode,
-                                          execModel,
-                                          execSignal,
-                                          execId,
-                                      );
-                            } finally {
-                                // Only clear if this tool still owns the context
-                                if (
-                                    tc &&
-                                    getCurrentToolCallContext() ===
-                                        tc.toolCallId
-                                ) {
-                                    setCurrentToolCallContext(null);
-                                }
-                            }
-                        },
-                        mode,
-                        model,
-                        undefined,
-                        (result) => {
-                            const tc = pending.find(
-                                (t) => t.toolCallId === result.toolCallId,
-                            );
-                            if (!tc || reportedIds.has(result.toolCallId))
-                                return;
-                            reportedIds.add(result.toolCallId);
-                            if (result.error) {
-                                reportError(tc, result.error, startTime);
-                            } else {
-                                reportResult(tc, result.result, startTime);
-                            }
-                        },
-                    )
-                    .then((results) => {
-                        const executedIds = new Set(
-                            results.map((result) => result.toolCallId),
-                        );
-                        for (const result of results) {
-                            const tc = pending.find(
-                                (t) => t.toolCallId === result.toolCallId,
-                            );
-                            if (!tc || reportedIds.has(result.toolCallId))
-                                continue;
-                            reportedIds.add(result.toolCallId);
-                            if (result.error) {
-                                reportError(tc, result.error, startTime);
-                            } else {
-                                reportResult(tc, result.result, startTime);
-                            }
-                        }
-                        for (const tc of pending) {
-                            if (!executedIds.has(tc.toolCallId)) {
-                                activeToolControllers.current.delete(
-                                    tc.toolCallId,
-                                );
-                                chat.addToolOutput({
-                                    tool: tc.toolName as keyof ChatTools,
-                                    toolCallId: tc.toolCallId,
-                                    state: 'output-error',
-                                    errorText:
-                                        'Tool execution skipped due to parallel limit.',
-                                });
-                            }
-                        }
-                        debug.log(
-                            'chat',
-                            `Parallel batch complete: ${results.length} tools in ${Date.now() - startTime}ms`,
-                        );
-                    })
-                    .catch((error) => {
-                        const err =
-                            error instanceof Error
-                                ? error
-                                : new Error(String(error));
-                        for (const tc of pending) {
-                            if (!reportedIds.has(tc.toolCallId)) {
-                                reportError(tc, err, startTime);
-                            }
-                        }
-                    });
-            } else {
-                // Parallel disabled — execute each tool directly
-                for (const tc of pending) {
-                    const startTime = Date.now();
-                    void runTool(tc)
-                        .then((output) => reportResult(tc, output, startTime))
-                        .catch((error) =>
-                            reportError(
-                                tc,
-                                error instanceof Error
-                                    ? error
-                                    : new Error(String(error)),
-                                startTime,
-                            ),
-                        );
-                }
-            }
-        },
-        [sessionId, chat],
-    );
+    // ─── Tool execution (delegated) ────────────────────────────────────────
+    const toolExecution = useToolExecution(sessionId, chat, {
+        activeToolControllers,
+        pendingToolCallsRef,
+        pendingToolCallsTimer,
+        confirmationManagerRef,
+    });
 
     // The messages shown depend on active branch
     const effectiveMessages = useMemo(() => {
-        if (activeBranchId === 'main') return chat.messages;
-        return branchMessages[activeBranchId] ?? chat.messages;
-    }, [activeBranchId, chat.messages, branchMessages]);
+        if (branchManager.activeBranchId === 'main') return chat.messages;
+        return (
+            branchManager.branchMessages[branchManager.activeBranchId] ??
+            chat.messages
+        );
+    }, [
+        branchManager.activeBranchId,
+        chat.messages,
+        branchManager.branchMessages,
+    ]);
 
     const abortAllTools = useCallback(() => {
         isInterruptedRef.current = true;
@@ -1041,84 +454,9 @@ export function useChat(
     const runningToolName =
         runningToolNames.length > 0 ? runningToolNames.join(' + ') : null;
 
-    const createBranch = useCallback(
-        async (messageIndex?: number) => {
-            const idx = messageIndex ?? Math.max(0, chat.messages.length - 1);
-            try {
-                const res = await apiClient.sessions[':id'].branches.$post({
-                    param: { id: sessionId },
-                    json: { parentMessageIndex: idx },
-                });
-                if (!res.ok) throw new Error('Failed to create branch');
-                const newBranch: ConversationBranch = await res.json();
-                setBranches((prev) => [...prev, newBranch]);
-                setActiveBranchId(newBranch.id);
-
-                // Snapshot messages up to the branch point
-                const snapshot = chat.messages.slice(0, idx);
-                setBranchMessages((prev) => ({
-                    ...prev,
-                    [newBranch.id]: [...snapshot],
-                }));
-
-                const parentMsg = chat.messages[idx];
-                if (parentMsg) {
-                    void timelineManager.takeSnapshot(
-                        sessionId,
-                        newBranch.id,
-                        parentMsg.id,
-                    );
-                }
-            } catch (err) {
-                console.error('Failed to create branch:', err);
-            }
-        },
-        [chat.messages, sessionId],
-    );
-
-    const switchBranch = useCallback(
-        async (branchId: string) => {
-            try {
-                const res = await apiClient.sessions[':id'][
-                    'active-branch'
-                ].$put({
-                    param: { id: sessionId },
-                    json: { branchId },
-                });
-                if (!res.ok) throw new Error('Failed to switch branch');
-                setActiveBranchId(branchId);
-            } catch (err) {
-                console.error('Failed to switch branch:', err);
-            }
-        },
-        [sessionId],
-    );
-
-    const deleteBranch = useCallback(
-        async (branchId: string) => {
-            if (branchId === 'main') return;
-            try {
-                const res = await apiClient.sessions[':id'].branches[
-                    ':branchId'
-                ].$delete({
-                    param: { id: sessionId, branchId },
-                });
-                if (!res.ok) throw new Error('Failed to delete branch');
-                setBranches((prev) => prev.filter((b) => b.id !== branchId));
-                setBranchMessages((prev) => {
-                    const next = { ...prev };
-                    delete next[branchId];
-                    return next;
-                });
-                if (activeBranchId === branchId) {
-                    setActiveBranchId('main');
-                }
-            } catch (err) {
-                console.error('Failed to delete branch:', err);
-            }
-        },
-        [activeBranchId, sessionId],
-    );
+    const createBranch = branchManager.createBranch;
+    const switchBranch = branchManager.switchBranch;
+    const deleteBranch = branchManager.deleteBranch;
 
     // Derive streaming token count from the last message during streaming
     const streamingTokens = useMemo(() => {
@@ -1245,8 +583,8 @@ export function useChat(
         },
         abort: abortAllTools,
         interrupt: abortAllTools,
-        branches,
-        activeBranchId,
+        branches: branchManager.branches,
+        activeBranchId: branchManager.activeBranchId,
         createBranch,
         switchBranch,
         deleteBranch,

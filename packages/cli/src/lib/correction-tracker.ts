@@ -9,6 +9,12 @@ import { memory } from './memory';
  *
  * Each pattern is scored by undo speed, repetition, and time decay.
  * Stale patterns (old codebase, resolved issues) fade automatically.
+ *
+ * Improvements over v1:
+ * - Patterns normalized by (tool, filePath) for better grouping
+ * - Auto-accept timer: actions accepted after 60s without undo
+ * - Session-scoped retrieval with fallback to global corrections
+ * - Ranked by score with deduplication
  */
 
 interface TrackedAction {
@@ -17,6 +23,8 @@ interface TrackedAction {
     description: string;
     timestamp: number;
     sessionId?: string;
+    /** Timer ID for auto-accept after acceptance window expires. */
+    autoAcceptTimer?: ReturnType<typeof setTimeout>;
 }
 
 interface PatternScore {
@@ -35,6 +43,8 @@ const CORRECTION_PREFIX = 'correction:';
 const POSITIVE_PREFIX = 'positive:';
 const MAX_CORRECTIONS = 50;
 const MAX_POSITIVE = 30;
+const MAX_INJECTED_CORRECTIONS = 10;
+const AUTO_ACCEPT_MS = 60_000;
 
 /** Half-life for time decay (14 days in ms). */
 const DECAY_HALFLIFE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -55,18 +65,31 @@ class CorrectionTracker {
 
     /**
      * Record a tool call for potential correction/acceptance tracking.
+     * Starts an auto-accept timer — if the user doesn't undo within
+     * AUTO_ACCEPT_MS, the action is automatically accepted as a positive signal.
      */
     recordAction(tool: string, input: unknown, description: string): void {
-        this.recentActions.push({
+        const action: TrackedAction = {
             tool,
             input,
             description,
             timestamp: Date.now(),
             sessionId: this.currentSessionId,
-        });
+        };
+
+        // Auto-accept after the acceptance window expires
+        action.autoAcceptTimer = setTimeout(() => {
+            void this.onAccept(action.tool, action.input, action.description);
+            // Remove from tracked actions since it's been accepted
+            const idx = this.recentActions.indexOf(action);
+            if (idx !== -1) this.recentActions.splice(idx, 1);
+        }, AUTO_ACCEPT_MS);
+
+        this.recentActions.push(action);
 
         if (this.recentActions.length > MAX_TRACKED) {
-            this.recentActions.shift();
+            const oldest = this.recentActions.shift();
+            if (oldest?.autoAcceptTimer) clearTimeout(oldest.autoAcceptTimer);
         }
     }
 
@@ -78,16 +101,22 @@ class CorrectionTracker {
         const lastAction = this.recentActions.pop();
         if (!lastAction) return null;
 
+        // Cancel auto-accept timer since user explicitly undid
+        if (lastAction.autoAcceptTimer)
+            clearTimeout(lastAction.autoAcceptTimer);
+
         const pattern = this.generatePattern(lastAction);
         if (!pattern) return null;
+
+        const normalizedKey = this.normalizePatternKey(lastAction);
 
         // Score: undo speed matters — instant undo = stronger signal
         const undoDelay = Date.now() - lastAction.timestamp;
         const speedScore = this.computeSpeedScore(undoDelay);
 
-        // Check for repetition (same pattern seen before)
+        // Check for repetition using normalized key (same tool + file)
         const repetition = await this.countPatternRepetition(
-            pattern,
+            normalizedKey,
             'correction',
         );
 
@@ -101,8 +130,8 @@ class CorrectionTracker {
             tags.push(`session:${lastAction.sessionId}`);
         }
 
-        // Store with score metadata in the value
-        const scoredPattern = `[score=${combined.toFixed(2)}] ${pattern}`;
+        // Store with score metadata and normalized key for deduplication
+        const scoredPattern = `[score=${combined.toFixed(2)}] [key=${normalizedKey}] ${pattern}`;
         await memory.set(key, scoredPattern, tags);
 
         await this.enforceLimit('correction', MAX_CORRECTIONS);
@@ -122,9 +151,15 @@ class CorrectionTracker {
         const pattern = this.generatePositivePattern(tool, input, description);
         if (!pattern) return null;
 
+        const normalizedKey = this.normalizePatternKey({
+            tool,
+            input,
+            description,
+        } as TrackedAction);
+
         // Check for repetition
         const repetition = await this.countPatternRepetition(
-            pattern,
+            normalizedKey,
             'positive',
         );
 
@@ -137,12 +172,51 @@ class CorrectionTracker {
             tags.push(`session:${this.currentSessionId}`);
         }
 
-        const scoredPattern = `[score=${combined.toFixed(2)}] ${pattern}`;
+        const scoredPattern = `[score=${combined.toFixed(2)}] [key=${normalizedKey}] ${pattern}`;
         await memory.set(key, scoredPattern, tags);
 
         await this.enforceLimit('positive', MAX_POSITIVE);
 
         return pattern;
+    }
+
+    /**
+     * Generate a normalized key for pattern grouping.
+     * Groups corrections by (tool, filePath) so similar edits
+     * on the same file are counted as repetitions.
+     */
+    private normalizePatternKey(action: TrackedAction): string {
+        const getStr = (key: string, fallback = ''): string => {
+            if (
+                action.input === null ||
+                action.input === undefined ||
+                typeof action.input !== 'object'
+            )
+                return fallback;
+            const val = (action.input as Record<string, unknown>)[key];
+            return typeof val === 'string' ? val : fallback;
+        };
+
+        switch (action.tool) {
+            case 'editFile':
+            case 'searchReplace':
+                return `${action.tool}:${getStr('path')}`;
+            case 'writeFile':
+                return `${action.tool}:${getStr('path')}`;
+            case 'bash':
+                // Normalize bash commands: strip specific paths, keep command structure
+                return `${action.tool}:${getStr('command', '').split(' ')[0] ?? 'unknown'}`;
+            case 'gitCommit':
+                return `${action.tool}:commit`;
+            case 'deleteFile':
+                return `${action.tool}:${getStr('path')}`;
+            case 'moveFile':
+                return `${action.tool}:${getStr('from')}→${getStr('to')}`;
+            case 'renameSymbol':
+                return `${action.tool}:${getStr('oldName')}→${getStr('newName')}`;
+            default:
+                return `${action.tool}`;
+        }
     }
 
     private computeSpeedScore(delayMs: number): number {
@@ -158,18 +232,14 @@ class CorrectionTracker {
     }
 
     private async countPatternRepetition(
-        pattern: string,
+        normalizedKey: string,
         type: 'correction' | 'positive',
     ): Promise<number> {
-        const prefix =
-            type === 'correction' ? CORRECTION_PREFIX : POSITIVE_PREFIX;
         const entries = await memory.list({ tag: type });
-        // Count entries whose value contains the core pattern (ignoring score prefix)
-        const corePattern = pattern.replace(/^\[score=[\d.]+\]\s*/, '');
+        // Count entries with the same normalized key
         return entries.filter((e) => {
-            if (!e.key.startsWith(prefix)) return false;
-            const core = e.value.replace(/^\[score=[\d.]+\]\s*/, '');
-            return core === corePattern;
+            const keyMatch = e.value.match(/\[key=([^\]]+)\]/);
+            return keyMatch?.[1] === normalizedKey;
         }).length;
     }
 
@@ -302,7 +372,8 @@ class CorrectionTracker {
 
     /**
      * Get corrections and positive patterns for the current session.
-     * Returns an object with both arrays for the system prompt.
+     * Returns ranked, deduplicated patterns scoped to the session.
+     * Falls back to global corrections if the session has <3 corrections.
      */
     async getPatterns(): Promise<{
         corrections: string[];
@@ -311,16 +382,35 @@ class CorrectionTracker {
         const allEntries = await memory.list({ tag: 'correction' });
         const positiveEntries = await memory.list({ tag: 'positive' });
 
-        const corrections = allEntries
+        // Session-scoped corrections
+        let sessionCorrections = allEntries
             .filter((e) => {
                 if (!this.currentSessionId) return true;
                 return (
                     e.tags?.some(
                         (t) => t === `session:${this.currentSessionId}`,
-                    ) ?? true
+                    ) ?? false
                 );
             })
-            .map((e) => e.value.replace(/^\[score=[\d.]+\]\s*/, ''));
+            .map((e) => this.extractPatternText(e.value))
+            .filter(Boolean) as string[];
+
+        // If session has fewer than 3 corrections, also include global corrections
+        if (this.currentSessionId && sessionCorrections.length < 3) {
+            const globalCorrections = allEntries
+                .filter(
+                    (e) =>
+                        !e.tags?.some(
+                            (t) => t === `session:${this.currentSessionId}`,
+                        ),
+                )
+                .map((e) => this.extractPatternText(e.value))
+                .filter(Boolean) as string[];
+            sessionCorrections = [...sessionCorrections, ...globalCorrections];
+        }
+
+        // Deduplicate by normalized key and rank by score
+        const corrections = this.deduplicateAndRank(sessionCorrections);
 
         const positives = positiveEntries
             .filter((e) => {
@@ -331,9 +421,47 @@ class CorrectionTracker {
                     ) ?? true
                 );
             })
-            .map((e) => e.value.replace(/^\[score=[\d.]+\]\s*/, ''));
+            .map((e) => this.extractPatternText(e.value))
+            .filter(Boolean) as string[];
 
-        return { corrections, positives };
+        return {
+            corrections: corrections.slice(0, MAX_INJECTED_CORRECTIONS),
+            positives: positives.slice(0, MAX_INJECTED_CORRECTIONS),
+        };
+    }
+
+    /**
+     * Extract pattern text from a stored value, stripping score and key prefixes.
+     */
+    private extractPatternText(value: string): string | null {
+        const text = value
+            .replace(/^\[score=[\d.]+\]\s*/, '')
+            .replace(/\[key=[^\]]+\]\s*/, '')
+            .trim();
+        return text || null;
+    }
+
+    /**
+     * Deduplicate patterns by their normalized key (embedded in [key=...])
+     * and return them ranked by score (highest first).
+     */
+    private deduplicateAndRank(patterns: string[]): string[] {
+        const seen = new Map<string, { text: string; score: number }>();
+        for (const p of patterns) {
+            // Extract score from the original stored value format
+            const scoreMatch = p.match(/\[score=([\d.]+)\]/);
+            const score = scoreMatch?.[1] ? parseFloat(scoreMatch[1]) : 0;
+            // Extract key for deduplication
+            const keyMatch = p.match(/\[key=([^\]]+)\]/);
+            const key = keyMatch?.[1] ?? p;
+            const existing = seen.get(key);
+            if (!existing || score > existing.score) {
+                seen.set(key, { text: p, score });
+            }
+        }
+        return [...seen.values()]
+            .sort((a, b) => b.score - a.score)
+            .map((e) => e.text);
     }
 
     /**
@@ -377,6 +505,14 @@ class CorrectionTracker {
             }
         }
         return count;
+    }
+
+    /** Cancel all pending auto-accept timers (e.g., on session end). */
+    cancelAllTimers(): void {
+        for (const action of this.recentActions) {
+            if (action.autoAcceptTimer) clearTimeout(action.autoAcceptTimer);
+        }
+        this.recentActions = [];
     }
 }
 

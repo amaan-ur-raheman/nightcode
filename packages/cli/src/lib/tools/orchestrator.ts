@@ -18,6 +18,10 @@ import { debug } from '@/lib/debug';
 import { resolveProviderFallback } from '@/lib/model-utils';
 import { setOrchestrationActive } from '@/lib/api-client';
 import { getApiKeyForProvider } from '@/lib/api-keys';
+import {
+    analyzeDecomposition,
+    analyzeGraph,
+} from '@/lib/orchestrator-intelligence';
 
 export async function orchestratorTool(
     input: unknown,
@@ -44,9 +48,21 @@ export async function orchestratorTool(
     setOrchestrationActive(true);
 
     try {
-        // Skip LLM decomposition for simple tasks — save 5-6s latency + ~1.5K tokens
+        // Analyze decomposition decision (structured, with reason and confidence)
+        const decision = analyzeDecomposition(task);
+        debug.log(
+            'orchestrator',
+            `Decomposition decision: ${decision.shouldDecompose ? 'DECOMPOSE' : 'DIRECT'}`,
+            {
+                reason: decision.reason,
+                complexity: decision.complexity,
+                confidence: decision.confidence,
+                isSimple: decision.isSimple,
+            },
+        );
+
         let graph: TaskGraph;
-        if (isSimpleTask(task)) {
+        if (decision.isSimple) {
             graph = buildSimpleGraph(task, parentModel);
             debug.log(
                 'orchestrator',
@@ -70,10 +86,24 @@ export async function orchestratorTool(
             );
         }
 
+        // Log graph insights for debugging and observability
+        const insights = analyzeGraph(graph);
         debug.log(
             'orchestrator',
-            `Decomposed into ${Object.keys(graph.nodes).length} tasks`,
+            `Graph insights: ${Object.keys(graph.nodes).length} tasks, critical path length: ${insights.criticalPath.length}, total complexity: ${insights.totalComplexity}`,
         );
+        if (insights.bottlenecks.length > 0) {
+            debug.log(
+                'orchestrator',
+                `Bottlenecks: ${insights.bottlenecks.map((b) => `${b.taskId} (${b.downstream} downstream)`).join(', ')}`,
+            );
+        }
+        if (insights.decomposableTasks.length > 0) {
+            debug.log(
+                'orchestrator',
+                `Tasks that could be further decomposed: ${insights.decomposableTasks.join(', ')}`,
+            );
+        }
         // Log dependency graph for debugging parallelism
         for (const node of Object.values(graph.nodes)) {
             debug.log(
@@ -279,71 +309,6 @@ async function decomposeTask(
             maxRetries: 2, // Fallback coder should still retry on transient failures
         },
     ]);
-}
-
-/**
- * Detect tasks simple enough to skip LLM decomposition.
- * Only tasks that modify 1-2 files with a single clear step are "simple".
- * Everything else should go through decomposition to get proper parallelism.
- */
-function isSimpleTask(task: string): boolean {
-    if (task.length > 200) return false;
-
-    // Source file references (not URLs, versions, or random dotted strings)
-    const srcFileRefs = (
-        task.match(
-            /(?:\.\/|\.\.\/|\w+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)/g,
-        ) ?? []
-    ).length;
-
-    // Reject if 3+ files — needs decomposition
-    if (srcFileRefs >= 3) return false;
-
-    // Detect multi-step markers
-    const hasMultiStepMarker =
-        /\b(and then|then |followed by|after that|additionally|meanwhile|subsequently|also test|and test|and verify|and validate|and review|and debug)\b/i.test(
-            task,
-        );
-    if (hasMultiStepMarker) return false;
-
-    // Strip file references to avoid matching keywords in filenames
-    // (e.g., "validate-input.ts" leaking "validate", "test.ts" leaking "test")
-    const taskWithoutFileRefs = task.replace(
-        /(?:\.\/|\.\.\/|\w+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|rb|java|css|html|json|yaml|yml|md)/gi,
-        '',
-    );
-
-    // Detect combined concerns (implement + test, refactor + test, etc.)
-    const hasCombinedConcerns =
-        (/(implement|create|build|add|write|modify|edit|change|update)/i.test(
-            taskWithoutFileRefs,
-        ) &&
-            /(test|spec|verify|validate)/i.test(taskWithoutFileRefs)) ||
-        (/(refactor|clean|extract|simplify|restructure)/i.test(
-            taskWithoutFileRefs,
-        ) &&
-            /(test|spec)/i.test(taskWithoutFileRefs)) ||
-        (/(debug|fix|bug|broken|error|issue)/i.test(taskWithoutFileRefs) &&
-            /(test|verify)/i.test(taskWithoutFileRefs));
-    if (hasCombinedConcerns) return false;
-
-    // 2 file refs with no multi-step markers = simple enough for direct execution
-    if (srcFileRefs === 2) return true;
-
-    // 1 file ref with a single clear action = simple
-    if (srcFileRefs === 1) return true;
-
-    // Explicit conjunctions like "and" / "," between short phrases
-    // Only accept if no multi-step or combined-concern signals were found
-    // (hasMultiStepMarker and hasCombinedConcerns already checked above and would have returned)
-    const phrases = task.split(/\s*(?:and|then|also)\s+/i).filter(Boolean);
-    if (phrases.length >= 2 && phrases.length <= 4 && task.length < 150)
-        return true;
-
-    // Long tasks with no file refs — probably complex description, decompose
-    if (task.length > 100) return false;
-
-    return true;
 }
 
 function buildSimpleGraph(task: string, model: string | undefined): TaskGraph {

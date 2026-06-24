@@ -146,6 +146,7 @@ async function resolveSupportedChatModel(
         case 'deepinfra':
         case 'novita':
         case 'nebius':
+        case 'cline':
             return resolveThirdPartyModel(model, subagent, apiKey);
         default:
             const _exhaustive: never = provider;
@@ -189,7 +190,8 @@ function normalizeModelId(modelId: string): string {
         modelId.startsWith('siliconflow/') ||
         modelId.startsWith('deepinfra/') ||
         modelId.startsWith('novita/') ||
-        modelId.startsWith('nebius/')
+        modelId.startsWith('nebius/') ||
+        modelId.startsWith('cline/')
     ) {
         return modelId;
     }

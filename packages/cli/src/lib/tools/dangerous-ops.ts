@@ -85,6 +85,7 @@ export interface ConfirmationRequest {
     accessPath?: string;
     patterns?: string[];
     resolve: (confirmed: boolean, always?: boolean) => void;
+    diff?: string;
 }
 
 interface DangerousPattern {
@@ -192,6 +193,18 @@ export function getConfirmationLevel(
         return { level: 'confirm', reason: 'File deletion' };
     }
 
+    if (toolName === 'editFile') {
+        return { level: 'confirm', reason: 'Edit file' };
+    }
+
+    if (toolName === 'writeFile') {
+        return { level: 'confirm', reason: 'Write file' };
+    }
+
+    if (toolName === 'patch') {
+        return { level: 'confirm', reason: 'Apply patch' };
+    }
+
     if (toolName === 'gitCommit') {
         if (autonomy === 'balanced') {
             return { level: 'none', reason: '' };
@@ -224,6 +237,12 @@ export function formatToolInput(toolName: string, input: any): string {
             return `Command: ${input?.command ?? ''}`;
         case 'deleteFile':
             return `File: ${input?.path ?? ''}`;
+        case 'editFile':
+            return `Edit: ${input?.path ?? ''}`;
+        case 'writeFile':
+            return `Write: ${input?.path ?? ''}`;
+        case 'patch':
+            return `Patch length: ${input?.patch?.length ?? 0} chars`;
         case 'gitCommit': {
             const msg = input?.message ?? '';
             const files = input?.files;
@@ -253,6 +272,7 @@ export function getAccessPath(
             return input?.workingDirectory;
         case 'deleteFile':
         case 'writeFile':
+        case 'editFile':
         case 'readFile':
             return input?.path;
         case 'gitBranch':
@@ -273,6 +293,7 @@ export function getPatterns(
                 : undefined;
         case 'deleteFile':
         case 'writeFile':
+        case 'editFile':
         case 'readFile':
             return input?.path ? [input.path] : undefined;
         case 'gitCommit':
@@ -314,6 +335,7 @@ export class ConfirmationManager {
         details: string,
         accessPath?: string,
         patterns?: string[],
+        diff?: string,
         timeoutMs = 60_000, // 60 seconds
     ): Promise<boolean> {
         const patternKey = `${toolName}:${accessPath ?? details}`;
@@ -331,6 +353,7 @@ export class ConfirmationManager {
                 accessPath,
                 patterns,
                 resolve,
+                diff,
             });
             this._notify();
 

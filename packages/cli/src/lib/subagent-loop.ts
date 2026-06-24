@@ -4,7 +4,11 @@ import {
     parseJsonEventStream,
 } from 'ai';
 import { executeLocalTool } from './local-tools';
-import { compressContext, detectContextMode } from './context-compression';
+import {
+    compressContext,
+    detectContextMode,
+    estimateTokens as estimateTokensFromContext,
+} from './context-compression';
 import {
     updateSubagentStep,
     incrementToolCall,
@@ -151,6 +155,8 @@ export type SubagentLoopConfig = {
     maxRetries?: number;
     /** Max messages to keep in context window (default 30) */
     maxContextMessages?: number;
+    /** Max tokens budget for context (default 100000). Triggers compression when exceeded. */
+    maxTokens?: number;
     /** Per-step timeout in ms (default 90000). Steps exceeding this are aborted. */
     stepTimeoutMs?: number;
     /** Enable self-verification before completion (default true) */
@@ -232,6 +238,7 @@ export async function runSubagentLoop(
         label = 'subagent',
         maxRetries = 5,
         maxContextMessages = 30,
+        maxTokens = 100_000,
         stepTimeoutMs: configuredStepTimeout,
         selfVerify = true,
         checkpointId,
@@ -720,16 +727,35 @@ export async function runSubagentLoop(
                         // H2: Progressive tiered context compression
                         // 3-tier system: Tier 1 (full, last 8 msgs), Tier 2 (summarized, 9-20), Tier 3 (metadata, 20+)
                         // Tool-aware: errors always preserved; read outputs get structure extraction.
-                        if (messages.length > MAX_CONTEXT_MESSAGES) {
+                        // Token budget: also compress when estimated tokens exceed budget.
+                        const currentTokens = messages.reduce(
+                            (sum, msg) => sum + estimateTokensFromContext(msg),
+                            0,
+                        );
+                        const needsCompression =
+                            messages.length > MAX_CONTEXT_MESSAGES ||
+                            currentTokens > maxTokens;
+                        if (needsCompression) {
                             const contextMode = detectContextMode(prompt);
+                            // If over token budget, compress more aggressively
+                            const overBudget = currentTokens > maxTokens;
+                            const tier1Count = overBudget
+                                ? Math.max(
+                                      4,
+                                      Math.round(
+                                          (MAX_CONTEXT_MESSAGES - 10) * 0.6,
+                                      ),
+                                  )
+                                : MAX_CONTEXT_MESSAGES - 10;
+                            const tier2Count = overBudget ? 6 : 10;
                             const { messages: compressed, stats } =
                                 compressContext(messages, {
-                                    tier1Count: MAX_CONTEXT_MESSAGES - 10,
-                                    tier2Count: 10,
+                                    tier1Count,
+                                    tier2Count,
                                     contextMode,
                                 });
                             console.log(
-                                `[${label}] Context compressed (${stats.contextMode}): ${stats.originalCount} → ${stats.compressedCount} messages (saved ~${stats.tokensSaved} tokens, tier1=${stats.tier1Count} tier2=${stats.tier2Count} tier3=${stats.tier3Count})`,
+                                `[${label}] Context compressed (${stats.contextMode}): ${stats.originalCount} → ${stats.compressedCount} messages (saved ~${stats.tokensSaved} tokens, tier1=${stats.tier1Count} tier2=${stats.tier2Count} tier3=${stats.tier3Count})${overBudget ? ` [over token budget: ${currentTokens}/${maxTokens}]` : ''}`,
                             );
                             messages.length = 0;
                             messages.push(...compressed);

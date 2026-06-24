@@ -98,6 +98,22 @@ const MODEL_NAMES: Record<string, string> = {
     'nebius/deepseek-ai/DeepSeek-V3-0324': 'DeepSeek V3 0324 (Nebius)',
     'nebius/meta-llama/Llama-4-Maverick-17B-128E-Instruct':
         'Llama 4 Maverick (Nebius)',
+
+    // ── Cline ──
+    'cline/anthropic/claude-3-5-sonnet-20241022': 'Claude 3.5 Sonnet (Cline)',
+    'cline/anthropic/claude-3-5-haiku-20241022': 'Claude 3.5 Haiku (Cline)',
+    'cline/openai/gpt-4o': 'GPT-4o (Cline)',
+    'cline/openai/gpt-4o-mini': 'GPT-4o Mini (Cline)',
+    'cline/google/gemini-2.5-pro': 'Gemini 2.5 Pro (Cline)',
+    'cline/google/gemini-2.5-flash': 'Gemini 2.5 Flash (Cline)',
+    'cline/minimax/minimax-m2.5': 'MiniMax M2.5 (Cline) [Free]',
+    'cline/meta-llama/llama-3.1-8b-instruct:free':
+        'Llama 3.1 8B (Cline) [Free]',
+    'cline/qwen/qwen-2.5-coder-32b-instruct:free':
+        'Qwen 2.5 Coder 32B (Cline) [Free]',
+    'cline/google/gemini-2.5-flash:free': 'Gemini 2.5 Flash (Cline) [Free]',
+    'cline/meta-llama/llama-3-8b-instruct:free': 'Llama 3 8B (Cline) [Free]',
+    'cline/deepseek/deepseek-r1:free': 'DeepSeek R1 (Cline) [Free]',
 };
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
@@ -132,6 +148,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
     deepinfra: 'DeepInfra',
     novita: 'Novita AI',
     nebius: 'Nebius',
+    cline: 'Cline',
 };
 
 /**
@@ -200,6 +217,7 @@ export function extractProvider(modelId: string): string {
         'deepinfra',
         'novita',
         'nebius',
+        'cline',
     ];
     if (knownProviders.includes(prefix)) return prefix;
     // NIM models: "nvidia/...", "deepseek-ai/...", "qwen/..."
