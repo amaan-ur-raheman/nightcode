@@ -16,6 +16,11 @@ type SystemPromptParams = {
 
 const MAX_PROMPT_CACHE_SIZE = 64;
 
+/** Max corrections to inject into the system prompt. */
+const MAX_INJECTED_CORRECTIONS = 10;
+/** Max positives to inject into the system prompt. */
+const MAX_INJECTED_POSITIVES = 5;
+
 /**
  * LRU cache: evicts least-recently-used entries when full.
  * Uses a Map (which preserves insertion order) + access-time tracking.
@@ -87,6 +92,92 @@ function getCacheKey(params: SystemPromptParams): string {
             ? String(simpleHash(params.errorWarnings.join('\n')))
             : '';
     return `${params.mode}:${params.isSubagent ? 1 : 0}:${params.currentModel ?? ''}:${params.projectContext ?? ''}:${correctionsKey}:${positivesKey}:${errorWarningsKey}`;
+}
+
+// ── Learning Injection: Ranking & Deduplication ──
+
+/**
+ * Extract score from a pattern string like "[score=0.85] [key=editFile:path] Avoid..."
+ */
+function extractScore(pattern: string): number {
+    const match = pattern.match(/\[score=([\d.]+)\]/);
+    return match?.[1] ? parseFloat(match[1]) : 0.5;
+}
+
+/**
+ * Extract normalized key from a pattern string for deduplication.
+ */
+function extractKey(pattern: string): string | null {
+    const match = pattern.match(/\[key=([^\]]+)\]/);
+    return match?.[1] ?? null;
+}
+
+/**
+ * Strip score and key prefixes from a pattern for display.
+ */
+function stripMetadata(pattern: string): string {
+    return pattern
+        .replace(/^\[score=[\d.]+\]\s*/, '')
+        .replace(/\[key=[^\]]+\]\s*/, '')
+        .trim();
+}
+
+/**
+ * Rank and deduplicate learning patterns by score.
+ * Keeps the highest-scoring pattern for each normalized key.
+ */
+function rankAndDedup(patterns: string[], max: number): string[] {
+    const seen = new Map<
+        string,
+        { text: string; score: number; raw: string }
+    >();
+
+    for (const p of patterns) {
+        const score = extractScore(p);
+        const key = extractKey(p) ?? p;
+        const existing = seen.get(key);
+        if (!existing || score > existing.score) {
+            seen.set(key, { text: stripMetadata(p), score, raw: p });
+        }
+    }
+
+    return [...seen.values()]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, max)
+        .map((e) => e.text);
+}
+
+/**
+ * Filter corrections by context mode relevance.
+ * Only inject corrections that are relevant to the current task type.
+ */
+function filterByRelevance(patterns: string[], mode: ModeType): string[] {
+    // In PLAN mode, skip code-editing corrections
+    if (mode === 'PLAN') {
+        return patterns.filter(
+            (p) =>
+                !p.includes('editFile') &&
+                !p.includes('writeFile') &&
+                !p.includes('searchReplace'),
+        );
+    }
+    // In BUILD mode, keep all corrections
+    return patterns;
+}
+
+/**
+ * Process raw corrections into ranked, deduplicated, context-filtered list.
+ */
+function processCorrections(corrections: string[], mode: ModeType): string[] {
+    const ranked = rankAndDedup(corrections, MAX_INJECTED_CORRECTIONS);
+    return filterByRelevance(ranked, mode);
+}
+
+/**
+ * Process raw positives into ranked, deduplicated list.
+ */
+function processPositives(positives: string[]): string[] {
+    return rankAndDedup(positives, MAX_INJECTED_POSITIVES);
 }
 
 /**
@@ -202,16 +293,24 @@ export function buildSystemPrompt({
         parts.push(`## Project Context\n${projectContext}`);
     }
 
+    // Process corrections: rank by score, deduplicate, filter by mode relevance
     if (corrections && corrections.length > 0) {
-        parts.push(
-            `## Previous Corrections\n${corrections.map((c) => `- ${c}`).join('\n')}`,
-        );
+        const processed = processCorrections(corrections, mode);
+        if (processed.length > 0) {
+            parts.push(
+                `## Previous Corrections\n${processed.map((c) => `- ${c}`).join('\n')}`,
+            );
+        }
     }
 
+    // Process positives: rank by score, deduplicate
     if (positives && positives.length > 0) {
-        parts.push(
-            `## Proven Patterns (Continue Using)\nThese patterns were accepted in previous sessions — keep using them:\n${positives.map((p) => `- ${p}`).join('\n')}`,
-        );
+        const processed = processPositives(positives);
+        if (processed.length > 0) {
+            parts.push(
+                `## Proven Patterns (Continue Using)\nThese patterns were accepted in previous sessions — keep using them:\n${processed.map((p) => `- ${p}`).join('\n')}`,
+            );
+        }
     }
 
     if (errorWarnings && errorWarnings.length > 0) {
