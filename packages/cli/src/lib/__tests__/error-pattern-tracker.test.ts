@@ -27,20 +27,47 @@ describe('ErrorPatternTracker', () => {
         // "PREFIXENOENT" does not match "ENOENT" because of lack of word boundary
         expect(tracker.record('error: PREFIXENOENT occurred')).toBeNull();
         expect(tracker.record('error: PREFIXENOENT occurred')).toBeNull();
-        expect(tracker.record('error: PREFIXENOENT occurred')).toBeNull();
+        expect(tracker.record('error: PREFIXENOENT occurred')).not.toContain(
+            'does not exist',
+        );
 
-        // Ensure no suggestion was generated because it was not matched as ENOENT
-        expect(tracker.getSuggestions()).toHaveLength(0);
+        // Should NOT contain the ENOENT-specific suggestion
+        const suggestions = tracker.getSuggestions();
+        expect(suggestions.some((s) => s.includes('does not exist'))).toBe(
+            false,
+        );
     });
 
-    it('returns null for generic unmatched errors', () => {
+    it('learns new patterns from repeated unknown errors', () => {
         const tracker = new ErrorPatternTracker();
 
-        expect(tracker.record('Some completely unknown error')).toBeNull();
+        // First two occurrences — below threshold
         expect(tracker.record('Some completely unknown error')).toBeNull();
         expect(tracker.record('Some completely unknown error')).toBeNull();
 
-        // No suggestion is returned because generic pattern slice fallback is removed
+        // Third occurrence — triggers learning
+        const suggestion = tracker.record('Some completely unknown error');
+        expect(suggestion).not.toBeNull();
+        expect(suggestion).toContain('Repeated error');
+
+        // Should have a learned suggestion
+        expect(tracker.getSuggestions()).toHaveLength(1);
+    });
+
+    it('marks resolved patterns as suppressed', () => {
+        const tracker = new ErrorPatternTracker();
+
+        // Trigger a pattern
+        tracker.record('ENOENT: file missing');
+        tracker.record('ENOENT: file missing');
+        tracker.record('ENOENT: file missing');
+        expect(tracker.getSuggestions()).toHaveLength(1);
+
+        // Resolve it
+        tracker.markResolved('ENOENT');
         expect(tracker.getSuggestions()).toHaveLength(0);
+
+        // Should not re-trigger after resolution
+        expect(tracker.record('ENOENT: file missing')).toBeNull();
     });
 });
