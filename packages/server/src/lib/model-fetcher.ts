@@ -2,6 +2,7 @@ import {
     registerLocalModel,
     CLOUDFLARE_ACCOUNT_ID_KEYCHAIN,
     keychain,
+    SUPPORTED_CHAT_MODELS,
     type DynamicModel,
     type SupportedProvider,
 } from '@nightcode/shared';
@@ -386,10 +387,53 @@ async function fetchLMStudio(): Promise<DynamicModel[]> {
     }
 }
 
+function cleanCloudflareModelName(name: string): string {
+    const lastPart = name.includes('/') ? name.split('/').pop()! : name;
+    let clean = lastPart
+        .replace(/[-_:]/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const replacements: Record<string, string> = {
+        Gpt: 'GPT',
+        Oss: 'OSS',
+        Lora: 'LoRA',
+        It: 'IT',
+        Hf: 'HF',
+        Glm: 'GLM',
+        Ibm: 'IBM',
+        Qwen: 'Qwen',
+        Deepseek: 'DeepSeek',
+        Gemma: 'Gemma',
+        Llama: 'Llama',
+        Kimi: 'Kimi',
+        Mistralai: 'Mistral AI',
+        Mistral: 'Mistral',
+        Aisingapore: 'AI Singapore',
+    };
+
+    for (const [key, val] of Object.entries(replacements)) {
+        const regex = new RegExp(`\\b${key}\\b`, 'gi');
+        clean = clean.replace(regex, val);
+    }
+
+    clean = clean.replace(/\b(\d+)[Bb]\b/g, (match, num) => `${num}B`);
+    return clean;
+}
+
 // ── Cloudflare Workers AI (requires Account ID + API key) ──
 
 async function fetchCloudflare(clientKey?: string): Promise<DynamicModel[]> {
-    const apiKey = clientKey ?? process.env.CLOUDFLARE_API_KEY ?? '';
+    let apiKey = clientKey ?? process.env.CLOUDFLARE_API_KEY ?? '';
+    if (!apiKey && keychain.isAvailable()) {
+        try {
+            const keychainApiKey = await keychain.getKey('cloudflare-api-key');
+            if (keychainApiKey) apiKey = keychainApiKey;
+        } catch {
+            // Ignore keychain errors
+        }
+    }
 
     // Resolve Account ID from keychain or env var
     let accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
@@ -411,7 +455,7 @@ async function fetchCloudflare(clientKey?: string): Promise<DynamicModel[]> {
         return [];
     }
     try {
-        const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?task=text-generation&hide_experimental=false&per_page=100`;
+        const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?hide_experimental=false&per_page=100`;
         console.log(`[model-fetcher] Fetching Cloudflare models from: ${url}`);
         const res = await fetch(url, {
             headers: {
@@ -427,13 +471,16 @@ async function fetchCloudflare(clientKey?: string): Promise<DynamicModel[]> {
             return [];
         }
         const data = (await res.json()) as any;
-        const models: any[] = data?.result ?? [];
-        console.log(
-            `[model-fetcher] Cloudflare: Found ${models.length} text-generation models`,
+        const rawModels: any[] = data?.result ?? [];
+        const textGenModels = rawModels.filter(
+            (m: any) => m.task?.name === 'Text Generation',
         );
-        return models.map((m) => ({
-            id: `cloudflare/${m.id}` as string,
-            displayName: (m.name as string) ?? deriveDisplayName(m.id),
+        console.log(
+            `[model-fetcher] Cloudflare: Found ${rawModels.length} models total, filtered to ${textGenModels.length} text-generation models`,
+        );
+        return textGenModels.map((m) => ({
+            id: `cloudflare/${m.name ?? m.id}` as string,
+            displayName: cleanCloudflareModelName(m.name ?? m.id),
             provider: 'cloudflare' as SupportedProvider,
             pricing: {
                 inputUsdPerMillionTokens: 0,
@@ -443,6 +490,33 @@ async function fetchCloudflare(clientKey?: string): Promise<DynamicModel[]> {
     } catch (err) {
         console.error(
             '[model-fetcher] Failed to fetch models from Cloudflare Workers AI:',
+            err instanceof Error ? err.message : err,
+        );
+        return [];
+    }
+}
+
+// ── Cline (maps OpenRouter dynamic models to Cline endpoint) ──
+
+async function fetchCline(clientKey?: string): Promise<DynamicModel[]> {
+    const apiKey = clientKey ?? process.env.CLINE_API_KEY ?? '';
+    if (!apiKey) return [];
+
+    try {
+        const openRouterModels = await fetchOpenRouter();
+        return openRouterModels.map((m) => {
+            const actualModelId = m.id.startsWith('openrouter/')
+                ? m.id.slice(11)
+                : m.id;
+            return {
+                ...m,
+                id: `cline/${actualModelId}`,
+                provider: 'cline' as SupportedProvider,
+            };
+        });
+    } catch (err) {
+        console.error(
+            '[model-fetcher] Failed to dynamically fetch Cline models:',
             err instanceof Error ? err.message : err,
         );
         return [];
@@ -661,6 +735,10 @@ const FETCHERS: Array<{ provider: SupportedProvider; fetch: ProviderFetcher }> =
                     'nebius',
                 ),
         },
+        {
+            provider: 'cline',
+            fetch: (key) => fetchCline(key),
+        },
     ];
 
 export async function fetchAllModels(
@@ -687,6 +765,19 @@ export async function fetchAllModels(
                 models.push(model);
                 providerSet.add(model.provider);
             }
+        }
+    }
+
+    // Merge static models if not already present
+    for (const staticModel of SUPPORTED_CHAT_MODELS) {
+        if (!models.some((m) => m.id === staticModel.id)) {
+            models.push({
+                id: staticModel.id,
+                displayName: deriveDisplayName(staticModel.id),
+                provider: staticModel.provider,
+                pricing: staticModel.pricing,
+            });
+            providerSet.add(staticModel.provider);
         }
     }
 
