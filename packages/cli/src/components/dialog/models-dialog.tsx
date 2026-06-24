@@ -152,7 +152,7 @@ export function ModelsDialogContent({
                     ? 'API key needed'
                     : p.models.length > 0
                       ? `${p.models.length} models`
-                      : 'fetching...';
+                      : 'no models found';
                 return {
                     key: p.provider,
                     label: p.displayName,

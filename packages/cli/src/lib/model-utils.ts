@@ -151,6 +151,7 @@ export function extractProvider(modelId: string): string {
     if (modelId.startsWith('deepinfra/')) return 'deepinfra';
     if (modelId.startsWith('novita/')) return 'novita';
     if (modelId.startsWith('nebius/')) return 'nebius';
+    if (modelId.startsWith('cline/')) return 'cline';
     if (modelId.startsWith('claude-')) return 'anthropic';
     if (modelId.startsWith('gpt-') || modelId.startsWith('o3')) return 'openai';
     if (modelId.startsWith('llama-') || modelId.startsWith('mixtral-'))

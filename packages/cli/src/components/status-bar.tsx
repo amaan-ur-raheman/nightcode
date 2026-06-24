@@ -5,7 +5,11 @@ import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
 import { usePromptConfig } from '@/providers/prompt-config';
 import { getModeColor } from '@/lib/mode-utils';
-import { getModelName } from '@/lib/model-names';
+import {
+    getModelName,
+    extractProvider,
+    getProviderDisplayName,
+} from '@/lib/model-names';
 import {
     getActiveSubagents,
     onSubagentChange,
@@ -137,9 +141,10 @@ export const StatusBar = React.memo(function StatusBar({
     if (hasActiveTasks) {
         const parts: string[] = [];
         if (activeSubagents > 0)
-            parts.push(`${activeSubagents} agent${activeSubagents !== 1 ? 's' : ''}`);
-        if (orchestrationCount > 0)
-            parts.push(`${orchestrationCount} orch`);
+            parts.push(
+                `${activeSubagents} agent${activeSubagents !== 1 ? 's' : ''}`,
+            );
+        if (orchestrationCount > 0) parts.push(`${orchestrationCount} orch`);
         if (queueStats.running > 0 || queueStats.queueSize > 0)
             parts.push(`q:${queueStats.running || queueStats.queueSize}`);
         activityLabel = parts.join(' · ');
@@ -152,11 +157,27 @@ export const StatusBar = React.memo(function StatusBar({
             justifyContent="space-between"
             width="100%"
         >
-            {/* Primary: mode + model */}
+            {/* Primary: mode + provider + model */}
             <box flexDirection="row" gap={1}>
                 <text fg={getModeColor(mode, colors)}>
                     {mode === 'PLAN' ? 'Plan' : 'Build'}
                 </text>
+                {(() => {
+                    const provider = extractProvider(model);
+                    return provider ? (
+                        <>
+                            <text
+                                attributes={TextAttributes.DIM}
+                                fg={colors.dimSeparator}
+                            >
+                                ›
+                            </text>
+                            <text attributes={TextAttributes.DIM}>
+                                {getProviderDisplayName(provider)}
+                            </text>
+                        </>
+                    ) : null;
+                })()}
                 <text attributes={TextAttributes.DIM} fg={colors.dimSeparator}>
                     ›
                 </text>

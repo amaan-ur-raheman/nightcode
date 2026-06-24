@@ -95,6 +95,10 @@ export type Settings = {
         reduceMotion?: boolean;
         highContrast?: boolean;
     };
+    sandbox?: {
+        enabled: boolean;
+        image?: string;
+    };
 };
 
 const SETTINGS_PATH = join(homedir(), '.nightcode', 'settings.json');
@@ -227,6 +231,23 @@ export function toggleHighContrast(): boolean {
     settings.accessibility = {
         ...settings.accessibility,
         highContrast: enabled,
+    };
+    saveSettings(settings);
+    return enabled;
+}
+
+export function isSandboxEnabled(): boolean {
+    const settings = loadSettings();
+    return settings.sandbox?.enabled ?? false;
+}
+
+export function toggleSandbox(): boolean {
+    const settings = loadSettings();
+    const enabled = !(settings.sandbox?.enabled ?? false);
+    settings.sandbox = {
+        ...settings.sandbox,
+        enabled,
+        image: settings.sandbox?.image ?? 'node:18-alpine',
     };
     saveSettings(settings);
     return enabled;
