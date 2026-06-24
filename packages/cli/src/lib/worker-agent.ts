@@ -24,7 +24,7 @@ import {
     setProviderConcurrency,
     recordProviderLatency,
 } from '@/lib/concurrency-limit';
-import { messageBroker } from '@/lib/message-broker';
+import { messageBroker, type AgentMessage } from '@/lib/message-broker';
 import { writeResult } from '@/lib/workspace';
 import {
     calculateTaskPriority,
@@ -32,6 +32,112 @@ import {
 } from '@/lib/orchestrator-intelligence';
 import { correctionTracker } from '@/lib/correction-tracker';
 import { errorPatternTracker } from '@/lib/error-pattern-tracker';
+
+// ── Inter-Worker Communication ──
+
+interface FileChange {
+    taskId: string;
+    path: string;
+    action: 'created' | 'modified' | 'deleted';
+    timestamp: number;
+}
+
+interface WorkerFinding {
+    taskId: string;
+    role: AgentRole;
+    summary: string;
+    timestamp: number;
+}
+
+/**
+ * Shared context for inter-worker communication.
+ * Tracks file changes and findings across all workers in a task graph.
+ * Workers subscribe to updates and get injected findings into their prompts.
+ */
+export class WorkerSharedContext {
+    private fileChanges: FileChange[] = [];
+    private findings: WorkerFinding[] = [];
+    private listeners = new Map<string, Set<() => void>>();
+
+    /** Record file changes made by a worker. */
+    recordFileChanges(taskId: string, changes: FileChange[]): void {
+        for (const change of changes) {
+            this.fileChanges.push({ ...change, taskId });
+        }
+        this.notifyAll();
+    }
+
+    /** Record a finding from a worker (error, pattern, insight). */
+    recordFinding(taskId: string, role: AgentRole, summary: string): void {
+        this.findings.push({ taskId, role, summary, timestamp: Date.now() });
+        this.notifyAll();
+    }
+
+    /** Get file changes relevant to a specific task (from tasks that completed before it started). */
+    getRelevantChanges(
+        taskFiles: string[],
+        completedBefore?: number,
+    ): FileChange[] {
+        if (taskFiles.length === 0) return [];
+        return this.fileChanges.filter(
+            (c) =>
+                taskFiles.some(
+                    (f) =>
+                        f === c.path ||
+                        f.endsWith(c.path) ||
+                        c.path.endsWith(f),
+                ) &&
+                (!completedBefore || c.timestamp < completedBefore),
+        );
+    }
+
+    /** Get findings from tasks that are not the given task. */
+    getFindingsFromOtherTasks(taskId: string, limit = 5): WorkerFinding[] {
+        return this.findings.filter((f) => f.taskId !== taskId).slice(-limit);
+    }
+
+    /** Subscribe to changes. Returns unsubscribe function. */
+    onChange(agentId: string, callback: () => void): () => void {
+        if (!this.listeners.has(agentId)) {
+            this.listeners.set(agentId, new Set());
+        }
+        this.listeners.get(agentId)!.add(callback);
+        return () => {
+            this.listeners.get(agentId)?.delete(callback);
+        };
+    }
+
+    private notifyAll(): void {
+        for (const handlers of this.listeners.values()) {
+            for (const handler of handlers) {
+                try {
+                    handler();
+                } catch {}
+            }
+        }
+    }
+}
+
+/** Extract file changes from a worker result by reading the task files and inferring changes. */
+function extractFileChanges(task: TaskNode, result: string): FileChange[] {
+    const changes: FileChange[] = [];
+    // If the task completed successfully and has files, assume they were modified
+    for (const filePath of task.files) {
+        if (
+            result.includes(filePath) ||
+            result.includes('writeFile') ||
+            result.includes('searchReplace')
+        ) {
+            changes.push({
+                taskId: task.id,
+                path: filePath,
+                action: 'modified',
+                timestamp: Date.now(),
+            });
+        }
+    }
+    return changes;
+}
 
 const WORKER_SYSTEM_PROMPTS: Record<AgentRole, string> = {
     orchestrator:
@@ -54,6 +160,7 @@ function buildWorkerPrompt(
     task: TaskNode,
     positives?: string[],
     errorWarnings?: string[],
+    sharedContext?: WorkerSharedContext,
 ): string {
     const rolePrompt =
         WORKER_SYSTEM_PROMPTS[role] ?? WORKER_SYSTEM_PROMPTS.coder;
@@ -73,6 +180,21 @@ function buildWorkerPrompt(
         parts.push(
             `## ⚠️ Recurring Errors\n${errorWarnings.map((w) => `- ${w}`).join('\n')}`,
         );
+    }
+    // Inject inter-worker findings
+    if (sharedContext) {
+        const findings = sharedContext.getFindingsFromOtherTasks(task.id, 5);
+        if (findings.length > 0) {
+            parts.push(
+                `## Worker Findings\n${findings.map((f) => `- [${f.role}] ${f.summary}`).join('\n')}`,
+            );
+        }
+        const changes = sharedContext.getRelevantChanges(task.files);
+        if (changes.length > 0) {
+            parts.push(
+                `## File Changes by Other Workers\n${changes.map((c) => `- ${c.action}: ${c.path} (by ${c.taskId})`).join('\n')}`,
+            );
+        }
     }
     parts.push(`## Task\n${task.description}`);
     if (task.files.length > 0)
@@ -226,12 +348,22 @@ interface LatencyEntry {
     timestamp: number;
 }
 
+interface LatencyEntry {
+    durationMs: number;
+    timestamp: number;
+    workerCount: number; // concurrent workers at time of execution
+}
+
 class WorkerLatencyTracker {
     private history = new Map<string, LatencyEntry[]>();
 
-    record(taskType: string, durationMs: number): void {
+    record(taskType: string, durationMs: number, workerCount = 1): void {
         const entries = this.history.get(taskType) ?? [];
-        entries.push({ durationMs, timestamp: Date.now() });
+        entries.push({
+            durationMs,
+            timestamp: Date.now(),
+            workerCount,
+        });
         // Keep only recent entries
         if (entries.length > LATENCY_HISTORY_MAX) {
             entries.splice(0, entries.length - LATENCY_HISTORY_MAX);
@@ -240,20 +372,53 @@ class WorkerLatencyTracker {
     }
 
     /**
-     * Get the adaptive timeout for a task type based on p95 latency.
-     * Returns null if insufficient data (< 5 samples).
+     * Get the adaptive timeout for a task type based on p95 latency,
+     * adjusted for current system load (concurrent workers).
+     * Returns null if insufficient data (< 3 samples).
      */
-    getAdaptiveTimeout(taskType: string): number | null {
+    getAdaptiveTimeout(
+        taskType: string,
+        currentWorkerCount = 1,
+    ): number | null {
         const entries = this.history.get(taskType);
-        if (!entries || entries.length < 5) return null;
+        if (!entries || entries.length < 3) return null;
 
-        const sorted = [...entries]
-            .map((e) => e.durationMs)
-            .sort((a, b) => a - b);
-        const p95Index = Math.floor(sorted.length * LATENCY_PERCENTILE);
-        const p95 = sorted[Math.min(p95Index, sorted.length - 1)]!;
+        // Weight recent entries more heavily (exponential decay)
+        const now = Date.now();
+        const weighted = entries.map((e) => {
+            const age = (now - e.timestamp) / (60 * 60 * 1000); // hours
+            const weight = Math.exp(-age / 24); // half-life of 24h
+            return { ...e, weight };
+        });
 
-        return Math.min(p95 * LATENCY_MULTIPLIER, WORKER_TIMEOUT_MAX_MS);
+        // Sort by duration for percentile calculation
+        const sorted = [...weighted].sort(
+            (a, b) => a.durationMs - b.durationMs,
+        );
+
+        // Calculate weighted p90 (not p95 — more conservative)
+        const totalWeight = sorted.reduce((s, e) => s + e.weight, 0);
+        let cumWeight = 0;
+        let p90 = sorted[0]!.durationMs;
+        for (const entry of sorted) {
+            cumWeight += entry.weight;
+            if (cumWeight / totalWeight >= 0.9) {
+                p90 = entry.durationMs;
+                break;
+            }
+        }
+
+        // Adjust for system load: more concurrent workers = longer timeouts
+        // Estimate typical load from history
+        const avgWorkerCount =
+            entries.reduce((s, e) => s + e.workerCount, 0) / entries.length;
+        const loadFactor =
+            avgWorkerCount > 0
+                ? Math.max(1, currentWorkerCount / avgWorkerCount)
+                : 1;
+
+        const adjusted = p90 * LATENCY_MULTIPLIER * loadFactor;
+        return Math.min(adjusted, WORKER_TIMEOUT_MAX_MS);
     }
 
     /** Clear all history (useful for tests). */
@@ -353,6 +518,8 @@ export async function runWorker(
     graph: TaskGraph,
     projectContext: string,
     signal: AbortSignal,
+    sharedContext?: WorkerSharedContext,
+    workerCount = 1,
 ): Promise<string> {
     const agentId = `worker-${task.id}`;
     const mode = task.mode ?? ROLE_MODE_MAP[task.type] ?? 'PLAN';
@@ -380,13 +547,17 @@ export async function runWorker(
         task,
         patterns.positives,
         errorSuggestions,
+        sharedContext,
     );
 
     registerSubagent(agentId, task.description, WORKER_MAX_STEPS);
 
     // Combine external signal with per-worker timeout and task-specific abort signal
     // Adaptive timeout: use latency history if available, otherwise scale by complexity
-    const adaptiveTimeout = latencyTracker.getAdaptiveTimeout(task.type);
+    const adaptiveTimeout = latencyTracker.getAdaptiveTimeout(
+        task.type,
+        workerCount,
+    );
     const baseTimeout = task.maxDurationMs ?? WORKER_TIMEOUT_MS;
     const complexityBonus = Math.min(
         task.files.length * TIMEOUT_PER_FILE_MS,
@@ -431,7 +602,7 @@ export async function runWorker(
                 const provider = extractProvider(resolvedModel);
                 if (provider)
                     recordProviderLatency(provider, elapsed, true, mode);
-                latencyTracker.record(task.type, elapsed);
+                latencyTracker.record(task.type, elapsed, workerCount);
                 performanceTracker.recordSuccess(task.type, elapsed);
                 return result;
             } catch (error) {
@@ -440,7 +611,7 @@ export async function runWorker(
                 const provider = extractProvider(resolvedModel);
                 if (provider)
                     recordProviderLatency(provider, elapsed, false, mode);
-                latencyTracker.record(task.type, elapsed);
+                latencyTracker.record(task.type, elapsed, workerCount);
                 const failureReason =
                     error instanceof Error
                         ? error.message.slice(0, 200)
@@ -516,6 +687,23 @@ export async function executeTaskGraph(
     void syncTaskNodesToDb(graph);
     const results: Map<string, string> = new Map();
     const activeWorkers = new Map<string, Promise<void>>();
+    const sharedContext = new WorkerSharedContext();
+
+    // Subscribe to broker for inter-worker findings
+    const unsubBroker = messageBroker.subscribe('*', (msg: AgentMessage) => {
+        if (msg.type === 'task-result' && msg.payload) {
+            const payload = msg.payload as { taskId: string; summary: string };
+            // Find the task node to get role
+            const sourceNode = graph.nodes[payload.taskId];
+            if (sourceNode) {
+                sharedContext.recordFinding(
+                    payload.taskId,
+                    sourceNode.type,
+                    payload.summary,
+                );
+            }
+        }
+    });
 
     // Apply maxDurationMs to all tasks if provided
     if (maxDurationMs) {
@@ -671,12 +859,19 @@ export async function executeTaskGraph(
                             graph,
                             projectContext,
                             controller.signal,
+                            sharedContext,
+                            activeWorkers.size + 1,
                         );
                     } finally {
                         releaseSlot();
                     }
                 })()
                     .then((result) => {
+                        // Record file changes in shared context for other workers
+                        const changes = extractFileChanges(task, result);
+                        if (changes.length > 0) {
+                            sharedContext.recordFileChanges(task.id, changes);
+                        }
                         const subagentInfo = getActiveSubagents().find(
                             (s) => s.id === workerAgentId,
                         );
@@ -791,6 +986,7 @@ export async function executeTaskGraph(
     } finally {
         unsub();
         unsubUpdate();
+        unsubBroker();
     }
 
     orchestratorManager.updateGraph(graph);
