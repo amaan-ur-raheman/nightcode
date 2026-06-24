@@ -316,6 +316,13 @@ const NEBIUS_PROVIDER: ProviderConfig = {
     models: modelsForProvider('nebius'),
 };
 
+const CLINE_PROVIDER: ProviderConfig = {
+    name: 'cline',
+    baseUrl: 'https://api.cline.bot/api/v1',
+    apiKey: '',
+    models: modelsForProvider('cline'),
+};
+
 const ALL_PROVIDERS: ProviderConfig[] = [
     NIM_PROVIDER,
     ANTHROPIC_PROVIDER,
@@ -348,6 +355,7 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     DEEPINFRA_PROVIDER,
     NOVITA_PROVIDER,
     NEBIUS_PROVIDER,
+    CLINE_PROVIDER,
 ];
 
 // Provider prefix mapping for dynamic model IDs
@@ -380,6 +388,7 @@ const PROVIDER_PREFIXES: Record<string, string> = {
     'deepinfra/': 'deepinfra',
     'novita/': 'novita',
     'nebius/': 'nebius',
+    'cline/': 'cline',
 };
 
 function findProviderForModel(modelId: string): ProviderConfig | undefined {

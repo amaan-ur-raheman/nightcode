@@ -54,7 +54,8 @@ export type SupportedProvider =
     | 'siliconflow'
     | 'deepinfra'
     | 'novita'
-    | 'nebius';
+    | 'nebius'
+    | 'cline';
 
 type SupportedChatModelDefinition = {
     id: string;
@@ -646,6 +647,104 @@ export const SUPPORTED_CHAT_MODELS = [
         pricing: {
             inputUsdPerMillionTokens: 0.2,
             outputUsdPerMillionTokens: 0.6,
+        },
+    },
+
+    // ── Cline ──
+    {
+        id: 'cline/anthropic/claude-3-5-sonnet-20241022',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 3.0,
+            outputUsdPerMillionTokens: 15.0,
+        },
+    },
+    {
+        id: 'cline/anthropic/claude-3-5-haiku-20241022',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0.8,
+            outputUsdPerMillionTokens: 4.0,
+        },
+    },
+    {
+        id: 'cline/openai/gpt-4o',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 2.5,
+            outputUsdPerMillionTokens: 10.0,
+        },
+    },
+    {
+        id: 'cline/openai/gpt-4o-mini',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0.15,
+            outputUsdPerMillionTokens: 0.6,
+        },
+    },
+    {
+        id: 'cline/google/gemini-2.5-pro',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 1.25,
+            outputUsdPerMillionTokens: 3.75,
+        },
+    },
+    {
+        id: 'cline/google/gemini-2.5-flash',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0.075,
+            outputUsdPerMillionTokens: 0.3,
+        },
+    },
+    {
+        id: 'cline/minimax/minimax-m2.5',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: 'cline/meta-llama/llama-3.1-8b-instruct:free',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: 'cline/qwen/qwen-2.5-coder-32b-instruct:free',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: 'cline/google/gemini-2.5-flash:free',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: 'cline/meta-llama/llama-3-8b-instruct:free',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
+        },
+    },
+    {
+        id: 'cline/deepseek/deepseek-r1:free',
+        provider: 'cline',
+        pricing: {
+            inputUsdPerMillionTokens: 0,
+            outputUsdPerMillionTokens: 0,
         },
     },
 ] as const satisfies readonly SupportedChatModelDefinition[];

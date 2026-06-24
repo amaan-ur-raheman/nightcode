@@ -30,6 +30,7 @@ describe('PROVIDER_KEYCHAIN_NAMES', () => {
         expect(keys).toContain('fireworks');
         expect(keys).toContain('cerebras');
         expect(keys).toContain('openrouter');
+        expect(keys).toContain('cline');
     });
 });
 
@@ -47,6 +48,7 @@ describe('PROVIDER_ENV_VARS', () => {
         expect(PROVIDER_ENV_VARS.fireworks).toBe('FIREWORKS_API_KEY');
         expect(PROVIDER_ENV_VARS.cerebras).toBe('CEREBRAS_API_KEY');
         expect(PROVIDER_ENV_VARS.openrouter).toBe('OPENROUTER_API_KEY');
+        expect(PROVIDER_ENV_VARS.cline).toBe('CLINE_API_KEY');
     });
 });
 
@@ -116,6 +118,10 @@ describe('resolveProviderForModel', () => {
         ).toBe('kilo');
     });
 
+    it('resolves cline/ prefixed models to cline', () => {
+        expect(resolveProviderForModel('cline/gpt-4o')).toBe('cline');
+    });
+
     it('throws for completely unknown model IDs', () => {
         expect(() => resolveProviderForModel('unknown-model')).toThrow(
             'Cannot resolve provider',
@@ -128,5 +134,6 @@ describe('getKeychainName', () => {
         expect(getKeychainName('nvidia')).toBe('nim-api-key');
         expect(getKeychainName('anthropic')).toBe('anthropic-api-key');
         expect(getKeychainName('kilo')).toBe('kilo-api-key');
+        expect(getKeychainName('cline')).toBe('cline-api-key');
     });
 });

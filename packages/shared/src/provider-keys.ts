@@ -37,6 +37,7 @@ export const PROVIDER_KEYCHAIN_NAMES: Record<SupportedProvider, string> = {
     deepinfra: 'deepinfra-api-key',
     novita: 'novita-api-key',
     nebius: 'nebius-api-key',
+    cline: 'cline-api-key',
 };
 
 /**
@@ -74,6 +75,7 @@ export const PROVIDER_ENV_VARS: Record<SupportedProvider, string> = {
     deepinfra: 'DEEPINFRA_API_TOKEN',
     novita: 'NOVITA_API_KEY',
     nebius: 'NEBIUS_API_KEY',
+    cline: 'CLINE_API_KEY',
 };
 
 /**
@@ -110,6 +112,7 @@ const PROVIDER_PREFIXES: Record<string, SupportedProvider> = {
     'deepinfra/': 'deepinfra',
     'novita/': 'novita',
     'nebius/': 'nebius',
+    'cline/': 'cline',
 };
 
 /**
