@@ -16,8 +16,8 @@ type SystemPromptParams = {
 
 const MAX_PROMPT_CACHE_SIZE = 64;
 
-/** Max corrections to inject into the system prompt. */
-const MAX_INJECTED_CORRECTIONS = 10;
+import { MAX_INJECTED_CORRECTIONS } from '@/lib/correction-tracker'; // Example import path
+// ... or define it in a shared config
 /** Max positives to inject into the system prompt. */
 const MAX_INJECTED_POSITIVES = 5;
 
