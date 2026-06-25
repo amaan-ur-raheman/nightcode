@@ -9,14 +9,8 @@ import { openBillingPortal, openUpgradeCheckout } from '@/lib/upgrade';
 import { undoManager } from '@/lib/undo-manager';
 import { toggleConfirmations, toggleReasoning } from '@/lib/settings';
 import { memory } from '@/lib/memory';
-import { auditLog } from '@/lib/audit-log';
 import { debug } from '@/lib/debug';
-import {
-    exportSession,
-    exportToFile,
-    importSession,
-} from '@/lib/session-utils';
-import { themeManager } from '@/lib/theme-manager';
+import { exportSession, exportToFile } from '@/lib/session-utils';
 import { toolAnalytics } from '@/lib/tool-analytics';
 import { batchManager } from '@/lib/batch-manager';
 import { orchestratorManager } from '@/lib/orchestrator-manager';

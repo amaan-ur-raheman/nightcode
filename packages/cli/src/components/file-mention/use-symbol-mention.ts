@@ -10,14 +10,13 @@ import type { TextareaRenderable, ScrollBoxRenderable } from '@opentui/core';
 import { basename } from 'path';
 
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
-import { getOutlineTool } from '@/lib/tools/get-outline';
+import { codeSearchTool } from '@/lib/tools/code-search';
 import {
     findActiveMention,
     findMentionTokenBefore,
     type MentionMatch,
 } from './use-file-mention';
 import { extractSymbolBlock } from './extract-symbol-block';
-
 export interface SymbolCandidate {
     name: string;
     kind: string;
@@ -77,7 +76,10 @@ export function useSymbolMention(
         let ignore = false;
         async function fetchSymbols() {
             try {
-                const result = await getOutlineTool({ path: selectedFile });
+                const result = (await codeSearchTool({
+                    action: 'outline',
+                    path: selectedFile,
+                })) as any;
                 if (!ignore) {
                     setAllSymbols(result.symbols || []);
                 }

@@ -17,7 +17,7 @@ export function QueueDialogContent() {
     }, []);
 
     function handleClear() {
-        const cleared = requestQueue.clear();
+        requestQueue.clear();
         setStats(requestQueue.getStats());
     }
 

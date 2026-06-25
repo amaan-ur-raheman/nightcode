@@ -105,7 +105,7 @@ export function QuestionOverlay({ manager }: QuestionOverlayProps) {
 
     // Track answers per question tab
     const answersRef = useRef<Map<number, string>>(new Map());
-    const [answersRevision, setAnswersRevision] = useState(0);
+    const [, setAnswersRevision] = useState(0);
 
     const setAnswer = useCallback((tab: number, value: string) => {
         answersRef.current.set(tab, value);

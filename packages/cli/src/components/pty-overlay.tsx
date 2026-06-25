@@ -25,15 +25,8 @@ const sanitizeTerminalOutput = (output: string) => {
 };
 
 export function PtyOverlay() {
-    const {
-        active,
-        command,
-        output,
-        isAttached,
-        detach,
-        writeInput,
-        interrupt,
-    } = usePtySession();
+    const { command, output, isAttached, detach, writeInput, interrupt } =
+        usePtySession();
     const { isTopLayer, push, pop } = useKeyboardLayer();
     const dimensions = useTerminalDimensions();
     const { colors } = useTheme();

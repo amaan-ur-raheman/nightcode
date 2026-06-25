@@ -88,7 +88,6 @@ export const StatusBar = React.memo(function StatusBar({
     // Token cost estimation
     let inputTokens = 0;
     let outputTokens = 0;
-    let lastDurationMs: number | undefined = undefined;
 
     for (const msg of messages) {
         let textLen = 0;
@@ -108,9 +107,6 @@ export const StatusBar = React.memo(function StatusBar({
             inputTokens += estTokens;
         } else {
             outputTokens += estTokens;
-            if (msg.metadata && msg.metadata.durationMs) {
-                lastDurationMs = msg.metadata.durationMs;
-            }
         }
     }
 

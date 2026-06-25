@@ -48,15 +48,8 @@ export function Home({ savedSession: initialSavedSession }: HomeProps) {
 
     // Pre-warm common tools during idle so first tool call is instant
     useEffect(() => {
-        import('@/lib/tools/index').then(({ loadTool }) => {
-            void Promise.allSettled([
-                loadTool('readFile'),
-                loadTool('grep'),
-                loadTool('glob'),
-                loadTool('listDirectory'),
-                loadTool('bash'),
-                loadTool('editFile'),
-            ]);
+        import('@/lib/tools/index').then(({ preloadTools }) => {
+            preloadTools();
         });
     }, []);
 

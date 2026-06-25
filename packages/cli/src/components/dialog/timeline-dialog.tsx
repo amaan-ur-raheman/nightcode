@@ -27,7 +27,6 @@ export function TimelineDialogContent({
     const { isTopLayer, push, pop } = useKeyboardLayer();
 
     const [loading, setLoading] = useState(false);
-    const [timeline, setTimeline] = useState<TimelineData | null>(null);
     const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [columnFocus, setColumnFocus] = useState<'list' | 'diff'>('list');
@@ -35,6 +34,7 @@ export function TimelineDialogContent({
     const [diffScrollTop, setDiffScrollTop] = useState(0);
     const [confirmRollback, setConfirmRollback] = useState(false);
     const [messagesList, setMessagesList] = useState<any[]>(messages ?? []);
+    const [timeline, setTimeline] = useState<any>(null);
 
     const diffScrollRef = useRef<any>(null);
 
@@ -83,7 +83,7 @@ export function TimelineDialogContent({
                         new Date(a.timestamp).getTime(),
                 );
                 setSnapshots(list);
-            } catch (e) {
+            } catch {
                 // ignore
             } finally {
                 setLoading(false);
@@ -129,7 +129,7 @@ export function TimelineDialogContent({
             if (success) {
                 onRollback(activeSnapshot.commitHash);
             }
-        } catch (e) {
+        } catch {
             // ignore
         } finally {
             setLoading(false);

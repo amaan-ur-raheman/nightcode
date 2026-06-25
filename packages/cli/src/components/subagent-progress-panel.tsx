@@ -49,7 +49,7 @@ function StepProgress({
     );
 }
 
-function SubagentRow({ info, index }: { info: SubagentInfo; index: number }) {
+function SubagentRow({ info }: { info: SubagentInfo; index: number }) {
     const { colors } = useTheme();
     const elapsed = (info.completedAt ?? Date.now()) - info.startedAt;
     const isDone =

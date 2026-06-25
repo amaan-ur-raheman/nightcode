@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import prettyMs from 'pretty-ms';
 
-import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
 
 /**
