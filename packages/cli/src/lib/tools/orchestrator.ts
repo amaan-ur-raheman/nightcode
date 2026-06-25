@@ -30,8 +30,12 @@ export async function orchestratorTool(
     signal?: AbortSignal,
     execId?: string,
 ): Promise<unknown> {
-    const { task, context, strategy, maxConcurrency, maxDurationMs } =
-        toolInputSchemas.orchestrator.parse(input);
+    const parsed = toolInputSchemas.orchestrate_task.parse(input);
+    const { task, context, strategy, maxConcurrency, maxDurationMs } = parsed;
+
+    if (!task) {
+        throw new Error('task is required for orchestrate action');
+    }
 
     if (parentMode === 'PLAN') {
         throw new Error(
@@ -347,7 +351,8 @@ function buildSimpleGraph(task: string, model: string | undefined): TaskGraph {
 }
 
 export async function getTaskStatusTool(input: unknown): Promise<unknown> {
-    const { graphId } = toolInputSchemas.getTaskStatus.parse(input);
+    const parsed = toolInputSchemas.orchestrate_task.parse(input);
+    const { graphId } = parsed;
 
     if (graphId) {
         const state = orchestratorManager.get(graphId);
@@ -362,7 +367,12 @@ export async function getTaskStatusTool(input: unknown): Promise<unknown> {
 }
 
 export async function cancelTaskTool(input: unknown): Promise<unknown> {
-    const { graphId, taskId } = toolInputSchemas.cancelTask.parse(input);
+    const parsed = toolInputSchemas.orchestrate_task.parse(input);
+    const { graphId, taskId } = parsed;
+
+    if (!graphId) {
+        throw new Error('graphId is required for cancel action');
+    }
 
     const state = orchestratorManager.get(graphId);
     if (!state) return `No orchestration found with ID: ${graphId}`;

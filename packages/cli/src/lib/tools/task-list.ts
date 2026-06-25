@@ -1,4 +1,4 @@
-import { toolInputSchemas, type ModeType } from '@nightcode/shared';
+import { type ModeType } from '@nightcode/shared';
 
 export type TaskItem = {
     id: string;
@@ -83,14 +83,13 @@ function formatTaskList(state: TaskListState): string {
 }
 
 export async function taskListTool(
-    input: unknown,
+    input: any,
     _parentMode?: ModeType,
     _parentModel?: string,
     _signal?: AbortSignal,
     _execId?: string,
 ): Promise<unknown> {
-    const { action, tasks, taskId, status } =
-        toolInputSchemas.taskList.parse(input);
+    const { action, tasks, taskId, status } = input;
 
     switch (action) {
         case 'create': {
@@ -106,7 +105,7 @@ export async function taskListTool(
                 ids.add(t.id);
             }
             currentTaskList = {
-                tasks: tasks.map((t) => ({
+                tasks: tasks.map((t: any) => ({
                     id: t.id,
                     description: t.description,
                     status: 'pending' as const,

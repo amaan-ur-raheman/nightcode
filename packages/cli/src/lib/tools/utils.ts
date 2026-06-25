@@ -195,7 +195,7 @@ export async function globReplace(
             if (count > 0) {
                 await undoManager.backup(
                     resolved,
-                    'searchReplace',
+                    'edit_file',
                     `Edit ${relative(cwd, resolved)}`,
                 );
                 await writeFile(resolved, updated, 'utf-8');
