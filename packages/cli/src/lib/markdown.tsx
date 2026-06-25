@@ -14,7 +14,7 @@ function getStableContent(content: string, streaming: boolean): string {
 
     const lines = content.split('\n');
     const isSeparator = (l: string) =>
-        /^\|?[\s\-:|]+\|/.test(l.trimStart()) && /\-/.test(l);
+        /^\|?[\s\-:|]+\|/.test(l.trimStart()) && /-/.test(l);
     const isTableRow = (l: string) => /^\s*\|/.test(l) || isSeparator(l);
 
     // Find the start of the last contiguous block of table lines
@@ -45,7 +45,7 @@ function getStableContent(content: string, streaming: boolean): string {
 export function MarkdownText({
     children,
     streaming = false,
-    attributes,
+    attributes: _attributes,
     fg,
 }: MarkdownTextProps) {
     const { colors } = useTheme();

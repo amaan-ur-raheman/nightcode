@@ -73,7 +73,7 @@ export async function analyzeToolUsageWindow(): Promise<void> {
     const { correctionTracker } = await import('./correction-tracker');
 
     // Count write-type tools
-    const writeTools = ['writeFile', 'editFile', 'patch', 'searchReplace'];
+    const writeTools = ['write_file', 'edit_file'];
     const writeCalls = calls.filter((c) => writeTools.includes(c.toolName));
     const uniqueFiles = new Set(
         writeCalls
@@ -92,7 +92,7 @@ export async function analyzeToolUsageWindow(): Promise<void> {
     );
 
     const hasBashTest = calls.some((c) => {
-        if (c.toolName !== 'bash') return false;
+        if (c.toolName !== 'run_command') return false;
         const cmd =
             typeof c.input.command === 'string'
                 ? c.input.command.toLowerCase()
@@ -107,7 +107,10 @@ export async function analyzeToolUsageWindow(): Promise<void> {
     // Signal 1: Agent wrote files across 3+ files — should have used orchestrator
     if (uniqueFiles.size >= MIN_FILES_MODIFIED_FOR_ORCHESTRATOR) {
         const suggestion = `For tasks modifying ${uniqueFiles.size} files (${Array.from(uniqueFiles).slice(0, 3).join(', ')}...), use the orchestrator tool instead of making edits manually. The orchestrator parallelizes across files and reduces context loss.`;
-        await correctionTracker.recordSuggestion(suggestion, 'orchestrator');
+        await correctionTracker.recordSuggestion(
+            suggestion,
+            'orchestrate_task',
+        );
         console.log(`[delegation-learning] ${suggestion}`);
     }
 
@@ -117,7 +120,7 @@ export async function analyzeToolUsageWindow(): Promise<void> {
         uniqueFiles.size >= 2
     ) {
         const suggestion = `Made ${writeCalls.length} edits across ${uniqueFiles.size} files in sequence. Consider delegating parts of this work to subagents (e.g. spawnRefactor for restructuring, spawnTestWriter for test files) and using the orchestrator for parallel execution.`;
-        await correctionTracker.recordSuggestion(suggestion, 'spawnAgent');
+        await correctionTracker.recordSuggestion(suggestion, 'spawn_agent');
         console.log(`[delegation-learning] ${suggestion}`);
     }
 
@@ -128,7 +131,7 @@ export async function analyzeToolUsageWindow(): Promise<void> {
     });
     if (manualTestCalls.length >= 2) {
         const suggestion = `Wrote ${manualTestCalls.length} test files manually. Use spawnTestWriter for writing tests — it has an optimized prompt and handles the test-writing workflow more efficiently.`;
-        await correctionTracker.recordSuggestion(suggestion, 'spawnTestWriter');
+        await correctionTracker.recordSuggestion(suggestion, 'spawn_agent');
         console.log(`[delegation-learning] ${suggestion}`);
     }
 
@@ -139,76 +142,31 @@ export async function analyzeToolUsageWindow(): Promise<void> {
     });
     if (hasImplWrite && hasBashTest) {
         const suggestion = `Combined implementation and testing in one response. Use the orchestrator with parallel coder + tester roles for multi-step features that need both implementation and verification.`;
-        await correctionTracker.recordSuggestion(suggestion, 'orchestrator');
+        await correctionTracker.recordSuggestion(
+            suggestion,
+            'orchestrate_task',
+        );
         console.log(`[delegation-learning] ${suggestion}`);
     }
 }
 
 const PLAN_TOOLS = new Set([
-    'readFile',
-    'listDirectory',
-    'glob',
-    'grep',
-    'tree',
-    'fileInfo',
-    'gitStatus',
-    'gitDiff',
-    'webFetch',
-    'codeSearch',
-    'getOutline',
-    'diffFiles',
-    'spawnAgent',
-    'spawnResearcher',
-    'gitLog',
-    'gitBlame',
-    'gitStatusExtended',
-    'tokenCount',
-    'memorySet',
-    'memoryGet',
-    'memoryDelete',
-    'memoryList',
-    'memorySearch',
-    'memoryFuzzySearch',
-    'memoryStats',
-    'keychainSet',
-    'keychainGet',
-    'keychainDelete',
-    'getTaskStatus',
-    'cancelTask',
-    'orchestrator', // Tool checks BUILD mode internally and throws with a descriptive error
-    'askQuestion',
-    'useSkill',
-    'listSkills',
-    'buildKnowledgeGraph',
-    'queryKnowledgeGraph',
-    'getKnowledgeNeighbors',
-    'addKnowledgeNode',
-    'addKnowledgeEdge',
-    'detectKnowledgeCycles',
-    'getKnowledgeStats',
-    'impactAnalysis',
-    'breakingChangeCheck',
-    'suggestMigration',
-    'checkExternalChanges',
-    'reviewPr',
-    'semanticSearch',
-    'profileCode',
-    'suggestTool',
-    'listToolCategories',
-    'declareConfidence',
+    'read_file',
+    'list_dir',
+    'code_search',
+    'git_operation',
+    'knowledge_graph',
+    'spawn_agent',
+    'workspace_memory',
+    'ask_question',
+    'use_skill',
 ]);
 
 /**
  * Tools that modify files on disk. After successful execution, we record the
  * modified file path in the auto-fix pipeline for deferred validation.
  */
-const FILE_MODIFYING_TOOLS = new Set([
-    'writeFile',
-    'editFile',
-    'patch',
-    'deleteFile',
-    'moveFile',
-]);
+const FILE_MODIFYING_TOOLS = new Set(['write_file', 'edit_file']);
 
 /**
  * Advisory validation for destructive operations.
@@ -218,39 +176,46 @@ const DESTRUCTIVE_OPERATIONS: Record<
     string,
     (input: unknown) => string | null
 > = {
-    deleteFile: (input) => {
-        const path = (input as any)?.path ?? (input as any)?.filePath;
-        return path ? `Deleting file: ${path}` : 'Deleting a file';
+    edit_file: (input) => {
+        const action = (input as any)?.action;
+        if (action === 'delete') {
+            const path = (input as any)?.path;
+            return path ? `Deleting file: ${path}` : 'Deleting a file';
+        }
+        if (action === 'move') {
+            const from = (input as any)?.path;
+            const to = (input as any)?.to;
+            return `Moving file: ${from} → ${to}`;
+        }
+        if (action === 'search_replace') {
+            return 'Performing search-replace (may affect multiple files)';
+        }
+        return null;
     },
-    moveFile: (input) => {
-        const from = (input as any)?.from ?? (input as any)?.source;
-        const to = (input as any)?.to ?? (input as any)?.destination;
-        return `Moving file: ${from} → ${to}`;
+    git_operation: (input) => {
+        const action = (input as any)?.action;
+        if (action === 'commit') {
+            const msg = (input as any)?.message;
+            return msg
+                ? `Committing: "${String(msg).slice(0, 60)}"`
+                : 'Creating a git commit';
+        }
+        if (action === 'branch') {
+            const name = (input as any)?.branchName;
+            return name ? `Creating branch: ${name}` : 'Creating a git branch';
+        }
+        return null;
     },
-    gitCommit: (input) => {
-        const msg =
-            (input as any)?.message ??
-            (input as any)?.commitMessage ??
-            (input as any)?.msg;
-        return msg
-            ? `Committing: "${String(msg).slice(0, 60)}"`
-            : 'Creating a git commit';
-    },
-    gitBranch: (input) => {
-        const name =
-            (input as any)?.name ??
-            (input as any)?.branch ??
-            (input as any)?.branchName;
-        return name ? `Creating branch: ${name}` : 'Creating a git branch';
-    },
-    searchReplace: () =>
-        'Performing search-replace (may affect multiple files)',
-    renameSymbol: (input) => {
-        const from = (input as any)?.oldName;
-        const to = (input as any)?.newName;
-        return from && to
-            ? `Renaming symbol: ${from} → ${to}`
-            : 'Renaming a symbol';
+    code_search: (input) => {
+        const action = (input as any)?.action;
+        if (action === 'rename_symbol') {
+            const from = (input as any)?.symbol;
+            const to = (input as any)?.newName;
+            return from && to
+                ? `Renaming symbol: ${from} → ${to}`
+                : 'Renaming a symbol';
+        }
+        return null;
     },
 };
 
@@ -269,30 +234,34 @@ function extractModifiedFilePath(
     input: unknown,
 ): string | null {
     const inp = input as Record<string, unknown> | undefined;
-
     const cwd = process.cwd();
 
-    switch (toolName) {
-        case 'writeFile':
-        case 'editFile': {
+    if (toolName === 'write_file') {
+        const p = typeof inp?.path === 'string' ? inp.path : null;
+        return p ? resolve(cwd, p) : null;
+    }
+
+    if (toolName === 'edit_file') {
+        const action = inp?.action;
+        if (action === 'edit' || action === 'delete') {
             const p = typeof inp?.path === 'string' ? inp.path : null;
             return p ? resolve(cwd, p) : null;
         }
-        case 'patch': {
-            const file = typeof inp?.file === 'string' ? inp.file : null;
-            return file ? resolve(cwd, file) : null;
+        if (action === 'patch') {
+            const p = typeof inp?.path === 'string' ? inp.path : null;
+            if (p) return resolve(cwd, p);
+            // Attempt to derive file path from patch header (+++ b/...)
+            const patchStr = typeof inp?.patch === 'string' ? inp.patch : '';
+            const match = /^\+\+\+\s+b\/([^\t\r\n]+)/m.exec(patchStr);
+            return match ? resolve(cwd, match[1]!.trim()) : null;
         }
-        case 'moveFile': {
+        if (action === 'move') {
             const to = typeof inp?.to === 'string' ? inp.to : null;
             return to ? resolve(cwd, to) : null;
         }
-        case 'deleteFile': {
-            const p = typeof inp?.path === 'string' ? inp.path : null;
-            return p ? resolve(cwd, p) : null;
-        }
-        default:
-            return null;
     }
+
+    return null;
 }
 
 async function directExecute(
@@ -362,31 +331,45 @@ async function directExecute(
                     const inp = input as Record<string, unknown> | undefined;
 
                     if (
-                        [
-                            'editFile',
-                            'writeFile',
-                            'patch',
-                            'searchReplace',
-                        ].includes(toolName) &&
+                        (toolName === 'edit_file' ||
+                            toolName === 'write_file') &&
                         inp
                     ) {
                         let filePath = '';
-                        if (
-                            toolName === 'editFile' ||
-                            toolName === 'writeFile'
-                        ) {
+                        if (toolName === 'write_file') {
                             filePath =
                                 typeof inp.path === 'string' ? inp.path : '';
-                        } else if (toolName === 'searchReplace') {
-                            filePath =
-                                typeof inp.glob === 'string' ? inp.glob : '';
-                        } else if (toolName === 'patch') {
-                            const patchStr =
-                                typeof inp.patch === 'string' ? inp.patch : '';
-                            const match = /^\+\+\+\s+b\/([^\t\r\n]+)/m.exec(
-                                patchStr,
-                            );
-                            filePath = match ? match[1]!.trim() : '';
+                        } else if (toolName === 'edit_file') {
+                            const action = inp.action;
+                            if (
+                                action === 'edit' ||
+                                action === 'delete' ||
+                                action === 'patch'
+                            ) {
+                                filePath =
+                                    typeof inp.path === 'string'
+                                        ? inp.path
+                                        : '';
+                                if (!filePath && action === 'patch') {
+                                    const patchStr =
+                                        typeof inp.patch === 'string'
+                                            ? inp.patch
+                                            : '';
+                                    const match =
+                                        /^\+\+\+\s+b\/([^\t\r\n]+)/m.exec(
+                                            patchStr,
+                                        );
+                                    filePath = match ? match[1]!.trim() : '';
+                                }
+                            } else if (action === 'move') {
+                                filePath =
+                                    typeof inp.to === 'string' ? inp.to : '';
+                            } else if (action === 'search_replace') {
+                                filePath =
+                                    typeof inp.glob === 'string'
+                                        ? inp.glob
+                                        : '';
+                            }
                         }
 
                         if (filePath) {
@@ -397,7 +380,11 @@ async function directExecute(
                                     .includes(name.toLowerCase()),
                             );
                         }
-                    } else if (toolName === 'validateCode') {
+                    } else if (
+                        toolName === 'run_command' &&
+                        inp &&
+                        inp.action === 'validate_code'
+                    ) {
                         matchedTask = pendingOrInProgress.find((t) => {
                             const desc = t.description.toLowerCase();
                             return (
@@ -409,7 +396,11 @@ async function directExecute(
                                 desc.includes('check')
                             );
                         });
-                    } else if (toolName === 'gitCommit') {
+                    } else if (
+                        toolName === 'git_operation' &&
+                        inp &&
+                        inp.action === 'commit'
+                    ) {
                         matchedTask = pendingOrInProgress.find((t) => {
                             const desc = t.description.toLowerCase();
                             return (
@@ -419,8 +410,9 @@ async function directExecute(
                             );
                         });
                     } else if (
-                        toolName === 'bash' &&
+                        toolName === 'run_command' &&
                         inp &&
+                        inp.action === 'bash' &&
                         typeof inp.command === 'string'
                     ) {
                         const cmd = inp.command.toLowerCase();
@@ -474,11 +466,7 @@ async function directExecute(
                 fileWatcher.recordInternalChange(filePath);
             }
             toolOutputCache.clear();
-        } else if (
-            toolName === 'bash' ||
-            toolName === 'gitCommit' ||
-            toolName === 'gitBranch'
-        ) {
+        } else if (toolName === 'run_command' || toolName === 'git_operation') {
             toolOutputCache.clear();
         }
 

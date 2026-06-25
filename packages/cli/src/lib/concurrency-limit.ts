@@ -12,6 +12,7 @@ const DEFAULT_MAX_CONCURRENT = 8;
 
 let activeCount = 0;
 let maxConcurrent = DEFAULT_MAX_CONCURRENT;
+let currentProvider = 'default';
 
 /**
  * Per-provider concurrency profiles.
@@ -24,8 +25,6 @@ const PROVIDER_CONCURRENCY: Record<string, number> = {
     openai: 3,
     groq: 5,
 };
-
-let currentProvider: string | undefined;
 
 // --- Enhanced dynamic concurrency tracking ---
 
@@ -211,15 +210,7 @@ export async function waitForSlot(timeoutMs = 30_000): Promise<boolean> {
 /**
  * Tools that modify files and may conflict with each other.
  */
-const FILE_CONFLICT_TOOLS = new Set([
-    'writeFile',
-    'editFile',
-    'patch',
-    'searchReplace',
-    'deleteFile',
-    'moveFile',
-    'renameSymbol',
-]);
+const FILE_CONFLICT_TOOLS = new Set(['write_file', 'edit_file', 'code_search']);
 
 /**
  * Extract the target file path from a tool call's input.
@@ -235,14 +226,20 @@ function extractFilePath(toolName: string, input: unknown): string[] {
             paths.push(val);
         }
     }
-    if (toolName === 'moveFile') {
-        const fromVal = (inp.from as string) ?? (inp.source as string);
-        if (fromVal && !paths.includes(fromVal)) {
-            paths.push(fromVal);
-        }
-        const toVal = (inp.to as string) ?? (inp.path as string);
-        if (toVal && !paths.includes(toVal)) {
-            paths.push(toVal);
+    if (toolName === 'edit_file') {
+        const action =
+            inp && typeof inp === 'object'
+                ? (inp as Record<string, unknown>).action
+                : undefined;
+        if (action === 'move') {
+            const fromVal = (inp.from as string) ?? (inp.source as string);
+            if (fromVal && !paths.includes(fromVal)) {
+                paths.push(fromVal);
+            }
+            const toVal = (inp.destPath as string) ?? (inp.path as string);
+            if (toVal && !paths.includes(toVal)) {
+                paths.push(toVal);
+            }
         }
     }
     return paths;

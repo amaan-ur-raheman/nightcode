@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { readFile } from 'fs/promises';
 import { runGit } from '@/lib/tools/utils';
-import { toUnifiedDiff } from '@/lib/diff-utils';
 
 type UseGitDiffResult = {
     diffText: string | null;

@@ -157,7 +157,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
  */
 export function deriveModelDisplayName(
     modelId: string,
-    providerHint?: string,
+    _providerHint?: string,
 ): string {
     const known = MODEL_NAMES[modelId];
     if (known) return known;

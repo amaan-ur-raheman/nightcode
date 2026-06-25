@@ -125,8 +125,8 @@ function extractFileChanges(task: TaskNode, result: string): FileChange[] {
     for (const filePath of task.files) {
         if (
             result.includes(filePath) ||
-            result.includes('writeFile') ||
-            result.includes('searchReplace')
+            result.includes('write_file') ||
+            result.includes('edit_file')
         ) {
             changes.push({
                 taskId: task.id,

@@ -54,75 +54,81 @@ export function getModelTimeoutMultiplier(modelId?: string): number {
     return DEFAULT_MODEL_MULTIPLIER;
 }
 
+// ── Consolidated Tool Timeout Classification ──
+// Tools use snake_case names with action-based dispatch.
+
+/** Tools that are always short (read-only, fast). */
 const SHORT_TOOLS = new Set([
-    'readFile',
-    'listDirectory',
-    'glob',
-    'grep',
-    'tree',
-    'fileInfo',
-    'gitStatus',
-    'gitDiff',
-    'gitLog',
-    'gitBlame',
-    'gitStatusExtended',
-    'codeSearch',
-    'getOutline',
-    'diffFiles',
-    'tokenCount',
-    'memoryGet',
-    'memoryList',
-    'memorySearch',
-    'memoryFuzzySearch',
-    'memoryStats',
-    'keychainGet',
-    'getTaskStatus',
-    'getKnowledgeNeighbors',
-    'queryKnowledgeGraph',
-    'detectKnowledgeCycles',
-    'getKnowledgeStats',
-    'impactAnalysis',
-    'breakingChangeCheck',
-    'suggestMigration',
-    'checkExternalChanges',
-    'semanticSearch',
-    'profileCode',
+    'read_file',
+    'list_dir',
+    'code_search',
+    'workspace_memory',
+    'manage_keychain',
+    'knowledge_graph',
+    'ask_question',
+    'use_skill',
 ]);
 
-const MUTATION_TOOLS = new Set([
-    'writeFile',
-    'editFile',
-    'patch',
-    'searchReplace',
-    'deleteFile',
-    'moveFile',
-    'createDirectory',
-    'gitCommit',
-    'gitBranch',
-    'renameSymbol',
-    'memorySet',
-    'memoryDelete',
-    'keychainSet',
-    'keychainDelete',
-    'envManage',
-    'secretScan',
-    'cancelTask',
-    'buildKnowledgeGraph',
-    'addKnowledgeNode',
-    'addKnowledgeEdge',
-]);
+/** Tools that are always mutations (write operations). */
+const MUTATION_TOOLS = new Set(['write_file', 'edit_file']);
 
-const LONG_RUNNING_TOOLS = new Set([
-    'spawnAgent',
-    'spawnCodeReviewer',
-    'spawnTestWriter',
-    'spawnDebugger',
-    'spawnRefactor',
-    'spawnResearcher',
-    'orchestrator',
-    'validateCode',
-    'reviewPr',
-]);
+/** Tools that are always long-running. */
+const LONG_RUNNING_TOOLS = new Set(['spawn_agent', 'reviewPr', 'review_pr']);
+
+/**
+ * Actions within consolidated tools that have specific timeout categories.
+ * Checked only when the base tool name doesn't determine the category.
+ */
+const SHORT_ACTIONS: Record<string, Set<string>> = {
+    git_operation: new Set([
+        'status',
+        'diff',
+        'log',
+        'blame',
+        'status_extended',
+        'check_external_changes',
+    ]),
+    run_command: new Set(['token_count']),
+    workspace_memory: new Set([
+        'get',
+        'list',
+        'search',
+        'fuzzy_search',
+        'stats',
+    ]),
+    manage_keychain: new Set(['get']),
+    knowledge_graph: new Set([
+        'query',
+        'neighbors',
+        'detect_cycles',
+        'stats',
+        'impact',
+        'breaking_check',
+        'suggest_migration',
+    ]),
+    orchestrate_task: new Set(['status']),
+};
+
+const MUTATION_ACTIONS: Record<string, Set<string>> = {
+    git_operation: new Set(['commit', 'branch']),
+    run_command: new Set(['validate_code', 'profile_code', 'env']),
+    workspace_memory: new Set(['set', 'delete']),
+    manage_keychain: new Set(['set', 'delete']),
+    knowledge_graph: new Set(['build', 'add_node', 'add_edge']),
+    edit_file: new Set([
+        'edit',
+        'patch',
+        'search_replace',
+        'delete',
+        'move',
+        'undo',
+    ]),
+};
+
+const LONG_RUNNING_ACTIONS: Record<string, Set<string>> = {
+    run_command: new Set(['bash', 'repl', 'process', 'code_analysis']),
+    orchestrate_task: new Set(['run']),
+};
 
 function getNumericInputField(
     input: unknown,
@@ -147,23 +153,48 @@ export function getToolExecutionPolicy(
 
     const applyMultiplier = (base: number) => Math.round(base * multiplier);
 
-    if (toolName === 'bash') {
+    const action =
+        input && typeof input === 'object'
+            ? (input as Record<string, unknown>).action
+            : undefined;
+    const actionStr = typeof action === 'string' ? action : undefined;
+
+    // ── run_command: action-specific dispatch ──
+    if (toolName === 'run_command') {
+        if (actionStr === 'bash') {
+            return {
+                timeoutMs:
+                    applyMultiplier(
+                        getNumericInputField(input, 'timeout') ?? 30_000,
+                    ) + COMMAND_TIMEOUT_GRACE_MS,
+                longRunning: true,
+            };
+        }
+        if (LONG_RUNNING_ACTIONS.run_command?.has(actionStr ?? '')) {
+            return {
+                timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
+                longRunning: true,
+            };
+        }
+        if (MUTATION_ACTIONS.run_command?.has(actionStr ?? '')) {
+            return {
+                timeoutMs: applyMultiplier(MUTATION_TIMEOUT_MS),
+                longRunning: false,
+            };
+        }
+        if (SHORT_ACTIONS.run_command?.has(actionStr ?? '')) {
+            return {
+                timeoutMs: applyMultiplier(SHORT_TIMEOUT_MS),
+                longRunning: false,
+            };
+        }
         return {
-            timeoutMs:
-                applyMultiplier(
-                    getNumericInputField(input, 'timeout') ?? 30_000,
-                ) + COMMAND_TIMEOUT_GRACE_MS,
-            longRunning: true,
+            timeoutMs: applyMultiplier(STANDARD_TIMEOUT_MS),
+            longRunning: false,
         };
     }
 
-    if (toolName === 'replExecute') {
-        return {
-            timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
-            longRunning: true,
-        };
-    }
-
+    // ── Tools that are always long-running ──
     if (LONG_RUNNING_TOOLS.has(toolName)) {
         return {
             timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
@@ -171,6 +202,29 @@ export function getToolExecutionPolicy(
         };
     }
 
+    // ── Action-aware dispatch for multi-action tools ──
+    if (actionStr) {
+        if (SHORT_ACTIONS[toolName]?.has(actionStr)) {
+            return {
+                timeoutMs: applyMultiplier(SHORT_TIMEOUT_MS),
+                longRunning: false,
+            };
+        }
+        if (MUTATION_ACTIONS[toolName]?.has(actionStr)) {
+            return {
+                timeoutMs: applyMultiplier(MUTATION_TIMEOUT_MS),
+                longRunning: false,
+            };
+        }
+        if (LONG_RUNNING_ACTIONS[toolName]?.has(actionStr)) {
+            return {
+                timeoutMs: applyMultiplier(LONG_RUNNING_TIMEOUT_MS),
+                longRunning: true,
+            };
+        }
+    }
+
+    // ── Always-short tools (read-only, no actions or unlisted action) ──
     if (SHORT_TOOLS.has(toolName)) {
         return {
             timeoutMs: applyMultiplier(SHORT_TIMEOUT_MS),
@@ -178,23 +232,10 @@ export function getToolExecutionPolicy(
         };
     }
 
+    // ── Always-mutation tools ──
     if (MUTATION_TOOLS.has(toolName)) {
         return {
             timeoutMs: applyMultiplier(MUTATION_TIMEOUT_MS),
-            longRunning: false,
-        };
-    }
-
-    if (toolName === 'webFetch') {
-        return {
-            timeoutMs: applyMultiplier(MUTATION_TIMEOUT_MS),
-            longRunning: false,
-        };
-    }
-
-    if (toolName === 'processManage') {
-        return {
-            timeoutMs: applyMultiplier(SHORT_TIMEOUT_MS),
             longRunning: false,
         };
     }

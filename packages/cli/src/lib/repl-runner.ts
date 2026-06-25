@@ -1,5 +1,3 @@
-import { join } from 'path';
-
 interface QueuedCommand {
     command: string;
     resolve: (output: string) => void;

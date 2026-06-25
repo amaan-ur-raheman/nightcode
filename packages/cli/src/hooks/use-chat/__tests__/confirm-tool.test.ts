@@ -18,6 +18,20 @@ vi.mock('@/lib/settings', () => ({
     getAutonomyLevel: vi.fn(() => 'strict'),
 }));
 
+vi.mock('@/lib/tools/dangerous-ops', async (importOriginal) => {
+    const original =
+        await importOriginal<typeof import('@/lib/tools/dangerous-ops')>();
+    return {
+        ...original,
+        getConfirmationLevel: vi.fn((toolName) => {
+            if (toolName === 'edit_file' || toolName === 'write_file') {
+                return { level: 'confirm', reason: 'Mocked confirmation' };
+            }
+            return { level: 'none', reason: '' };
+        }),
+    };
+});
+
 import { readFile } from 'fs/promises';
 import { isConfirmationEnabled } from '@/lib/settings';
 
@@ -33,19 +47,24 @@ describe('confirmToolIfNeeded', () => {
     it('bypasses confirmation if disabled', async () => {
         (isConfirmationEnabled as any).mockReturnValue(false);
         const result = await confirmToolIfNeeded(
-            'editFile',
-            { path: 'foo.txt', oldString: 'a', newString: 'b' },
+            'edit_file',
+            { path: 'foo.txt', oldString: 'a', newString: 'b', action: 'edit' },
             false,
             confirmationManager,
         );
         expect(result).toEqual({ confirmed: true });
     });
 
-    it('generates a diff and requests confirmation for editFile', async () => {
+    it('generates a diff and requests confirmation for edit_file', async () => {
         (readFile as any).mockResolvedValue('hello world');
         const reqPromise = confirmToolIfNeeded(
-            'editFile',
-            { path: 'test.txt', oldString: 'world', newString: 'everyone' },
+            'edit_file',
+            {
+                path: 'test.txt',
+                oldString: 'world',
+                newString: 'everyone',
+                action: 'edit',
+            },
             false,
             confirmationManager,
         );
@@ -55,7 +74,7 @@ describe('confirmToolIfNeeded', () => {
 
         expect(confirmationManager.pending.size).toBe(1);
         const req = Array.from(confirmationManager.pending.values())[0]!;
-        expect(req.toolName).toBe('editFile');
+        expect(req.toolName).toBe('edit_file');
         expect(req.diff).toContain('hello everyone');
 
         confirmationManager.confirm(req.id);
@@ -63,10 +82,10 @@ describe('confirmToolIfNeeded', () => {
         expect(result).toEqual({ confirmed: true });
     });
 
-    it('generates a diff for writeFile', async () => {
+    it('generates a diff for write_file', async () => {
         (readFile as any).mockResolvedValue('old contents');
         const reqPromise = confirmToolIfNeeded(
-            'writeFile',
+            'write_file',
             { path: 'write.txt', content: 'new contents' },
             false,
             confirmationManager,
@@ -85,8 +104,8 @@ describe('confirmToolIfNeeded', () => {
     it('passes patch directly as diff', async () => {
         const patchContent = 'patch diff data';
         const reqPromise = confirmToolIfNeeded(
-            'patch',
-            { patch: patchContent },
+            'edit_file',
+            { action: 'patch', patch: patchContent },
             false,
             confirmationManager,
         );

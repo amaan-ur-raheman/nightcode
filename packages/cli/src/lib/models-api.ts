@@ -1,7 +1,6 @@
 import type { ModelsApiResponse, SupportedProvider } from '@nightcode/shared';
 import { PROVIDER_KEYCHAIN_NAMES } from '@nightcode/shared';
 import { keychain } from '@nightcode/shared';
-import { apiClient } from './api-client';
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes client-side
 

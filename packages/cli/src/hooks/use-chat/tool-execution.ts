@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useCallback } from 'react';
 import { type ModeType, type SupportedChatModelId } from '@nightcode/shared';
 import { executeLocalTool } from '@/lib/local-tools';
 import {
@@ -17,7 +17,7 @@ import {
 } from '@/lib/subagent-progress';
 import { safeStringify } from '@/lib/safe-json';
 import { confirmToolIfNeeded } from './confirm-tool';
-import type { Message, PendingToolCall, ChatTools } from './types';
+import type { PendingToolCall, ChatTools } from './types';
 
 const MAX_SPAWNS_PER_RESPONSE = 5;
 

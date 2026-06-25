@@ -31,8 +31,6 @@ const TIER3_TEXT_MAX = 300;
 /** Max chars for error outputs in Tier 3 (errors preserved longer). */
 const TIER3_ERROR_MAX = 500;
 
-/** Threshold above which we start Tier 2 compression on tool outputs. */
-const TIER2_OUTPUT_THRESHOLD = 300;
 /** Threshold above which we start Tier 3 compression. */
 const TIER3_TEXT_THRESHOLD = 500;
 
@@ -80,7 +78,7 @@ function scoreMessageImportance(msg: any, idx: number, total: number): number {
         // File modifications
         if (part.type === 'dynamic-tool' || part.type?.startsWith('tool-')) {
             const toolName = getToolName(part);
-            if (isWriteTool(toolName)) {
+            if (isWriteTool(toolName, part.input?.action)) {
                 score += IMPORTANCE.HAS_FILE_EDIT;
             }
         }
@@ -482,19 +480,13 @@ function compressByToolType(
     maxLen: number,
 ): string {
     switch (toolName) {
-        case 'readFile':
+        case 'read_file':
             return compressFileRead(output, maxLen);
-        case 'grep':
-        case 'codeSearch':
+        case 'code_search':
             return compressSearchResults(output, maxLen);
-        case 'glob':
-            return compressGlobResults(output, maxLen);
-        case 'gitDiff':
-        case 'gitLog':
-        case 'gitStatus':
+        case 'git_operation':
             return compressGitOutput(output, maxLen);
-        case 'listDirectory':
-        case 'tree':
+        case 'list_dir':
             return compressDirectoryListing(output, maxLen);
         default:
             return truncateSmart(output, maxLen);
@@ -600,18 +592,6 @@ function compressSearchResults(output: string, maxLen: number): string {
 }
 
 /**
- * Compress glob results: keep file list, truncate if huge.
- */
-function compressGlobResults(output: string, maxLen: number): string {
-    const lines = output.split('\n').filter(Boolean);
-    if (lines.length <= 30) return truncateSmart(output, maxLen);
-
-    const head = lines.slice(0, 20).join('\n');
-    const result = `${head}\n... [${lines.length} files found]`;
-    return result.length <= maxLen ? result : truncateSmart(output, maxLen);
-}
-
-/**
  * Compress git output: keep summary lines, drop diffs.
  */
 function compressGitOutput(output: string, maxLen: number): string {
@@ -669,7 +649,6 @@ function compressText(
             // Keep code blocks intact, compress surrounding text
             const textWithoutCode = text.replace(codeBlockRegex, '');
             const proseLen = textWithoutCode.length;
-            const codeLen = codeBlocks.reduce((s, b) => s + b.length, 0);
             // If prose is short enough, keep everything
             if (proseLen <= TIER3_TEXT_THRESHOLD * 2) return part;
             // Compress the prose, keep code blocks verbatim
@@ -761,7 +740,7 @@ function buildAnchor(allMessages: any[]): string | null {
                 part.type?.startsWith('tool-')
             ) {
                 const toolName = getToolName(part);
-                if (isWriteTool(toolName)) {
+                if (isWriteTool(toolName, part.input?.action)) {
                     const filePath = part.input?.path ?? part.input?.file;
                     if (filePath) filesModified.add(filePath);
                 }
@@ -877,18 +856,28 @@ function getToolName(part: any): string {
 /**
  * Check if a tool is a write/mutation tool.
  */
-function isWriteTool(toolName: string): boolean {
-    return [
-        'writeFile',
-        'editFile',
-        'searchReplace',
-        'patch',
-        'deleteFile',
-        'moveFile',
-        'renameSymbol',
-        'gitCommit',
-        'gitBranch',
-    ].includes(toolName);
+function isWriteTool(toolName: string, action?: string): boolean {
+    if (toolName === 'code_search') return action === 'rename_symbol';
+    if (toolName === 'git_operation') {
+        const readOnlyActions = new Set([
+            'status',
+            'diff',
+            'log',
+            'blame',
+            'status_extended',
+            'check_external_changes',
+        ]);
+        return !readOnlyActions.has(action ?? '');
+    }
+    if (toolName === 'run_command') {
+        const readOnlyActions = new Set([
+            'token_count',
+            'validate_code',
+            'profile_code',
+        ]);
+        return !readOnlyActions.has(action ?? '');
+    }
+    return ['write_file', 'edit_file'].includes(toolName);
 }
 
 /**

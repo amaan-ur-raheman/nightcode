@@ -4,7 +4,6 @@ import {
     type ModeType,
     type SupportedChatModelId,
     type ToolContracts,
-    type ConversationBranch,
 } from '@nightcode/shared';
 
 export type ChatMessageMetadata = {

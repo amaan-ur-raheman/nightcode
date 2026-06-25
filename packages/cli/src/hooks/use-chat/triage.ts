@@ -60,40 +60,40 @@ export function triageRequest(userText: string, mode: ModeType): string | null {
     // 3+ files or multi-step = orchestrator territory
     if (fileRefs >= 3 || hasCombinedConcerns) {
         notices.push(
-            `[Suggestion: This request involves ${fileRefs >= 3 ? `${fileRefs} files` : 'both implementation and testing'}. Consider using the \`orchestrator\` tool to decompose this into parallel subtasks (e.g., coder + tester roles).]`,
+            `[Suggestion: This request involves ${fileRefs >= 3 ? `${fileRefs} files` : 'both implementation and testing'}. Consider using the \`orchestrate_task\` tool to decompose this into parallel subtasks (e.g., coder + tester roles).]`,
         );
     } else if (hasMultiStep && fileRefs >= 2) {
         notices.push(
-            `[Suggestion: This request has multiple steps across ${fileRefs} files. Consider using the \`orchestrator\` tool to execute steps in parallel.]`,
+            `[Suggestion: This request has multiple steps across ${fileRefs} files. Consider using the \`orchestrate_task\` tool to execute steps in parallel.]`,
         );
     }
 
     // Subagent territory
     if (hasTestRequest && fileRefs <= 2 && !hasCombinedConcerns) {
         notices.push(
-            `[Suggestion: For writing tests, consider using \`spawnTestWriter\` which has an optimized test-writing prompt.]`,
+            `[Suggestion: For writing tests, consider using the \`spawn_agent\` tool with the \`tester\` preset which has an optimized test-writing prompt.]`,
         );
     }
     if (hasDebugRequest) {
         notices.push(
-            `[Suggestion: For debugging, consider using \`spawnDebugger\` which will investigate root cause and apply a fix autonomously.]`,
+            `[Suggestion: For debugging, consider using the \`spawn_agent\` tool with the \`debugger\` preset which will investigate root cause and apply a fix autonomously.]`,
         );
     }
     if (hasResearchRequest) {
         notices.push(
-            `[Suggestion: For research or investigation, consider using \`spawnResearcher\` to explore the codebase in PLAN mode.]`,
+            `[Suggestion: For research or investigation, consider using the \`spawn_agent\` tool with the \`researcher\` preset to explore the codebase in PLAN mode.]`,
         );
     }
     if (hasReviewRequest) {
         notices.push(
-            `[Suggestion: For code review, consider using \`spawnCodeReviewer\` which produces structured review reports.]`,
+            `[Suggestion: For code review, consider using the \`spawn_agent\` tool with the \`reviewer\` preset which produces structured review reports.]`,
         );
     }
 
     // General reminder for moderately complex tasks
     if (notices.length === 0 && fileRefs >= 2 && hasMultiStep) {
         notices.push(
-            `[Suggestion: This task involves multiple files and steps. If it feels too large to handle directly, use \`shouldDelegate\` for an instant recommendation on which tool to use.]`,
+            `[Suggestion: This task involves multiple files and steps. If it feels too large to handle directly, use \`spawn_agent\` with \`shouldDelegateTask\` for an instant recommendation on which tool to use.]`,
         );
     }
 

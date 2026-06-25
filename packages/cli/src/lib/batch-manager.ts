@@ -36,94 +36,49 @@ export interface ParallelToolResult {
 }
 
 const DEFAULT_BATCH_TOOLS = [
-    'readFile',
-    'listDirectory',
-    'glob',
-    'grep',
-    'codeSearch',
-    'tree',
-    'fileInfo',
+    'read_file',
+    'list_dir',
+    'code_search',
+    'workspace_memory',
+    'manage_keychain',
+    'knowledge_graph',
+    'ask_question',
+    'use_skill',
 ];
 
 /**
  * Tools that modify files and need conflict detection.
  */
-const FILE_WRITE_TOOLS = new Set([
-    'writeFile',
-    'editFile',
-    'searchReplace',
-    'patch',
-    'deleteFile',
-    'moveFile',
-]);
+const FILE_WRITE_TOOLS = new Set(['write_file', 'edit_file']);
 
 /**
- * Extract the target file path from a tool call input.
+ * Extract all target file paths from a tool call input.
  */
-function getTargetFile(toolName: string, input: unknown): string | null {
-    if (!input || typeof input !== 'object') return null;
+function getTargetFiles(toolName: string, input: unknown): string[] {
+    if (!input || typeof input !== 'object') return [];
     const inp = input as Record<string, unknown>;
 
-    if (toolName === 'moveFile') {
-        // moveFile has both source and destination
-        return (inp.to as string) ?? (inp.path as string) ?? null;
+    const paths: string[] = [];
+
+    if (toolName === 'edit_file' && inp.action === 'move') {
+        const src =
+            (inp.from as string) ??
+            (inp.source as string) ??
+            (inp.path as string);
+        const dest =
+            (inp.to as string) ??
+            (inp.destPath as string) ??
+            (inp.path as string);
+
+        if (src) paths.push(src);
+        if (dest && dest !== src) paths.push(dest);
+    } else {
+        const p = (inp.path as string) ?? null;
+        if (p) paths.push(p);
     }
 
-    return (inp.path as string) ?? null;
+    return Array.from(new Set(paths.filter(Boolean)));
 }
-
-const ALL_PARALLEL_TOOLS = [
-    ...DEFAULT_BATCH_TOOLS,
-    'writeFile',
-    'editFile',
-    'bash',
-    'patch',
-    'searchReplace',
-    'deleteFile',
-    'moveFile',
-    'createDirectory',
-    'gitStatus',
-    'gitDiff',
-    'gitCommit',
-    'gitBranch',
-    'gitLog',
-    'gitBlame',
-    'gitStatusExtended',
-    'webFetch',
-    'getOutline',
-    'diffFiles',
-    'processManage',
-    'envManage',
-    'secretScan',
-    'memorySet',
-    'memoryGet',
-    'memoryDelete',
-    'memoryList',
-    'memorySearch',
-    'memoryFuzzySearch',
-    'memoryStats',
-    'keychainSet',
-    'keychainGet',
-    'keychainDelete',
-    'tokenCount',
-    'undo',
-    'renameSymbol',
-    'buildKnowledgeGraph',
-    'queryKnowledgeGraph',
-    'getKnowledgeNeighbors',
-    'addKnowledgeNode',
-    'addKnowledgeEdge',
-    'detectKnowledgeCycles',
-    'getKnowledgeStats',
-    'impactAnalysis',
-    'breakingChangeCheck',
-    'suggestMigration',
-    'validateCode',
-    'checkExternalChanges',
-    'reviewPr',
-    'semanticSearch',
-    'profileCode',
-];
 
 /**
  * Cost tier for each tool type used for adaptive parallel execution caps.
@@ -131,89 +86,29 @@ const ALL_PARALLEL_TOOLS = [
  */
 const TOOL_COST_TIERS: Record<string, 'low' | 'medium' | 'high'> = {
     // Low cost — fast, stateless reads
-    readFile: 'low',
-    listDirectory: 'low',
-    glob: 'low',
-    grep: 'low',
-    codeSearch: 'low',
-    tree: 'low',
-    fileInfo: 'low',
-    getOutline: 'low',
-    gitStatus: 'low',
-    gitDiff: 'low',
-    gitLog: 'low',
-    gitBlame: 'low',
-    gitStatusExtended: 'low',
-    diffFiles: 'low',
-    tokenCount: 'low',
-    memoryGet: 'low',
-    memoryList: 'low',
-    memorySearch: 'low',
-    memoryFuzzySearch: 'low',
-    memoryStats: 'low',
-    keychainGet: 'low',
-    checkExternalChanges: 'low',
-    queryKnowledgeGraph: 'low',
-    getKnowledgeNeighbors: 'low',
-    getKnowledgeStats: 'low',
-    detectKnowledgeCycles: 'low',
+    read_file: 'low',
+    list_dir: 'low',
+    code_search: 'low',
+    workspace_memory: 'low',
+    manage_keychain: 'low',
+    knowledge_graph: 'low',
+    ask_question: 'low',
+    use_skill: 'low',
 
-    // Medium cost — mix of reads and state changes
-    webFetch: 'medium',
-    bash: 'medium',
-    packageManager: 'medium',
-    gitCommit: 'medium',
-    gitBranch: 'medium',
-    gitOperations: 'medium',
-    memorySet: 'medium',
-    memoryDelete: 'medium',
-    keychainSet: 'medium',
-    keychainDelete: 'medium',
-    getTaskStatus: 'medium',
-    buildKnowledgeGraph: 'medium',
-    addKnowledgeNode: 'medium',
-    addKnowledgeEdge: 'medium',
-    impactAnalysis: 'medium',
-    breakingChangeCheck: 'medium',
-    suggestMigration: 'medium',
-    semanticSearch: 'medium',
-    profileCode: 'medium',
-    askQuestion: 'medium',
-    useSkill: 'medium',
-    listSkills: 'medium',
-    suggestTool: 'low',
-    listToolCategories: 'low',
-    declareConfidence: 'low',
+    // Medium cost — git operations (read-only actions), orchestration status
+    git_operation: 'medium',
+    orchestrate_task: 'medium',
 
-    // High cost — file mutations, complex operations
-    writeFile: 'high',
-    editFile: 'high',
-    searchReplace: 'high',
-    patch: 'high',
-    deleteFile: 'high',
-    moveFile: 'high',
-    createDirectory: 'high',
-    renameSymbol: 'high',
-    undo: 'high',
-    processManage: 'high',
-    envManage: 'high',
-    secretScan: 'high',
-    validateCode: 'high',
-    reviewPr: 'high',
-    spawnAgent: 'high',
-    spawnCodeReviewer: 'high',
-    spawnTestWriter: 'high',
-    spawnDebugger: 'high',
-    spawnRefactor: 'high',
-    spawnResearcher: 'high',
-    orchestrator: 'high',
-    cancelTask: 'high',
-    replExecute: 'high',
+    // High cost — file mutations, command execution, agent spawning
+    write_file: 'high',
+    edit_file: 'high',
+    run_command: 'high',
+    spawn_agent: 'high',
 };
 
 /**
  * Get adaptive max parallel tools based on the mix of tool types in the current batch.
- * Uses a cost-weighted algorithm so that 8 readFiles == 2 writeFiles in resource usage.
+ * Uses a cost-weighted algorithm so that 8 read_file == 2 write_file in resource usage.
  */
 function getAdaptiveParallelCap(toolCalls: ParallelToolCall[]): number {
     const tiers = toolCalls.map(
@@ -285,6 +180,38 @@ class BatchManager {
     ): Promise<unknown> {
         if (!this.config.enabledTools.includes(tool)) {
             return executor(tool, input, mode, model, signal, execId);
+        }
+
+        // Allowlist: only batch explicitly known read-only actions for
+        // multi-action tools. Everything else executes immediately.
+        const BATCHABLE_ACTIONS: Record<string, Set<string>> = {
+            workspace_memory: new Set([
+                'get',
+                'list',
+                'search',
+                'fuzzy_search',
+                'stats',
+            ]),
+            manage_keychain: new Set(['get']),
+            knowledge_graph: new Set([
+                'query',
+                'neighbors',
+                'detect_cycles',
+                'stats',
+                'impact',
+                'breaking_check',
+                'suggest_migration',
+            ]),
+        };
+        const batchable = BATCHABLE_ACTIONS[tool];
+        if (batchable) {
+            const action =
+                input && typeof input === 'object'
+                    ? (input as Record<string, unknown>).action
+                    : undefined;
+            if (typeof action !== 'string' || !batchable.has(action)) {
+                return executor(tool, input, mode, model, signal, execId);
+            }
         }
 
         return new Promise((resolve, reject) => {
@@ -466,25 +393,89 @@ class BatchManager {
             }
         };
 
-        // Detect file conflicts: group write tools by target file
-        const fileConflictGroups = new Map<string, ParallelToolCall[]>();
+        // Detect file conflicts: group write tools by target files
+        const writeCalls: ParallelToolCall[] = [];
         const nonConflictCalls: ParallelToolCall[] = [];
 
         for (const tc of capped) {
             if (FILE_WRITE_TOOLS.has(tc.toolName)) {
-                const targetFile = getTargetFile(tc.toolName, tc.input);
-                if (targetFile) {
-                    const existing = fileConflictGroups.get(targetFile);
-                    if (existing) {
-                        existing.push(tc);
-                    } else {
-                        fileConflictGroups.set(targetFile, [tc]);
-                    }
+                const paths = getTargetFiles(tc.toolName, tc.input);
+                if (paths.length > 0) {
+                    writeCalls.push(tc);
                 } else {
                     nonConflictCalls.push(tc);
                 }
             } else {
                 nonConflictCalls.push(tc);
+            }
+        }
+
+        // Build connected components for write operations that share files
+        const parent = Array.from({ length: writeCalls.length }, (_, i) => i);
+        function find(i: number): number {
+            let root = i;
+            while (root !== parent[root]) {
+                const p = parent[root];
+                if (p === undefined) break;
+                root = p;
+            }
+            let curr = i;
+            while (curr !== root) {
+                const next = parent[curr];
+                if (next === undefined) break;
+                parent[curr] = root;
+                curr = next;
+            }
+            return root;
+        }
+        function union(i: number, j: number): void {
+            const rootI = find(i);
+            const rootJ = find(j);
+            if (rootI !== rootJ) {
+                parent[rootI] = rootJ;
+            }
+        }
+
+        const pathToCallIndices = new Map<string, number[]>();
+        for (let i = 0; i < writeCalls.length; i++) {
+            const call = writeCalls[i];
+            if (!call) continue;
+            const paths = getTargetFiles(call.toolName, call.input);
+            for (const path of paths) {
+                let indices = pathToCallIndices.get(path);
+                if (!indices) {
+                    indices = [];
+                    pathToCallIndices.set(path, indices);
+                }
+                indices.push(i);
+            }
+        }
+
+        for (const [_, indices] of pathToCallIndices) {
+            if (indices.length > 1) {
+                const first = indices[0];
+                if (first !== undefined) {
+                    for (let k = 1; k < indices.length; k++) {
+                        const nextIdx = indices[k];
+                        if (nextIdx !== undefined) {
+                            union(first, nextIdx);
+                        }
+                    }
+                }
+            }
+        }
+
+        const conflictGroups = new Map<number, ParallelToolCall[]>();
+        for (let i = 0; i < writeCalls.length; i++) {
+            const root = find(i);
+            let comp = conflictGroups.get(root);
+            if (!comp) {
+                comp = [];
+                conflictGroups.set(root, comp);
+            }
+            const call = writeCalls[i];
+            if (call) {
+                comp.push(call);
             }
         }
 
@@ -518,13 +509,22 @@ class BatchManager {
             },
         );
 
-        // Execute conflicting calls sequentially per file
+        // Execute conflicting calls sequentially per conflict group
         const sequentialPromises: Promise<ParallelToolResult[]>[] = [];
-        for (const [file, conflicts] of fileConflictGroups) {
+        for (const [_, conflicts] of conflictGroups) {
+            const pathsTouched = Array.from(
+                new Set(
+                    conflicts.flatMap((tc) =>
+                        getTargetFiles(tc.toolName, tc.input),
+                    ),
+                ),
+            );
+            const label = pathsTouched.join(', ');
+
             if (conflicts.length > 1) {
                 debug.log(
                     'batch',
-                    `Serializing ${conflicts.length} writes to ${file}`,
+                    `Serializing ${conflicts.length} writes touching [${label}]`,
                 );
             }
 

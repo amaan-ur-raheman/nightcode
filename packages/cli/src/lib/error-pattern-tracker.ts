@@ -293,7 +293,7 @@ class ErrorPatternTracker {
         // Check known patterns first
         for (const keyword of Object.keys(ERROR_SUGGESTIONS)) {
             const hasNonWord = /[^\w]/.test(keyword);
-            const escaped = keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const escaped = keyword.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
             const patternStr = hasNonWord ? escaped : `\\b${escaped}\\b`;
             const regex = new RegExp(patternStr, 'i');
             if (regex.test(trimmed)) {

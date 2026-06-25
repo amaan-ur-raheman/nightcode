@@ -126,7 +126,7 @@ class GlobCache {
         }
     }
 
-    invalidateFile(filePath: string): void {
+    invalidateFile(_filePath: string): void {
         this.cache.clear();
     }
 
