@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { Hono } from 'hono';
-import { generateText, type LanguageModelUsage } from 'ai';
+import { generateText } from 'ai';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '@nightcode/database/client';
 
-import { modeSchema, type ModeType } from '@nightcode/shared';
+import { modeSchema } from '@nightcode/shared';
 import { buildSystemPrompt } from '../system-prompt';
 import { resolveChatModel } from '../lib/models';
 import { getAvailableCreditsBalance, ingestAIUsage } from '../lib/polar';
