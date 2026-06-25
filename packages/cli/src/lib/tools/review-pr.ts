@@ -1,4 +1,3 @@
-import { toolInputSchemas } from '@nightcode/shared';
 import { spawnAgentTool } from './spawn-agent';
 import { resolveProviderFallback } from '@/lib/model-utils';
 import type { ModeType } from '@nightcode/shared';
@@ -134,7 +133,7 @@ export async function reviewPrTool(
     signal?: AbortSignal,
     execId?: string,
 ) {
-    const { url, focus, model } = toolInputSchemas.reviewPr.parse(input);
+    const { url, focus, model } = input as any;
 
     // Parse the PR URL
     const parsed = parseGitHubPrUrl(url);

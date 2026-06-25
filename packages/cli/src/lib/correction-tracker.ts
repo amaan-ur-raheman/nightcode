@@ -27,17 +27,6 @@ interface TrackedAction {
     autoAcceptTimer?: ReturnType<typeof setTimeout>;
 }
 
-interface PatternScore {
-    /** Speed of signal: instant undo = 1.0, after 30s = 0.5, after 5min = 0.1 */
-    speedScore: number;
-    /** Repetition: same pattern seen N times */
-    repetition: number;
-    /** Time decay: halflife of 14 days */
-    decayFactor: number;
-    /** Combined score for ranking */
-    combined: number;
-}
-
 const MAX_TRACKED = 20;
 const CORRECTION_PREFIX = 'correction:';
 const POSITIVE_PREFIX = 'positive:';
@@ -198,22 +187,46 @@ class CorrectionTracker {
         };
 
         switch (action.tool) {
-            case 'editFile':
-            case 'searchReplace':
-                return `${action.tool}:${getStr('path')}`;
-            case 'writeFile':
-                return `${action.tool}:${getStr('path')}`;
-            case 'bash':
-                // Normalize bash commands: strip specific paths, keep command structure
-                return `${action.tool}:${getStr('command', '').split(' ')[0] ?? 'unknown'}`;
-            case 'gitCommit':
-                return `${action.tool}:commit`;
-            case 'deleteFile':
-                return `${action.tool}:${getStr('path')}`;
-            case 'moveFile':
-                return `${action.tool}:${getStr('from')}→${getStr('to')}`;
-            case 'renameSymbol':
-                return `${action.tool}:${getStr('oldName')}→${getStr('newName')}`;
+            case 'edit_file': {
+                const act =
+                    typeof (action.input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (action.input as Record<string, unknown>).action
+                        : 'edit';
+                return `edit_file:${act}:${getStr('path')}`;
+            }
+            case 'write_file':
+                return `write_file:${getStr('path')}`;
+            case 'run_command': {
+                const act =
+                    typeof (action.input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (action.input as Record<string, unknown>).action
+                        : 'bash';
+                if (act === 'bash') {
+                    return `run_command:bash:${getStr('command', '').split(' ')[0] ?? 'unknown'}`;
+                }
+                return `run_command:${act}`;
+            }
+            case 'git_operation': {
+                const act =
+                    typeof (action.input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (action.input as Record<string, unknown>).action
+                        : 'status';
+                return `git_operation:${act}`;
+            }
+            case 'code_search': {
+                const act =
+                    typeof (action.input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (action.input as Record<string, unknown>).action
+                        : 'search';
+                if (act === 'rename_symbol') {
+                    return `code_search:rename_symbol:${getStr('oldName')}→${getStr('newName')}`;
+                }
+                return `code_search:${act}`;
+            }
             default:
                 return `${action.tool}`;
         }
@@ -265,26 +278,58 @@ class CorrectionTracker {
         };
 
         switch (tool) {
-            case 'editFile':
-            case 'searchReplace': {
+            case 'edit_file': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'edit';
+                if (act === 'delete') {
+                    return `Deleting ${getStr('path', undefined, 'unknown file')} was accepted.`;
+                }
+                if (act === 'move') {
+                    const dest = getStr('to') || getStr('destPath') || '?';
+                    return `Moving ${getStr('path', undefined, '?')} → ${dest} was accepted.`;
+                }
                 const filePath = getStr('path', undefined, 'unknown file');
                 return `Editing ${filePath} with this pattern works well — the user accepted the change.`;
             }
-            case 'writeFile': {
+            case 'write_file': {
                 return `Writing to ${getStr('path', undefined, 'unknown file')} works well.`;
             }
-            case 'bash': {
-                const cmd = getStr('command', 100);
-                return `Command "${cmd}" succeeded and the user kept the result.`;
+            case 'run_command': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'bash';
+                if (act === 'bash') {
+                    const cmd = getStr('command', 100);
+                    return `Command "${cmd}" succeeded and the user kept the result.`;
+                }
+                return `run_command (${act}) succeeded.`;
             }
-            case 'gitCommit': {
-                return `Commit with message "${getStr('message')}" was accepted.`;
+            case 'git_operation': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'status';
+                if (act === 'commit') {
+                    return `Commit with message "${getStr('message')}" was accepted.`;
+                }
+                return `git_operation (${act}) was accepted.`;
             }
-            case 'deleteFile': {
-                return `Deleting ${getStr('path', undefined, 'unknown file')} was accepted.`;
-            }
-            case 'moveFile': {
-                return `Moving ${getStr('from', undefined, '?')} → ${getStr('to', undefined, '?')} was accepted.`;
+            case 'code_search': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'search';
+                if (act === 'rename_symbol') {
+                    return `Renaming ${getStr('oldName', undefined, '?')} → ${getStr('newName', undefined, '?')} was accepted.`;
+                }
+                return `code_search (${act}) succeeded.`;
             }
             default: {
                 const desc = description || tool;
@@ -313,29 +358,64 @@ class CorrectionTracker {
         };
 
         switch (tool) {
-            case 'editFile':
-            case 'searchReplace': {
+            case 'edit_file': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'edit';
+                if (act === 'delete') {
+                    return `Avoid deleting ${getStr('path', undefined, 'unknown file')} — the user undid this deletion.`;
+                }
+                if (act === 'move') {
+                    const dest = getStr('to') || getStr('destPath') || '?';
+                    return `Avoid moving ${getStr('path', undefined, '?')} → ${dest} — the user undid this move.`;
+                }
                 const filePath = getStr('path', undefined, 'unknown file');
                 const oldSnippet = getStr('oldString', 80);
+                if (!oldSnippet) {
+                    return `Avoid editing ${filePath} — the user undid this change.`;
+                }
                 return `Avoid editing ${filePath} with pattern "${oldSnippet}..." — the user undid this change.`;
             }
-            case 'writeFile': {
+            case 'write_file': {
                 return `Avoid writing to ${getStr('path', undefined, 'unknown file')} — the user undid this change.`;
             }
-            case 'bash': {
-                const cmd = getStr('command', 100);
-                return `Avoid running command "${cmd}" — the user undid the effects of this command.`;
+            case 'run_command': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'bash';
+                if (act === 'bash') {
+                    const cmd = getStr('command', 100);
+                    return `Avoid running command "${cmd}" — the user undid the effects of this command.`;
+                }
+                return `Avoid run_command (${act}) — the user undid it.`;
             }
-            case 'gitCommit': {
-                return `Avoid committing with message "${getStr('message')}" — the user undid this commit.`;
+            case 'git_operation': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'status';
+                if (act === 'commit') {
+                    return `Avoid committing with message "${getStr('message')}" — the user undid this commit.`;
+                }
+                return `Avoid git_operation (${act}) — the user undid it.`;
             }
-            case 'renameSymbol': {
-                const oldName = getStr('oldName', undefined, '?');
-                const newName = getStr('newName', undefined, '?');
-                return `Avoid renaming ${oldName} to ${newName} — the user undid this rename.`;
-            }
-            case 'deleteFile': {
-                return `Avoid deleting ${getStr('path', undefined, 'unknown file')} — the user undid this deletion.`;
+            case 'code_search': {
+                const act =
+                    typeof (input as Record<string, unknown>)?.action ===
+                    'string'
+                        ? (input as Record<string, unknown>).action
+                        : 'search';
+                if (act === 'rename_symbol') {
+                    const oldName = getStr('oldName', undefined, '?');
+                    const newName = getStr('newName', undefined, '?');
+                    return `Avoid renaming ${oldName} to ${newName} — the user undid this rename.`;
+                }
+                return `Avoid code_search (${act}) — the user undid it.`;
             }
             default: {
                 const desc = description || tool;

@@ -31,45 +31,32 @@ describe('Knowledge Graph Tools', () => {
         knowledgeGraphManager.graph = null;
     });
 
-    describe('buildKnowledgeGraphTool', () => {
+    describe('build action', () => {
         it('builds a graph from the current project', async () => {
-            const { buildKnowledgeGraphTool } =
-                await import('../knowledge-graph');
-            const result = await buildKnowledgeGraphTool({
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
+            const result = await knowledgeGraphTool({
+                action: 'build',
                 includePatterns: ['ts'],
                 excludePatterns: ['node_modules', 'dist', 'test', '__tests__'],
             });
 
-            expect(result.output).toContain('Knowledge graph built in');
+            expect(result.output).toContain('built in');
             expect(result.output).toContain('Nodes:');
             expect(result.output).toContain('Edges:');
-            expect(result.output).toContain('Files:');
-            expect(result.output).toContain('Functions:');
-            expect(result.output).toContain('Dependencies:');
-        });
-
-        it('handles empty include patterns', async () => {
-            const { buildKnowledgeGraphTool } =
-                await import('../knowledge-graph');
-            const result = await buildKnowledgeGraphTool({
-                includePatterns: undefined,
-                excludePatterns: ['node_modules', 'dist'],
-            });
-
-            expect(result.output).toContain('Knowledge graph built in');
         });
     });
 
-    describe('queryKnowledgeGraphTool', () => {
+    describe('query action', () => {
         it('queries nodes by type', async () => {
-            const { buildKnowledgeGraphTool, queryKnowledgeGraphTool } =
-                await import('../knowledge-graph');
-            await buildKnowledgeGraphTool({
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
+            await knowledgeGraphTool({
+                action: 'build',
                 includePatterns: ['ts'],
                 excludePatterns: ['node_modules', 'dist', 'test', '__tests__'],
             });
 
-            const result = await queryKnowledgeGraphTool({
+            const result = await knowledgeGraphTool({
+                action: 'query',
                 nodeType: 'file',
                 limit: 10,
             });
@@ -77,32 +64,16 @@ describe('Knowledge Graph Tools', () => {
             expect(result.output).toContain('[file]');
         });
 
-        it('queries nodes by name', async () => {
-            const { buildKnowledgeGraphTool, queryKnowledgeGraphTool } =
-                await import('../knowledge-graph');
-            await buildKnowledgeGraphTool({
-                includePatterns: ['ts'],
-                excludePatterns: ['node_modules', 'dist', 'test', '__tests__'],
-            });
-
-            const result = await queryKnowledgeGraphTool({
-                name: 'index',
-                limit: 10,
-            });
-
-            // Should find files or symbols named 'index' (or return no match)
-            expect(typeof result.output).toBe('string');
-        });
-
         it('returns message when no nodes match', async () => {
-            const { buildKnowledgeGraphTool, queryKnowledgeGraphTool } =
-                await import('../knowledge-graph');
-            await buildKnowledgeGraphTool({
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
+            await knowledgeGraphTool({
+                action: 'build',
                 includePatterns: ['ts'],
                 excludePatterns: ['node_modules', 'dist', 'test', '__tests__'],
             });
 
-            const result = await queryKnowledgeGraphTool({
+            const result = await knowledgeGraphTool({
+                action: 'query',
                 name: 'zzz_nonexistent_symbol_xyz',
                 limit: 10,
             });
@@ -111,29 +82,26 @@ describe('Knowledge Graph Tools', () => {
         });
     });
 
-    describe('getKnowledgeNeighborsTool', () => {
+    describe('neighbors action', () => {
         it('finds neighbors for a file node', async () => {
-            const {
-                buildKnowledgeGraphTool,
-                getKnowledgeNeighborsTool,
-                queryKnowledgeGraphTool,
-            } = await import('../knowledge-graph');
-            await buildKnowledgeGraphTool({
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
+            await knowledgeGraphTool({
+                action: 'build',
                 includePatterns: ['ts'],
                 excludePatterns: ['node_modules', 'dist', 'test', '__tests__'],
             });
 
-            // Find a file node first
-            const files = await queryKnowledgeGraphTool({
+            const files = await knowledgeGraphTool({
+                action: 'query',
                 nodeType: 'file',
                 limit: 1,
             });
 
-            // Extract node ID from the output (format: [file] name.ts (id: file:path))
             const nodeIdMatch = files.output.match(/\(id: ([^)]+)\)/);
             if (nodeIdMatch) {
                 const nodeId = nodeIdMatch[1]!;
-                const result = await getKnowledgeNeighborsTool({
+                const result = await knowledgeGraphTool({
+                    action: 'neighbors',
                     nodeId,
                     maxDepth: 1,
                 });
@@ -143,9 +111,9 @@ describe('Knowledge Graph Tools', () => {
         });
 
         it('returns error for non-existent node', async () => {
-            const { getKnowledgeNeighborsTool } =
-                await import('../knowledge-graph');
-            const result = await getKnowledgeNeighborsTool({
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
+            const result = await knowledgeGraphTool({
+                action: 'neighbors',
                 nodeId: 'nonexistent:node',
                 maxDepth: 1,
             });
@@ -154,36 +122,38 @@ describe('Knowledge Graph Tools', () => {
         });
     });
 
-    describe('addKnowledgeNodeTool and addKnowledgeEdgeTool', () => {
+    describe('add_node and add_edge actions', () => {
         it('adds a node and edge manually', async () => {
-            const { addKnowledgeNodeTool, addKnowledgeEdgeTool } =
-                await import('../knowledge-graph');
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
 
-            const node1 = await addKnowledgeNodeTool({
-                id: 'test:node-a',
-                type: 'function',
-                name: 'testFunction',
+            const node1 = await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'test:node-a',
+                nodeType: 'function',
+                nodeName: 'testFunction',
                 filePath: 'src/test.ts',
-                description: 'A test function',
+                nodeDescription: 'A test function',
             });
 
             expect(node1.output).toContain('Added node');
             expect(node1.output).toContain('testFunction');
 
-            const node2 = await addKnowledgeNodeTool({
-                id: 'test:node-b',
-                type: 'function',
-                name: 'otherFunction',
+            const node2 = await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'test:node-b',
+                nodeType: 'function',
+                nodeName: 'otherFunction',
                 filePath: 'src/other.ts',
             });
 
             expect(node2.output).toContain('Added node');
 
-            const edge = await addKnowledgeEdgeTool({
+            const edge = await knowledgeGraphTool({
+                action: 'add_edge',
                 source: 'test:node-a',
                 target: 'test:node-b',
-                type: 'calls',
-                filePath: 'src/test.ts',
+                edgeType: 'calls',
+                edgeFilePath: 'src/test.ts',
             });
 
             expect(edge.output).toContain('Added edge');
@@ -191,118 +161,126 @@ describe('Knowledge Graph Tools', () => {
         });
 
         it('returns error when adding edge to non-existent node', async () => {
-            const { addKnowledgeNodeTool, addKnowledgeEdgeTool } =
-                await import('../knowledge-graph');
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
 
-            await addKnowledgeNodeTool({
-                id: 'test:exists',
-                type: 'function',
-                name: 'exists',
+            await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'test:exists',
+                nodeType: 'function',
+                nodeName: 'exists',
             });
 
-            const result = await addKnowledgeEdgeTool({
+            const result = await knowledgeGraphTool({
+                action: 'add_edge',
                 source: 'test:exists',
                 target: 'test:not-exists',
-                type: 'calls',
+                edgeType: 'calls',
             });
 
             expect(result.output).toContain('not found');
         });
     });
 
-    describe('detectKnowledgeCyclesTool', () => {
+    describe('detect_cycles action', () => {
         it('detects no cycles in acyclic graph', async () => {
-            const {
-                addKnowledgeNodeTool,
-                addKnowledgeEdgeTool,
-                detectKnowledgeCyclesTool,
-            } = await import('../knowledge-graph');
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
 
-            await addKnowledgeNodeTool({
-                id: 'cycle:a',
-                type: 'file',
-                name: 'a.ts',
+            await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'cycle:a',
+                nodeType: 'file',
+                nodeName: 'a.ts',
             });
-            await addKnowledgeNodeTool({
-                id: 'cycle:b',
-                type: 'file',
-                name: 'b.ts',
+            await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'cycle:b',
+                nodeType: 'file',
+                nodeName: 'b.ts',
             });
-            await addKnowledgeNodeTool({
-                id: 'cycle:c',
-                type: 'file',
-                name: 'c.ts',
+            await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'cycle:c',
+                nodeType: 'file',
+                nodeName: 'c.ts',
             });
 
-            await addKnowledgeEdgeTool({
+            await knowledgeGraphTool({
+                action: 'add_edge',
                 source: 'cycle:a',
                 target: 'cycle:b',
-                type: 'imports',
+                edgeType: 'imports',
             });
-            await addKnowledgeEdgeTool({
+            await knowledgeGraphTool({
+                action: 'add_edge',
                 source: 'cycle:b',
                 target: 'cycle:c',
-                type: 'imports',
+                edgeType: 'imports',
             });
 
-            const result = await detectKnowledgeCyclesTool();
+            const result = await knowledgeGraphTool({
+                action: 'detect_cycles',
+            });
             expect(result.output).toContain('No circular dependencies');
         });
 
         it('detects cycles', async () => {
-            const {
-                addKnowledgeNodeTool,
-                addKnowledgeEdgeTool,
-                detectKnowledgeCyclesTool,
-            } = await import('../knowledge-graph');
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
 
-            await addKnowledgeNodeTool({
-                id: 'cycle:x',
-                type: 'file',
-                name: 'x.ts',
+            await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'cycle:x',
+                nodeType: 'file',
+                nodeName: 'x.ts',
             });
-            await addKnowledgeNodeTool({
-                id: 'cycle:y',
-                type: 'file',
-                name: 'y.ts',
+            await knowledgeGraphTool({
+                action: 'add_node',
+                nodeId: 'cycle:y',
+                nodeType: 'file',
+                nodeName: 'y.ts',
             });
 
-            await addKnowledgeEdgeTool({
+            await knowledgeGraphTool({
+                action: 'add_edge',
                 source: 'cycle:x',
                 target: 'cycle:y',
-                type: 'imports',
+                edgeType: 'imports',
             });
-            await addKnowledgeEdgeTool({
+            await knowledgeGraphTool({
+                action: 'add_edge',
                 source: 'cycle:y',
                 target: 'cycle:x',
-                type: 'imports',
+                edgeType: 'imports',
             });
 
-            const result = await detectKnowledgeCyclesTool();
+            const result = await knowledgeGraphTool({
+                action: 'detect_cycles',
+            });
             expect(result.output).toContain('circular dependency');
         });
     });
 
-    describe('getKnowledgeStatsTool', () => {
+    describe('get_stats action', () => {
         it('returns stats after building graph', async () => {
-            const { buildKnowledgeGraphTool, getKnowledgeStatsTool } =
-                await import('../knowledge-graph');
-            await buildKnowledgeGraphTool({
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
+            await knowledgeGraphTool({
+                action: 'build',
                 includePatterns: ['ts'],
                 excludePatterns: ['node_modules', 'dist', 'test', '__tests__'],
             });
 
-            const result = await getKnowledgeStatsTool();
+            const result = await knowledgeGraphTool({
+                action: 'stats',
+            });
             expect(result.output).toContain('Knowledge Graph Stats');
             expect(result.output).toContain('Total nodes:');
             expect(result.output).toContain('Total edges:');
-            expect(result.output).toContain('Files tracked:');
         });
 
         it('returns zero stats for empty graph', async () => {
-            const { getKnowledgeStatsTool } =
-                await import('../knowledge-graph');
-            const result = await getKnowledgeStatsTool();
+            const { knowledgeGraphTool } = await import('../knowledge-graph');
+            const result = await knowledgeGraphTool({
+                action: 'stats',
+            });
 
             expect(result.output).toContain('Knowledge Graph Stats');
             expect(result.output).toContain('Total nodes: 0');

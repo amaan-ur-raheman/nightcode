@@ -34,7 +34,11 @@ describe('codeSearchTool', () => {
     it('finds function definitions', async () => {
         mockBunSpawn('/code.ts:1:export function greet(name) {}\n');
         const { codeSearchTool } = await import('../code-search');
-        const result = await codeSearchTool({ symbol: 'greet', path: '.' });
+        const result = await codeSearchTool({
+            action: 'search',
+            symbol: 'greet',
+            path: '.',
+        });
         expect(result).toHaveProperty('matches');
         const matches = (
             result as {
@@ -48,10 +52,11 @@ describe('codeSearchTool', () => {
     it('returns no definitions for nonexistent symbol', async () => {
         mockBunSpawn('', 1);
         const { codeSearchTool } = await import('../code-search');
-        const result = await codeSearchTool({
+        const result = (await codeSearchTool({
+            action: 'search',
             symbol: 'zzzzzzNonexistent',
             path: '.',
-        });
+        })) as any;
         expect(result.matches).toEqual([]);
         expect(result.message).toBe('No definitions found');
     });
@@ -59,7 +64,11 @@ describe('codeSearchTool', () => {
     it('returns error when grep fails with non-0/1 exit code', async () => {
         mockBunSpawn('error message', 2);
         const { codeSearchTool } = await import('../code-search');
-        const result = await codeSearchTool({ symbol: 'test', path: '.' });
+        const result = await codeSearchTool({
+            action: 'search',
+            symbol: 'test',
+            path: '.',
+        });
         expect(result).toHaveProperty('error');
     });
 });

@@ -10,8 +10,6 @@
  * Solves: "I have no way to express uncertainty"
  */
 
-import { toolInputSchemas } from '@nightcode/shared';
-
 export interface ConfidenceDeclaration {
     confidence: 'high' | 'medium' | 'low';
     reasoning: string;
@@ -41,16 +39,19 @@ export const CONFIDENCE_LEVELS = {
     },
 } as const;
 
-export async function declareConfidenceTool(input: unknown): Promise<{
+export async function declareConfidenceTool(input: any): Promise<{
     status: string;
     confidence: string;
     harnessResponse: string;
     verificationRequired: boolean;
 }> {
-    const { confidence, reasoning, suggestedApproach } =
-        toolInputSchemas.declareConfidence.parse(input);
+    const {
+        confidence,
+        reasoning: _reasoning,
+        suggestedApproach: _suggestedApproach,
+    } = input;
 
-    const level = CONFIDENCE_LEVELS[confidence];
+    const level = CONFIDENCE_LEVELS[confidence as 'high' | 'medium' | 'low'];
 
     const harnessResponse =
         confidence === 'high'

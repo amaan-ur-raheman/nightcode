@@ -5,7 +5,7 @@ import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
 import { useFileTree } from '@/providers/file-tree';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
-import { getOutlineTool } from '@/lib/tools/get-outline';
+import { codeSearchTool } from '@/lib/tools/code-search';
 
 interface SymbolItem {
     name: string;
@@ -38,11 +38,14 @@ export function SymbolOutline({
         async function fetchOutline() {
             setLoading(true);
             try {
-                const result = await getOutlineTool({ path: filePath });
+                const result = (await codeSearchTool({
+                    action: 'outline',
+                    path: filePath,
+                })) as any;
                 if (ignore) return;
                 setSymbols(result.symbols || []);
                 setFocusedIndex(0);
-            } catch (err) {
+            } catch {
                 if (ignore) return;
                 setSymbols([]);
             } finally {
@@ -133,7 +136,6 @@ export function SymbolOutline({
     };
 
     const isActive = activePane === 'symbol-outline';
-    const visibleHeight = Math.max(5, symbols.length);
 
     return (
         <box

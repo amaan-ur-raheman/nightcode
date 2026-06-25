@@ -34,96 +34,112 @@ const API_URL = process.env.API_URL ?? 'http://localhost:5959';
 
 /**
  * Generate a short human-readable summary of a tool's input.
- * E.g., readFile → "package.json", grep → "pattern", bash → "bun test"
+ * E.g., read_file → "package.json", code_search → "pattern", run_command → "bun test"
  */
 function summarizeToolInput(toolName: string, input: any): string {
     if (!input || typeof input !== 'object') return '';
     const truncate = (s: string, max = 40) =>
         s.length > max ? s.slice(0, max - 3) + '...' : s;
+    const getAction = (): string =>
+        typeof input.action === 'string' ? input.action : '';
 
     switch (toolName) {
-        case 'readFile':
-        case 'readFileAbsolute':
+        case 'read_file':
             return typeof input.path === 'string' ? truncate(input.path) : '';
-        case 'writeFile':
+        case 'write_file':
             return typeof input.path === 'string' ? truncate(input.path) : '';
-        case 'editFile':
-        case 'searchReplace':
+        case 'edit_file': {
+            const act = getAction();
+            if (act === 'move') {
+                return typeof input.path === 'string'
+                    ? truncate(input.path)
+                    : '';
+            }
             return typeof input.path === 'string' ? truncate(input.path) : '';
-        case 'deleteFile':
-        case 'moveFile':
-        case 'diffFiles':
-            return typeof input.path === 'string'
-                ? truncate(input.path)
-                : typeof input.from === 'string'
-                  ? truncate(input.from)
-                  : '';
-        case 'listDirectory':
-        case 'tree':
+        }
+        case 'list_dir':
             return typeof input.path === 'string'
                 ? truncate(input.path)
                 : typeof input.directory === 'string'
                   ? truncate(input.directory)
                   : '';
-        case 'glob':
-            return typeof input.pattern === 'string'
-                ? truncate(input.pattern)
-                : '';
-        case 'grep':
-        case 'codeSearch':
+        case 'code_search': {
+            const act = getAction();
+            if (act === 'outline') {
+                return typeof input.path === 'string'
+                    ? truncate(input.path)
+                    : '';
+            }
+            if (act === 'diff') {
+                return typeof input.path === 'string'
+                    ? truncate(input.path)
+                    : '';
+            }
+            if (act === 'rename_symbol') {
+                return typeof input.oldName === 'string'
+                    ? truncate(input.oldName)
+                    : '';
+            }
             return typeof input.pattern === 'string'
                 ? truncate(input.pattern)
                 : typeof input.query === 'string'
                   ? truncate(input.query)
                   : '';
-        case 'bash':
-            return typeof input.command === 'string'
-                ? truncate(input.command, 50)
-                : '';
-        case 'replExecute':
-            return typeof input.command === 'string'
-                ? truncate(input.command, 50)
-                : '';
-        case 'webFetch':
-            return typeof input.url === 'string' ? truncate(input.url, 50) : '';
-        case 'fileInfo':
-            return typeof input.path === 'string' ? truncate(input.path) : '';
-        case 'getOutline':
-            return typeof input.path === 'string' ? truncate(input.path) : '';
-        case 'gitStatus':
-        case 'gitDiff':
-        case 'gitLog':
-        case 'gitStatusExtended':
-        case 'gitBlame':
+        }
+        case 'run_command': {
+            const act = getAction();
+            if (act === 'bash' || act === 'repl' || act === 'code_analysis') {
+                return typeof input.command === 'string'
+                    ? truncate(input.command, 50)
+                    : '';
+            }
+            if (act === 'web_fetch') {
+                return typeof input.url === 'string'
+                    ? truncate(input.url, 50)
+                    : '';
+            }
+            return act || '';
+        }
+        case 'git_operation': {
+            const act = getAction();
+            if (act === 'commit') {
+                return typeof input.message === 'string'
+                    ? truncate(input.message, 40)
+                    : '';
+            }
+            if (act === 'branch') {
+                return typeof input.name === 'string'
+                    ? truncate(input.name)
+                    : typeof input.branch === 'string'
+                      ? truncate(input.branch)
+                      : '';
+            }
             return '';
-        case 'gitCommit':
-            return typeof input.message === 'string'
-                ? truncate(input.message, 40)
+        }
+        case 'spawn_agent':
+            return typeof input.task === 'string'
+                ? truncate(input.task, 50)
                 : '';
-        case 'gitBranch':
-            return typeof input.name === 'string'
-                ? truncate(input.name)
-                : typeof input.branch === 'string'
-                  ? truncate(input.branch)
+        case 'orchestrate_task':
+            return typeof input.description === 'string'
+                ? truncate(input.description, 50)
+                : '';
+        case 'workspace_memory':
+            return typeof input.key === 'string' ? truncate(input.key) : '';
+        case 'manage_keychain':
+            return typeof input.key === 'string' ? truncate(input.key) : '';
+        case 'knowledge_graph':
+            return typeof input.nodeId === 'string'
+                ? truncate(input.nodeId)
+                : typeof input.query === 'string'
+                  ? truncate(input.query)
                   : '';
-        case 'renameSymbol':
-            return typeof input.oldName === 'string'
-                ? truncate(input.oldName)
+        case 'ask_question':
+            return typeof input.question === 'string'
+                ? truncate(input.question, 50)
                 : '';
-        case 'patch':
-            return typeof input.file === 'string' ? truncate(input.file) : '';
-        case 'createDirectory':
-            return typeof input.path === 'string' ? truncate(input.path) : '';
-        case 'processManage':
-            return typeof input.action === 'string' ? input.action : '';
-        case 'envManage':
-            return typeof input.action === 'string' ? input.action : '';
-        case 'tokenCount':
-            return typeof input.text === 'string'
-                ? truncate(input.text, 30)
-                : '';
-        case 'undo':
-            return '';
+        case 'use_skill':
+            return typeof input.name === 'string' ? truncate(input.name) : '';
         default:
             // For unknown tools, try to show the first string value from input
             for (const val of Object.values(input)) {
@@ -819,10 +835,8 @@ export async function runSubagentLoop(
 
                                     // Track modified files for self-verification
                                     if (
-                                        toolName === 'writeFile' ||
-                                        toolName === 'editFile' ||
-                                        toolName === 'searchReplace' ||
-                                        toolName === 'patch'
+                                        toolName === 'write_file' ||
+                                        toolName === 'edit_file'
                                     ) {
                                         const filePath =
                                             typeof part.input?.path === 'string'
@@ -984,13 +998,12 @@ function getOptimizedToolTimeout(
     // Longer timeouts for complex operations in BUILD mode
     if (mode === 'BUILD') {
         switch (toolName) {
-            case 'bash':
+            case 'run_command':
                 return 120_000; // 2 minutes for long-running commands
-            case 'writeFile':
-            case 'editFile':
+            case 'write_file':
+            case 'edit_file':
                 return 60_000; // 1 minute for file operations
-            case 'glob':
-            case 'grep':
+            case 'code_search':
                 return 45_000; // 45 seconds for searches
             default:
                 return 90_000; // Default 90 seconds
@@ -1059,7 +1072,7 @@ function isNonRetryableError(error: any, toolName: string): boolean {
     }
 
     // Don't retry for certain tool-specific errors
-    if (toolName === 'readFile' && message.includes('file not found')) {
+    if (toolName === 'read_file' && message.includes('file not found')) {
         return true;
     }
 

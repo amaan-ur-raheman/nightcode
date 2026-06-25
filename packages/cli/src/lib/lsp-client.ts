@@ -72,7 +72,7 @@ export class LspClient {
                         this.cleanup();
                         resolveStart(false);
                     });
-            } catch (err) {
+            } catch {
                 this.cleanup();
                 resolveStart(false);
             }
@@ -127,7 +127,7 @@ export class LspClient {
                         }
                     }
                 }
-            } catch (err) {
+            } catch {
                 // Ignore parse errors
             }
         }

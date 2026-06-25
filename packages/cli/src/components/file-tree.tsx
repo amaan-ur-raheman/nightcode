@@ -6,7 +6,7 @@ import { useKeyboard } from '@opentui/react';
 import { useTheme } from '@/providers/theme';
 import { useFileTree } from '@/providers/file-tree';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
-import { IGNORE, runGit } from '@/lib/tools/utils';
+import { IGNORE } from '@/lib/tools/utils';
 import type { ThemeColors } from '@/theme';
 import { TextAttributes } from '@opentui/core';
 

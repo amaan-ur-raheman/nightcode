@@ -7,8 +7,18 @@ import { undoManager } from '../undo-manager';
 import { globCache } from '../glob-cache';
 
 export async function writeFileTool(input: unknown) {
-    const { path, content } = toolInputSchemas.writeFile.parse(input);
+    const { path, content } = toolInputSchemas.write_file.parse(input);
     const { cwd, resolved } = resolveInsideCwd(path);
+
+    if (content === undefined) {
+        // Create directory
+        await mkdir(resolved, { recursive: true });
+        return {
+            success: true as const,
+            path: relative(cwd, resolved),
+            isDirectory: true,
+        };
+    }
 
     let existingContent = '';
     try {
@@ -29,7 +39,7 @@ export async function writeFileTool(input: unknown) {
     }
 
     const diffOutput = formatDiff(diff);
-    await undoManager.backup(resolved, 'writeFile', `Write ${path}`);
+    await undoManager.backup(resolved, 'write_file', `Write ${path}`);
     await mkdir(dirname(resolved), { recursive: true });
     await writeFile(resolved, content, 'utf-8');
     globCache.invalidate();

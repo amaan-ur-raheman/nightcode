@@ -242,8 +242,8 @@ class MemoryManager {
             }
 
             // Split key into tokens and compute edit distance against each
-            const keyTokens = keyLower.split(/[\/\-_.:]/g).filter(Boolean);
-            const valTokens = valLower.split(/[\/\-_.:\s]/g).filter(Boolean);
+            const keyTokens = keyLower.split(/[/\-_.:]/g).filter(Boolean);
+            const valTokens = valLower.split(/[/\-_.:\s]/g).filter(Boolean);
             let bestDist = Infinity;
             for (const t of keyTokens) {
                 bestDist = Math.min(bestDist, editDistance(lower, t));

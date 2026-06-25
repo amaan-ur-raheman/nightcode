@@ -5,12 +5,7 @@ import {
 } from 'ai';
 
 import { useChat as useAIChat } from '@ai-sdk/react';
-import {
-    type ModeType,
-    type SupportedChatModelId,
-    DEFAULT_CHAT_MODEL_ID,
-    Mode,
-} from '@nightcode/shared';
+import { type ModeType, DEFAULT_CHAT_MODEL_ID, Mode } from '@nightcode/shared';
 
 import { getValidAuth } from '@/lib/auth';
 import { apiClient } from '@/lib/api-client';
@@ -33,8 +28,6 @@ import { timelineManager } from '@/lib/timeline-manager';
 import { fileWatcher } from '@/lib/file-watcher';
 
 import {
-    type ChatMessageMetadata,
-    type ChatTools,
     type Message,
     type ImageAttachment,
     type PendingToolCall,

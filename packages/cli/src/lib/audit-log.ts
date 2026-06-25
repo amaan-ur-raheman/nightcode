@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { homedir } from 'os';
 import { safeStringify } from './safe-json';
 

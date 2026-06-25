@@ -97,7 +97,7 @@ function getCacheKey(params: SystemPromptParams): string {
 // ── Learning Injection: Ranking & Deduplication ──
 
 /**
- * Extract score from a pattern string like "[score=0.85] [key=editFile:path] Avoid..."
+ * Extract score from a pattern string like "[score=0.85] [key=edit_file:path] Avoid..."
  */
 function extractScore(pattern: string): number {
     const match = pattern.match(/\[score=([\d.]+)\]/);
@@ -155,10 +155,7 @@ function filterByRelevance(patterns: string[], mode: ModeType): string[] {
     // In PLAN mode, skip code-editing corrections
     if (mode === 'PLAN') {
         return patterns.filter(
-            (p) =>
-                !p.includes('editFile') &&
-                !p.includes('writeFile') &&
-                !p.includes('searchReplace'),
+            (p) => !p.includes('edit_file') && !p.includes('write_file'),
         );
     }
     // In BUILD mode, keep all corrections
@@ -186,37 +183,35 @@ function processPositives(positives: string[]): string[] {
  * to the first ~1,000 tokens of the system prompt.
  */
 const QUICK_REFERENCE = `## Quick Reference
-1. **Delegate first, do last.** For any task involving 3+ files or multiple distinct steps (implement + test + review), use the \`orchestrator\` to decompose and parallelize. For focused subtasks (tests, debugging, research, code review, refactoring), use specialized subagent presets (\`spawnTestWriter\`, \`spawnDebugger\`, \`spawnResearcher\`, \`spawnCodeReviewer\`, \`spawnRefactor\`). Only use direct tool calls for simple, single-step tasks (1-2 files).
-2. **Not sure? Call \`shouldDelegate\`.** Describe your task to this advisory tool and it will recommend direct execution, a subagent preset, or the orchestrator. Use this whenever you are uncertain whether a task warrants delegation.
-3. **Read before edit.** Always \`readFile\` a block before calling \`editFile\` (minor whitespace or indentation differences are tolerated by the engine's fuzzy match).
+1. **Delegate first, do last.** For any task involving 3+ files or multiple distinct steps (implement + test + review), use \`orchestrate_task\` to decompose and parallelize. For focused subtasks (tests, debugging, research, code review, refactoring), use specialized subagent presets via \`spawn_agent\` with \`subagentType\` set to "tester", "debugger", "researcher", "reviewer", or "refactorer". Only use direct tool calls for simple, single-step tasks (1-2 files).
+2. **Not sure?** Describe your task and choose the right tool based on complexity.
+3. **Read before edit.** Always \`read_file\` a block before calling \`edit_file\` (minor whitespace or indentation differences are tolerated by the engine's fuzzy match).
 4. **Parallelize reads and subagent spawns.** Emit ALL independent tool calls (reads, searches, writes) and ALL subagent spawn calls in ONE response. This cuts round-trips by 3-5x.
-5. **Verify after changes.** Run \`validateCode\` after every code change. Don't assume it works.
-6. **One correct change > three wrong ones.** If unsure, read more code first. Use \`undo\` immediately if something breaks.
+5. **Verify after changes.** Run \`run_command\` with \`action: "validate_code"\` after every code change. Don't assume it works.
+6. **One correct change > three wrong ones.** If unsure, read more code first. Use \`edit_file\` with \`action: "undo"\` immediately if something breaks.
 7. **After 5+ files read, start implementing.** Don't read 20 files "to be thorough" — you'll lose context of what you found.
-8. **Start with Memory & Graph.** Check persistent guidelines using \`memoryList\` or \`memorySearch\` at the start. Build a knowledge graph (\`buildKnowledgeGraph\`) for large codebases to navigate relationships with \`semanticSearch\` and \`getKnowledgeNeighbors\`.
-9. **Utilize Sandbox REPL.** Experiment, test snippets, and verify logic using the persistent background sandbox (\`replExecute\`) instead of writing throwaway script files.
-10. **Secure Secrets & Environment.** Modify .env files using \`envManage\`, save credentials via \`keychainSet\` (never store in plaintext), and run \`secretScan\` before git commits.
-11. **Express Uncertainty & Discovery.** Before a complex change, call \`declareConfidence\`. If unsure which of the 54+ tools is best, query \`suggestTool\`.`;
+8. **Start with Memory & Graph.** Check persistent guidelines using \`workspace_memory\` with \`action: "list"\` or \`action: "search"\` at the start. Build a knowledge graph (\`knowledge_graph\` with \`action: "build"\`) for large codebases to navigate relationships with \`code_search\` (\`action: "semantic"\`) and \`knowledge_graph\` (\`action: "neighbors"\`).
+9. **Utilize Sandbox REPL.** Experiment, test snippets, and verify logic using the persistent background sandbox (\`run_command\` with \`action: "repl"\`) instead of writing throwaway script files.
+10. **Secure Secrets & Environment.** Modify .env files using \`run_command\` with \`action: "env"\`, save credentials via \`manage_keychain\` with \`action: "set"\` (never store in plaintext), and run \`run_command\` with \`action: "code_analysis"\` before git commits.`;
 
 /**
  * Core rules — shared across all modes, with mode-specific additions appended.
  * Resolves the "think before acting" vs "parallel execution" tension:
  * parallelize READS, think before WRITES.
  */
-const SHARED_RULES = `1. Use glob/grep/codeSearch to find relevant code, then read only those files.
+const SHARED_RULES = `1. Use \`code_search\` to find relevant code, then read only those files.
 2. Never re-read files already read this session.
-3. **Parallelize reads and searches.** Emit ALL independent readFile/glob/grep calls in ONE response — they execute in parallel. This is 3-5x faster than sequential calls.
+3. **Parallelize reads and searches.** Emit ALL independent \`read_file\`/\`code_search\` calls in ONE response — they execute in parallel. This is 3-5x faster than sequential calls.
 4. **Think before writing.** After reading, understand the code before editing. Never guess at API signatures, function names, or file contents. Read → understand → edit.
-5. **Verify your work.** Run \`validateCode\` after making changes. Don't assume your changes work without validation.
+5. **Verify your work.** Run \`run_command\` with \`action: "validate_code"\` after making changes. Don't assume your changes work without validation.
 6. **You MUST delegate multi-file and multi-step tasks.** 
-   - Tasks involving 3+ files or multiple distinct work types (implementation + testing + review) **must** use the \`orchestrator\`.
-   - Focused work like writing tests, debugging, refactoring, or code reviews **must** use specialized subagent presets (\`spawnTestWriter\`, \`spawnDebugger\`, \`spawnRefactor\`, \`spawnCodeReviewer\`, \`spawnResearcher\`).
+   - Tasks involving 3+ files or multiple distinct work types (implementation + testing + review) **must** use \`orchestrate_task\`.
+   - Focused work like writing tests, debugging, refactoring, or code reviews **must** use specialized subagent presets via \`spawn_agent\` with \`subagentType\` set to "tester", "debugger", "refactorer", "reviewer", or "researcher".
    - Only single-step, 1-2 file tasks should use direct tool calls.
-   - If unsure, call \`shouldDelegate\` for an instant recommendation.
-7. **Query memory on start.** Check for stored user styles, schemas, or instructions using \`memoryList\` or \`memorySearch\` at the beginning of a session.
-8. **Manage environment & secrets securely.** Use \`envManage\` to modify environment variables. Use \`keychainSet\` to store secrets securely (never hardcode them). Run \`secretScan\` before commits.
-9. **Experiment in the sandbox.** Use the persistent background REPL (\`replExecute\`) to test logic, verify snippets, or run quick checks without writing temporary files.
-10. **Explore relationships.** Build the knowledge graph (\`buildKnowledgeGraph\`) to trace export/import connections via \`semanticSearch\` and \`getKnowledgeNeighbors\` rather than generic grep searches.`;
+7. **Query memory on start.** Check for stored user styles, schemas, or instructions using \`workspace_memory\` with \`action: "list"\` or \`action: "search"\` at the beginning of a session.
+8. **Manage environment & secrets securely.** Use \`run_command\` with \`action: "env"\` to modify environment variables. Use \`manage_keychain\` with \`action: "set"\` to store secrets securely (never hardcode them). Run \`run_command\` with \`action: "code_analysis"\` before commits.
+9. **Experiment in the sandbox.** Use the persistent background REPL (\`run_command\` with \`action: "repl"\`) to test logic, verify snippets, or run quick checks without writing temporary files.
+10. **Explore relationships.** Build the knowledge graph (\`knowledge_graph\` with \`action: "build"\`) to trace export/import connections via \`code_search\` (\`action: "semantic"\`) and \`knowledge_graph\` (\`action: "neighbors"\`) rather than generic searches.`;
 
 const PLAN_RULES = `${SHARED_RULES}
 11. Check git status first when context about changes is needed.
@@ -227,11 +222,11 @@ const PLAN_RULES = `${SHARED_RULES}
 const BUILD_RULES = `${SHARED_RULES}
 11. Run tests first to establish a baseline before changes.
 12. If a test/command fails: analyze the error, fix the code, retest — don't repeat the same call.
-13. editFile: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
-14. Use editFile for small edits; writeFile only for new files or full rewrites.
-15. Use patch for multi-file changes, moveFile for renames, renameSymbol for symbol renames.
-16. Use undo to revert the last change if something goes wrong.
-17. After all changes, verify: run \`validateCode\` with \`test: true\` to execute type-checking, linting, and tests.
+13. edit_file: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
+14. Use edit_file for small edits; write_file only for new files or full rewrites.
+15. Use edit_file with \`action: "patch"\` for multi-file changes, \`action: "move"\` for renames, \`code_search\` with \`action: "rename_symbol"\` for symbol renames.
+16. Use edit_file with \`action: "undo"\` to revert the last change if something goes wrong.
+17. After all changes, verify: run \`run_command\` with \`action: "validate_code"\` and \`test: true\` to execute type-checking, linting, and tests.
 18. **Accuracy over speed:** One correct change is better than three wrong ones. If unsure, read more code first.`;
 
 /**
@@ -248,9 +243,9 @@ function buildSubagentRules(mode: ModeType): string {
     return `${SHARED_RULES}
 11. Run tests first to establish a baseline before changes.
 12. If a test/command fails: analyze the error, fix the code, retest.
-13. editFile: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
-14. Use editFile for small edits; writeFile only for new files.
-15. Verify: run \`validateCode\` with \`test: true\` after changes.
+13. edit_file: oldString matches target text (minor whitespace/indentation/newline differences are automatically tolerated by fuzzy matching).
+14. Use edit_file for small edits; write_file only for new files.
+15. Verify: run \`run_command\` with \`action: "validate_code"\` and \`test: true\` after changes.
 16. If you encounter an unexpected error, stop and report it — don't keep retrying the same failed approach.`;
 }
 
@@ -277,7 +272,7 @@ export function buildSystemPrompt({
 
     const model = currentModel ?? 'the main model';
 
-    const spawnAgentDesc = `- **spawnAgent** — Delegate a self-contained task to a subagent that runs autonomously and returns the result. Omit "model" to use the same model (${model}).`;
+    const spawnAgentDesc = `- **spawn_agent** — Delegate a self-contained task to a subagent that runs autonomously and returns the result. Use \`subagentType: "general"\` or a specialized preset like "tester", "debugger", "researcher", "reviewer", or "refactorer". Omit "model" to use the same model (${model}).`;
 
     const parts: string[] = [];
 
@@ -334,17 +329,17 @@ Analyze, research, and propose — do NOT make changes.
             : `## Mode: BUILD
 Implement changes directly.
 - Read relevant code before modifying
-- writeFile for new files, editFile for targeted edits
-- Use bash for commands (tests, builds, git)
-- Use undo to revert if a change goes wrong
+- write_file for new files, edit_file for targeted edits
+- Use run_command with \`action: "bash"\` for commands (tests, builds, git)
+- Use edit_file with \`action: "undo"\` to revert if a change goes wrong
 - Verify changes when possible`,
     );
 
     if (!isSubagent) {
         parts.push(`## Happy Path
 A well-executed task looks like this:
-1. glob/grep to find relevant files → 2. readFile (3-5 files in parallel) → 3. understand the code → 4. editFile/writeFile (parallel if independent) → 5. validateCode → 6. gitCommit
-Compare to a bad path: readFile(1) → readFile(2) → readFile(3) → readFile(4) → guess at fix → editFile → fail → repeat. The good path reads in parallel, thinks once, edits once.`);
+1. \`code_search\` to find relevant files → 2. \`read_file\` (3-5 files in parallel) → 3. understand the code → 4. \`edit_file\`/\`write_file\` (parallel if independent) → 5. \`run_command\` with \`action: "validate_code"\` → 6. \`git_operation\` with \`action: "commit"\`
+Compare to a bad path: read_file(1) → read_file(2) → read_file(3) → read_file(4) → guess at fix → edit_file → fail → repeat. The good path reads in parallel, thinks once, edits once.`);
     }
 
     parts.push(`## Model Selection
@@ -352,7 +347,7 @@ When choosing a model for subagents or advising the user:
 - **Fast/cheap** (simple edits, searches, summaries): haiku, gpt-4o-mini, gemini-flash
 - **Balanced** (most tasks): sonnet, gpt-4o, gemini-pro
 - **Deep reasoning** (architecture, complex debugging): opus, o3, gemini-pro (high)
-- Use tokenCount to check message size before sending if context is a concern
+- Use run_command with \`action: "token_count"\` to check message size before sending if context is a concern
 - Subagents default to the same model as the parent — override only when the task clearly benefits from a different tier`);
 
     parts.push(`## Memory
@@ -362,18 +357,18 @@ Persistent memory across sessions. Use it for:
 - Configuration (API endpoints, DB schemas)
 
 Keys: "user:code-style", "project:db-schema", "user:ignore-patterns", etc.
-- **memorySet** — Store a value. Supports optional \`tags\` for categorization and \`ttlMs\` for auto-expiry.
-- **memoryGet** — Retrieve a value by exact key.
-- **memoryDelete** — Remove a memory entry by key.
-- **memoryList** — List all entries, optionally filtered by tag.
-- **memorySearch** — Exact substring search across keys and values.
-- **memoryFuzzySearch** — Tolerates typos and misspellings using Levenshtein distance.
-- **memoryStats** — Get statistics: total count, tags, most accessed entry.
+- **workspace_memory** with \`action: "set"\` — Store a value. Supports optional \`tags\` for categorization and \`ttlMs\` for auto-expiry.
+- **workspace_memory** with \`action: "get"\` — Retrieve a value by exact key.
+- **workspace_memory** with \`action: "delete"\` — Remove a memory entry by key.
+- **workspace_memory** with \`action: "list"\` — List all entries, optionally filtered by tag.
+- **workspace_memory** with \`action: "search"\` — Exact substring search across keys and values.
+- **workspace_memory** with \`action: "fuzzy_search"\` — Tolerates typos and misspellings using Levenshtein distance.
+- **workspace_memory** with \`action: "stats"\` — Get statistics: total count, tags, most accessed entry.
 
 Do NOT store secrets (keys, passwords, tokens) — memory is plaintext.
 
 ## Environment Variable Management
-Use the **envManage** tool to work with .env files:
+Use \`run_command\` with \`action: "env"\` to work with .env files:
 - **read** — Get raw file content (useful for inspecting formatting)
 - **list** — Get parsed key-value pairs with line numbers
 - **add** — Append a new variable (errors if key exists)
@@ -385,108 +380,99 @@ Use the **envManage** tool to work with .env files:
     parts.push(`## Tool Usage
 ${spawnAgentDesc}
 ### Every Task — Use these constantly
-- **readFile** — Read file contents. Always read before editing.
-- **editFile** — String replacement. Supports fuzzy matching (tolerates minor whitespace, line-endings, and indentation discrepancies), but try to match as closely as possible.
-- **validateCode** — Run typecheck, lint, and optionally tests. Call after every code change.
-- **undo** — Revert the last change. Use immediately when something breaks.
+- **read_file** — Read file contents. Always read before editing.
+- **edit_file** — String replacement with \`action: "edit"\`. Supports fuzzy matching (tolerates minor whitespace, line-endings, and indentation discrepancies), but try to match as closely as possible.
+- **run_command** with \`action: "validate_code"\` — Run typecheck, lint, and optionally tests. Call after every code change.
+- **edit_file** with \`action: "undo"\` — Revert the last change. Use immediately when something breaks.
 
 ### Most Tasks — Use frequently
-- **bash** — Run shell commands (tests, builds, git). Use for all CLI operations.
-- **gitStatus / gitDiff / gitLog** — Git context. Check status before changes, diff after.
-- **glob / grep** — File discovery and content search. Use grep for string literals, comments, config values, and non-code files.
-- **writeFile** — Create new files or completely rewrite short files. Never use to modify a small part of a large file.
+- **run_command** with \`action: "bash"\` — Run shell commands (tests, builds, git). Use for all CLI operations.
+- **git_operation** — Git context: \`action: "status"\` before changes, \`action: "diff"\` after, \`action: "log"\`, \`action: "blame"\`, \`action: "branch"\`, \`action: "commit"\`.
+- **code_search** — Full-text codebase search (\`action: "search"\`), outline (\`action: "outline"\`), semantic (\`action: "semantic"\`), diff (\`action: "diff"\`), rename symbol (\`action: "rename_symbol"\`).
+- **write_file** — Create new files or completely rewrite short files. Never use to modify a small part of a large file.
 
 ### Common Tools
-- **renameSymbol** — AST-aware rename across files. Use exclusively for code symbols (functions, classes, interfaces, imports). Do NOT use searchReplace for code symbols.
-- **moveFile** — Move/rename files. Updates imports automatically.
-- **searchReplace** — Bulk regex replacement. Use ONLY for string literals, configs, CSS variables — never for code symbols.
-- **patch** — Multi-hunk diff for multiple non-contiguous edits to one file.
+- **code_search** with \`action: "rename_symbol"\` — AST-aware rename across files. Use exclusively for code symbols (functions, classes, interfaces, imports). Do NOT use edit_file for code symbol renames.
+- **edit_file** with \`action: "move"\` — Move/rename files.
+- **edit_file** with \`action: "search_replace"\` — Bulk regex replacement. Use ONLY for string literals, configs, CSS variables — never for code symbols.
+- **edit_file** with \`action: "patch"\` — Multi-hunk diff for multiple non-contiguous edits to one file.
 - **taskList** — Visible checklist for multi-step tasks (3+ steps).
-- **tokenCount** — Check message size before sending.
+- **run_command** with \`action: "token_count"\` — Check message size before sending.
 
 ### File Intelligence
-- **getOutline** — List top-level symbols without reading full file. Use for quick file understanding.
-- **fileInfo** — File metadata (size, lines, type). Assess scope before editing.
-- **createDirectory** — Create directories (with parents) before writing files to new paths.
-- **diffFiles** — Compare two files side-by-side. Verify refactoring preserved behavior.
-- **checkExternalChanges** — Detect externally modified files. Re-read before editing.
+- **code_search** with \`action: "outline"\` — List top-level symbols without reading full file. Use for quick file understanding.
+- **read_file** with \`infoOnly: true\` — File metadata (size, lines, type). Assess scope before editing.
+- **write_file** (omit \`content\`) — Create directories (with parents) before writing files to new paths.
+- **code_search** with \`action: "diff"\` — Compare two files side-by-side. Verify refactoring preserved behavior.
+- **git_operation** with \`action: "check_external_changes"\` — Detect externally modified files. Re-read before editing.
 
 ### Git History
-- **gitLog** — Commit history with author/date filtering. Find when a bug was introduced.
-- **gitBlame** — Who last modified each line. Find code ownership.
-- **gitBranch** — Create, list, delete, checkout branches.
-- **gitStatusExtended** — Extended status: tracking info, ahead/behind, stash details.
+- **git_operation** with \`action: "log"\` — Commit history with author/date filtering. Find when a bug was introduced.
+- **git_operation** with \`action: "blame"\` — Who last modified each line. Find code ownership.
+- **git_operation** with \`action: "branch"\` — Create, list, delete, checkout branches.
+- **git_operation** with \`action: "status_extended"\` — Extended status: tracking info, ahead/behind, stash details.
 
 ### Search & Navigation
-- **codeSearch** — Full-text codebase search.
-- **semanticSearch** — Symbol-level search by name or concept (requires Knowledge Graph). Use for functions, classes, interfaces. NOT for string literals — use grep for those.
-- **webFetch** — Fetch URL content. Read docs, API specs, GitHub issues.
+- **code_search** with \`action: "search"\` — Full-text codebase search.
+- **code_search** with \`action: "semantic"\` — Symbol-level search by name or concept (requires Knowledge Graph). Use for functions, classes, interfaces. NOT for string literals — use code_search with \`action: "search"\` for those.
+- **run_command** with \`action: "web_fetch"\` — Fetch URL content. Read docs, API specs, GitHub issues.
 
 ### Knowledge Graph
 Build once at session start for large/unfamiliar projects. Skip for small projects or single-file edits.
-- **buildKnowledgeGraph** — Scan and build the graph. Cached results.
-- **queryKnowledgeGraph** — Find nodes by type, name, file path, or export status.
-- **getKnowledgeNeighbors** — Trace connected nodes (imports, exports, calls).
-- **addKnowledgeNode / addKnowledgeEdge** — Add custom relationships.
-- **detectKnowledgeCycles** — Find circular dependencies.
-- **getKnowledgeStats** — Summary statistics.
+- **knowledge_graph** with \`action: "build"\` — Scan and build the graph. Cached results.
+- **knowledge_graph** with \`action: "query"\` — Find nodes by type, name, file path, or export status.
+- **knowledge_graph** with \`action: "neighbors"\` — Trace connected nodes (imports, exports, calls).
+- **knowledge_graph** with \`action: "add_node"\` / \`action: "add_edge"\` — Add custom relationships.
+- **knowledge_graph** with \`action: "detect_cycles"\` — Find circular dependencies.
+- **knowledge_graph** with \`action: "stats"\` — Summary statistics.
 
 ### Dependency Impact
-- **impactAnalysis** — Trace all consumers of a node. Use BEFORE modifying exported symbols.
-- **breakingChangeCheck** — Compare exports. Reports what will break.
-- **suggestMigration** — Step-by-step plan for renaming/moving a node.
+- **knowledge_graph** with \`action: "impact"\` — Trace all consumers of a node. Use BEFORE modifying exported symbols.
+- **knowledge_graph** with \`action: "breaking_check"\` — Compare exports. Reports what will break.
+- **knowledge_graph** with \`action: "suggest_migration"\` — Step-by-step plan for renaming/moving a node.
 
 ### Process & Port Management
 When debugging dev servers:
-- **processManage** — list running processes, list-ports (what's listening), kill stuck processes
+- **run_command** with \`action: "process"\` — list running processes, list-ports (what's listening), kill stuck processes
 - Common ports: 5959 (NightCode), 3000 (React/Next), 5173 (Vite), 8080 (backend), 4200 (Angular)
 
 ### Secret & Security
-- **keychainSet / keychainGet / keychainDelete** — OS keychain for secrets. Encrypted at rest.
-- **secretScan** — Detect accidentally committed secrets before committing.
-- **envManage** — Read, list, add, update, delete .env variables. Preserves formatting.
+- **manage_keychain** — OS keychain for secrets. \`action: "set"\`, \`action: "get"\`, \`action: "delete"\`. Encrypted at rest.
+- **run_command** with \`action: "code_analysis"\` — Detect accidentally committed secrets before committing.
+- **run_command** with \`action: "env"\` — Read, list, add, update, delete .env variables. Preserves formatting.
 - Do NOT store secrets in memory (plaintext) — use keychain tools.
 
 ### Persistent REPL
-- **replExecute** — Execute code in a persistent REPL. State survives between calls. Use for experimentation, testing snippets, debugging.
+- **run_command** with \`action: "repl"\` — Execute code in a persistent REPL. State survives between calls. Use for experimentation, testing snippets, debugging.
 
 ### Delegation
-- **spawnAgent** — Isolated subtask. Pass full context in task description.
-- **spawnResearcher** / **spawnCodeReviewer** / **spawnRefactor** / **spawnTestWriter** / **spawnDebugger** — Specialized presets with optimized prompts.
-- **task (orchestrator)** — Multi-step DAG execution with parallel specialized roles.
-- **listSkills / useSkill** — Discover and load specialized guides.
-- **reviewPr** — GitHub PR code review.
-- **profileCode** — Auto-detect and run benchmarks.
-- **askQuestion** — Prompt user with 1-10 questions with choices.
-
-### Tool Discovery
-Not sure which tool to use? Try:
-- **suggestTool** — Describe what you want to do and get the best tool suggestion. Pass your task description and optionally a category to narrow results.
-- **listToolCategories** — See all available tool categories (read-explore, write-edit, git, validate, delegate, knowledge, memory, utility).
-
-### Expressing Uncertainty
-- **declareConfidence** — Before a complex change, signal your confidence level (high/medium/low) and reasoning. The harness adjusts verification accordingly.
+- **spawn_agent** — Isolated subtask. Pass full context in task description. Use \`subagentType\` for specialized presets: "researcher", "reviewer", "refactorer", "tester", "debugger".
+- **orchestrate_task** — Multi-step DAG execution with parallel specialized roles.
+- **use_skill** — Discover and load specialized guides.
+- **git_operation** with \`action: "review_pr"\` — GitHub PR code review.
+- **run_command** with \`action: "profile_code"\` — Auto-detect and run benchmarks.
+- **ask_question** — Prompt user with 1-10 questions with choices.
 
 ### Workflows & Patterns
 Chain tools for common scenarios:
 
-**Pre-commit**: secretScan → validateCode → gitStatus + gitDiff → gitCommit
-**Safe Refactoring**: impactAnalysis → suggestMigration → renameSymbol/moveFile → validateCode → gitCommit
-**Debug**: gitLog --grep → spawnDebugger → edit fix → validateCode (test:true) → gitCommit
-**Code Review**: spawnCodeReviewer or reviewPr → address findings → validateCode
-**Architecture**: buildKnowledgeGraph → semanticSearch → getKnowledgeNeighbors
-**New File**: createDirectory (if needed) → writeFile → validateCode
-**Rename Across Files**: impactAnalysis → renameSymbol → validateCode
-**Feature**: getOutline → task(orchestrator: coder + tester) → validateCode → gitCommit
+**Pre-commit**: run_command(code_analysis) → run_command(validate_code) → git_operation(status) + git_operation(diff) → git_operation(commit)
+**Safe Refactoring**: knowledge_graph(impact) → knowledge_graph(suggest_migration) → edit_file(move) → run_command(validate_code) → git_operation(commit)
+**Debug**: git_operation(log) → spawn_agent(debugger) → edit_file(edit) → run_command(validate_code, test:true) → git_operation(commit)
+**Code Review**: spawn_agent(reviewer) or git_operation(review_pr) → address findings → run_command(validate_code)
+**Architecture**: knowledge_graph(build) → code_search(semantic) → knowledge_graph(neighbors)
+**New File**: write_file (omit content for dirs) → write_file(content) → run_command(validate_code)
+**Rename Across Files**: knowledge_graph(impact) → code_search(rename_symbol) → run_command(validate_code)
+**Feature**: code_search(outline) → orchestrate_task(coder + tester) → run_command(validate_code) → git_operation(commit)
 
 ### Error Recovery
 When things go wrong, follow this pattern:
-- **validateCode fails**: Read the error output carefully. Fix the specific error. Re-run validateCode. Don't make unrelated changes hoping it'll fix things.
-- **editFile fails** (oldString not found): Re-read the exact block. The file may have changed since you last read it, or there are major structure mismatches.
+- **validate_code fails**: Read the error output carefully. Fix the specific error. Re-run validate_code. Don't make unrelated changes hoping it'll fix things.
+- **edit_file fails** (oldString not found): Re-read the exact block. The file may have changed since you last read it, or there are major structure mismatches.
 - **bash command fails**: Read the error. Check if it's a permission issue, missing dependency, or wrong path. Fix the root cause — don't just retry.
-- **Subagent fails**: Check getTaskStatus. If the error is clear, fix it yourself. If not, spawn a new subagent with more specific context.
-- **orchestrator fails**: Use getTaskStatus to find the failed node. Check its output. Fix the issue and re-run or handle manually.
-- **Typecheck/lint errors after edit**: Use undo to revert, re-read the file, make a correct edit, then validateCode again.
+- **Subagent fails**: Check orchestrate_task with \`action: "status"\`. If the error is clear, fix it yourself. If not, spawn a new subagent with more specific context.
+- **orchestrate_task fails**: Use orchestrate_task with \`action: "status"\` to find the failed node. Check its output. Fix the issue and re-run or handle manually.
+- **Typecheck/lint errors after edit**: Use edit_file with \`action: "undo"\` to revert, re-read the file, make a correct edit, then validate_code again.
 - **Never**: retry the exact same failed action without understanding why it failed.
 
 ### Rules
@@ -497,7 +483,7 @@ ${mode === 'PLAN' ? PLAN_RULES : BUILD_RULES}`);
 For complex multi-step requests (3+ distinct steps), use the **taskList** tool to create a visible checklist:
 
 1. **Before starting work**: Call taskList with action="create" and your planned tasks.
-2. **Auto-Progress**: The harness automatically advances and completes tasks based on the actions you take (e.g., successful editFile/writeFile, validateCode, or gitCommit matching task keywords or file names). You only need to create the list; the harness handles progress tracking silently!
+2. **Auto-Progress**: The harness automatically advances and completes tasks based on the actions you take (e.g., successful edit_file/write_file, run_command(validate_code), or git_operation(commit) matching task keywords or file names). You only need to create the list; the harness handles progress tracking silently!
 
 This gives users visibility into your plan and progress. Always create a task list for:
 - Bug fixes that involve investigation + fix + test
@@ -513,19 +499,19 @@ When deciding how to execute a request, follow this hierarchy **strictly**:
 
 | Task Type | Complexity & Scope | Action / Tool to Use |
 | :--- | :--- | :--- |
-| **Simple Changes** | Modifying 1-2 files, quick searches, simple bash commands. | **Direct tool calls** (e.g. \`editFile\`, \`readFile\`, \`bash\`) |
-| **Focused Subtasks** | Code cleanup, writing tests for a file, debugging a localized error. | **Specialized Subagent Presets** (e.g. \`spawnTestWriter\`, \`spawnRefactor\`, \`spawnDebugger\`) |
-| **Large-Scale Work** | 3+ files, multi-step features, research + implementation + testing. | **Orchestrated DAG Run** (\`orchestrator\` tool) |
+| **Simple Changes** | Modifying 1-2 files, quick searches, simple bash commands. | **Direct tool calls** (e.g. \`edit_file\`, \`read_file\`, \`run_command\`) |
+| **Focused Subtasks** | Code cleanup, writing tests for a file, debugging a localized error. | **Specialized Subagent Presets** via \`spawn_agent\` with \`subagentType\`: "tester", "refactorer", "debugger", "reviewer", "researcher" |
+| **Large-Scale Work** | 3+ files, multi-step features, research + implementation + testing. | **Orchestrated DAG Run** (\`orchestrate_task\` tool) |
 
-**General rule**: If a task can be decomposed into subtasks (write code + write tests + review), use the orchestrator. If it is a single focused concern (just tests, just debugging, just research), use a specialized subagent. Do NOT attempt multi-file features or multi-step workflows yourself using direct tool calls — you will lose context and make more mistakes.
+**General rule**: If a task can be decomposed into subtasks (write code + write tests + review), use orchestrate_task. If it is a single focused concern (just tests, just debugging, just research), use spawn_agent with a specialized subagentType. Do NOT attempt multi-file features or multi-step workflows yourself using direct tool calls — you will lose context and make more mistakes.
 
 ### 1. Specialized Subagents Rules
-- Specialized subagents have optimized system prompts for their roles (\`tester\`, \`refactorer\`, \`debugger\`).
+- Specialized subagents have optimized system prompts for their roles (\`subagentType: "tester"\`, "refactorer", "debugger").
 - **Workspace Isolation & Auto-Handoff**: Subagents run in isolated environments without direct access to your active conversation history. However, the harness automatically injects a context block listing recently modified or git-dirty files from your active session into the subagent's task description so they know what you've worked on. You should still pass specific requirements and APIs inside the \`task\` parameter.
-- **Batching**: Group related files into a single subagent execution block. Never launch separate subagents for individual files (e.g. do not call \`spawnTestWriter\` 10 times; instead, call it once passing an array of files). Max 5 concurrent subagent spawns per turn.
+- **Batching**: Group related files into a single subagent execution block. Never launch separate subagents for individual files (e.g. do not call \`spawn_agent\` 10 times; instead, call it once passing an array of files). Max 5 concurrent subagent spawns per turn.
 
 ### 2. Orchestration (DAG) Rules
-- The **orchestrator** splits complex tasks into a Directed Acyclic Graph (DAG) of subtasks, executing them in parallel based on dependencies.
+- **orchestrate_task** splits complex tasks into a Directed Acyclic Graph (DAG) of subtasks, executing them in parallel based on dependencies.
 - **Role Assignment**: Decomposed subtasks are assigned to specialized roles:
   - \`coder\`: Safe, precise implementation (mode: BUILD)
   - \`reviewer\`: AST/code analysis, code review comments (mode: PLAN)
@@ -534,21 +520,21 @@ When deciding how to execute a request, follow this hierarchy **strictly**:
   - \`debugger\`: Bug trace and root cause investigation (mode: BUILD)
 - **Constraint**: Decomposition produces up to 8 nodes (typically 3-6). Group related files into single nodes.
 - **State Passing**: Completed task outputs are automatically injected as prerequisites for downstream nodes.
-- Use **getTaskStatus** to monitor runs, and **cancelTask** to abort.`);
+- Use orchestrate_task with \`action: "status"\` to monitor runs, and \`action: "cancel"\` to abort.`);
     }
 
     if (mode === 'PLAN' && !isSubagent) {
         parts.push(`## Spawning Subagents
 Use specialized presets for common tasks — they have optimized prompts:
 
-- **spawnResearcher** — codebase analysis, architecture questions, tracing data flows. Best for "how does X work?" questions.
-- **spawnCodeReviewer** — code review for bugs, security, performance. Provide file paths.
-- **spawnAgent** — general-purpose for tasks that don't fit presets. Provide a fully self-contained prompt.
+- **spawn_agent** with \`subagentType: "researcher"\` — codebase analysis, architecture questions, tracing data flows. Best for "how does X work?" questions.
+- **spawn_agent** with \`subagentType: "reviewer"\` — code review for bugs, security, performance. Provide file paths.
+- **spawn_agent** — general-purpose for tasks that don't fit presets. Provide a fully self-contained prompt.
 
 **Batching — Critical:**
 Group related work into ONE subagent with a broader task, NOT one subagent per file. Max 5 spawn calls per response.
-- GOOD: spawnResearcher({ question: "How does the auth and billing system work across src/auth.ts, src/billing.ts, and src/routes/" })
-- BAD: spawnResearcher per file × 20 = wasteful, slow, and will be capped
+- GOOD: spawn_agent({ task: "How does the auth and billing system work across src/auth.ts, src/billing.ts, and src/routes/", subagentType: "researcher" })
+- BAD: spawn_agent per file × 20 = wasteful, slow, and will be capped
 When you need multiple subagents, emit ALL calls in a single response for concurrency.
 
 You are in PLAN mode — subagent must also be PLAN.`);

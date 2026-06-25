@@ -28,7 +28,7 @@ export function MessageSearch({
     const [matches, setMatches] = useState<
         { messageIndex: number; text: string }[]
     >([]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const inputRef = useRef<any>(null);
 
     // Search through messages only when open and searchText/messages change

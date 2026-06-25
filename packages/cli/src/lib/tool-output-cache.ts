@@ -14,40 +14,38 @@ import { createHash } from 'crypto';
 const CACHE_MAX_ENTRIES = 256;
 const CACHE_TTL_MS = 30_000;
 
-/** Tools safe to cache (read-only, deterministic given same input). */
-const CACHEABLE_TOOLS = new Set([
-    'readFile',
-    'listDirectory',
-    'glob',
-    'grep',
-    'tree',
-    'fileInfo',
-    'gitStatus',
-    'gitDiff',
-    'gitLog',
-    'gitBlame',
-    'gitStatusExtended',
-    'codeSearch',
-    'getOutline',
-    'diffFiles',
-    'tokenCount',
-    'memoryGet',
-    'memoryList',
-    'memorySearch',
-    'memoryFuzzySearch',
-    'memoryStats',
-    'keychainGet',
-    'getTaskStatus',
-    'getKnowledgeNeighbors',
-    'queryKnowledgeGraph',
-    'detectKnowledgeCycles',
-    'getKnowledgeStats',
-    'impactAnalysis',
-    'breakingChangeCheck',
-    'suggestMigration',
-    'reviewPr',
-    'semanticSearch',
-]);
+/** Tools safe to cache unconditionally (read-only, no action variants). */
+const CACHEABLE_TOOLS = new Set(['read_file', 'list_dir', 'code_search']);
+
+/** Actions within multi-action tools that are safe to cache (read-only). */
+const CACHEABLE_ACTIONS: Record<string, Set<string>> = {
+    git_operation: new Set([
+        'status',
+        'diff',
+        'log',
+        'blame',
+        'status_extended',
+        'check_external_changes',
+    ]),
+    workspace_memory: new Set([
+        'get',
+        'list',
+        'search',
+        'fuzzy_search',
+        'stats',
+    ]),
+    manage_keychain: new Set(['get']),
+    knowledge_graph: new Set([
+        'query',
+        'neighbors',
+        'detect_cycles',
+        'stats',
+        'impact',
+        'breaking_check',
+        'suggest_migration',
+    ]),
+    orchestrate_task: new Set(['status']),
+};
 
 interface CacheEntry {
     result: unknown;
@@ -59,9 +57,16 @@ class ToolOutputCache {
     private hits = 0;
     private misses = 0;
 
-    /** Check if a tool is cacheable. */
-    isCacheable(toolName: string): boolean {
-        return CACHEABLE_TOOLS.has(toolName);
+    /** Check if a tool call is cacheable. For multi-action tools, only read-only actions are cached. */
+    isCacheable(toolName: string, input?: unknown): boolean {
+        if (CACHEABLE_TOOLS.has(toolName)) return true;
+        const actions = CACHEABLE_ACTIONS[toolName];
+        if (!actions) return false;
+        const action =
+            input && typeof input === 'object'
+                ? (input as Record<string, unknown>).action
+                : undefined;
+        return typeof action === 'string' && actions.has(action);
     }
 
     /** Generate a cache key from tool name and input. */
@@ -82,7 +87,7 @@ class ToolOutputCache {
 
     /** Get a cached result if available and not expired. */
     get(toolName: string, input: unknown): unknown | undefined {
-        if (!this.isCacheable(toolName)) return undefined;
+        if (!this.isCacheable(toolName, input)) return undefined;
 
         const key = this.makeKey(toolName, input);
         const entry = this.cache.get(key);
@@ -107,7 +112,7 @@ class ToolOutputCache {
 
     /** Store a result in the cache. */
     set(toolName: string, input: unknown, result: unknown): void {
-        if (!this.isCacheable(toolName)) return;
+        if (!this.isCacheable(toolName, input)) return;
 
         const key = this.makeKey(toolName, input);
 

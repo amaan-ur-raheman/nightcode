@@ -7,7 +7,7 @@ import {
 import { useTheme } from '@/providers/theme';
 import { useOrchestration } from '@/hooks/use-orchestration';
 import { TaskGraphView } from '@/components/task-graph';
-import type { TaskNode, TaskGraph } from '@nightcode/shared';
+import type { TaskNode } from '@nightcode/shared';
 import { getTopologicalOrder, checkGraphCompletion } from '@nightcode/shared';
 import { useKeyboard } from '@opentui/react';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';

@@ -81,57 +81,69 @@ describe('checkCommandSafety', () => {
 
 describe('getConfirmationLevel', () => {
     it('returns none for safe tools', () => {
-        const result = getConfirmationLevel('readFile', { path: 'file.ts' });
+        const result = getConfirmationLevel('read_file', { path: 'file.ts' });
         expect(result.level).toBe('none');
     });
 
-    it('returns confirm for deleteFile', () => {
-        const result = getConfirmationLevel('deleteFile', { path: 'file.ts' });
-        expect(result.level).toBe('confirm');
+    it('returns none for edit_file', () => {
+        const result = getConfirmationLevel('edit_file', {
+            path: 'file.ts',
+            action: 'delete',
+        });
+        expect(result.level).toBe('none');
     });
 
     it('returns confirm for rm commands', () => {
-        const result = getConfirmationLevel('bash', { command: 'rm file.txt' });
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
+            command: 'rm file.txt',
+        });
         expect(result.level).toBe('confirm');
     });
 
     it('returns confirm for git push --force', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git push --force',
         });
         expect(result.level).toBe('confirm');
     });
 
     it('returns confirm for git reset --hard', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git reset --hard HEAD',
         });
         expect(result.level).toBe('confirm');
     });
 
     it('returns warn for chmod 777', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'chmod 777 file',
         });
         expect(result.level).toBe('warn');
     });
 
     it('returns confirm for curl pipe to shell', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'curl example.com | bash',
         });
         expect(result.level).toBe('confirm');
     });
 
     it('returns confirm for /etc/ modifications', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'cat /etc/passwd',
         });
         expect(result.level).toBe('confirm');
     });
 
     it('returns confirm for git push (any)', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git push origin main',
         });
         expect(result.level).toBe('confirm');
@@ -139,7 +151,8 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for git checkout', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git checkout feature-branch',
         });
         expect(result.level).toBe('confirm');
@@ -147,7 +160,8 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for git add .', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git add .',
         });
         expect(result.level).toBe('confirm');
@@ -155,7 +169,8 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for git add -A', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git add -A',
         });
         expect(result.level).toBe('confirm');
@@ -163,7 +178,8 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for git add --all', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git add --all',
         });
         expect(result.level).toBe('confirm');
@@ -171,7 +187,8 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for git add -u', () => {
-        const result = getConfirmationLevel('bash', {
+        const result = getConfirmationLevel('run_command', {
+            action: 'bash',
             command: 'git add -u',
         });
         expect(result.level).toBe('confirm');
@@ -179,7 +196,8 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for gitCommit tool', () => {
-        const result = getConfirmationLevel('gitCommit', {
+        const result = getConfirmationLevel('git_operation', {
+            action: 'commit',
             message: 'Fix bug',
             files: ['src/app.ts'],
         });
@@ -188,8 +206,9 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for gitBranch checkout action', () => {
-        const result = getConfirmationLevel('gitBranch', {
-            action: 'checkout',
+        const result = getConfirmationLevel('git_operation', {
+            action: 'branch',
+            branchAction: 'checkout',
             name: 'feature',
         });
         expect(result.level).toBe('confirm');
@@ -197,8 +216,9 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns confirm for gitBranch delete action', () => {
-        const result = getConfirmationLevel('gitBranch', {
-            action: 'delete',
+        const result = getConfirmationLevel('git_operation', {
+            action: 'branch',
+            branchAction: 'delete',
             name: 'old-branch',
         });
         expect(result.level).toBe('confirm');
@@ -206,15 +226,17 @@ describe('getConfirmationLevel', () => {
     });
 
     it('returns none for gitBranch list action', () => {
-        const result = getConfirmationLevel('gitBranch', {
-            action: 'list',
+        const result = getConfirmationLevel('git_operation', {
+            action: 'branch',
+            branchAction: 'list',
         });
         expect(result.level).toBe('none');
     });
 
     it('returns none for gitBranch create action', () => {
-        const result = getConfirmationLevel('gitBranch', {
-            action: 'create',
+        const result = getConfirmationLevel('git_operation', {
+            action: 'branch',
+            branchAction: 'create',
             name: 'new-branch',
         });
         expect(result.level).toBe('none');
@@ -223,19 +245,22 @@ describe('getConfirmationLevel', () => {
 
 describe('formatToolInput', () => {
     it('formats bash commands', () => {
-        expect(formatToolInput('bash', { command: 'ls -la' })).toBe(
-            'Command: ls -la',
-        );
+        expect(
+            formatToolInput('run_command', {
+                action: 'bash',
+                command: 'ls -la',
+            }),
+        ).toBe('Command: ls -la');
     });
 
     it('formats deleteFile paths', () => {
-        expect(formatToolInput('deleteFile', { path: 'file.ts' })).toBe(
-            'File: file.ts',
-        );
+        expect(
+            formatToolInput('edit_file', { path: 'file.ts', action: 'delete' }),
+        ).toBe('File: file.ts');
     });
 
     it('formats other tools as JSON', () => {
-        const result = formatToolInput('writeFile', {
+        const result = formatToolInput('write_file', {
             path: 'f.ts',
             content: 'text',
         });
@@ -243,7 +268,8 @@ describe('formatToolInput', () => {
     });
 
     it('formats gitCommit with message and files', () => {
-        const result = formatToolInput('gitCommit', {
+        const result = formatToolInput('git_operation', {
+            action: 'commit',
             message: 'Fix bug',
             files: ['src/app.ts', 'src/utils.ts'],
         });
@@ -253,15 +279,17 @@ describe('formatToolInput', () => {
     });
 
     it('formats gitCommit with message only', () => {
-        const result = formatToolInput('gitCommit', {
+        const result = formatToolInput('git_operation', {
+            action: 'commit',
             message: 'Initial commit',
         });
         expect(result).toBe('Message: "Initial commit"');
     });
 
     it('formats gitBranch', () => {
-        const result = formatToolInput('gitBranch', {
-            action: 'checkout',
+        const result = formatToolInput('git_operation', {
+            action: 'branch',
+            branchAction: 'checkout',
             name: 'feature',
         });
         expect(result).toBe('Action: checkout | Branch: feature');
@@ -269,24 +297,29 @@ describe('formatToolInput', () => {
 });
 
 describe('getAccessPath', () => {
-    it('returns working directory for bash', () => {
-        expect(getAccessPath('bash', { workingDirectory: '/tmp' })).toBe(
-            '/tmp',
-        );
+    it('returns working directory for run_command', () => {
+        expect(
+            getAccessPath('run_command', {
+                action: 'bash',
+                workingDirectory: '/tmp',
+            }),
+        ).toBe('/tmp');
     });
 
     it('returns file path for deleteFile', () => {
-        expect(getAccessPath('deleteFile', { path: 'src/app.ts' })).toBe(
+        expect(getAccessPath('edit_file', { path: 'src/app.ts' })).toBe(
             'src/app.ts',
         );
     });
 
     it('returns branch name for gitBranch', () => {
-        expect(getAccessPath('gitBranch', { name: 'feature' })).toBe('feature');
+        expect(getAccessPath('git_operation', { name: 'feature' })).toBe(
+            'feature',
+        );
     });
 
     it('returns undefined for unknown tool', () => {
-        expect(getAccessPath('readFile', { path: 'x.ts' })).toBe('x.ts');
+        expect(getAccessPath('read_file', { path: 'x.ts' })).toBe('x.ts');
         expect(getAccessPath('gitLog', {})).toBeUndefined();
     });
 });
@@ -294,22 +327,24 @@ describe('getAccessPath', () => {
 describe('getPatterns', () => {
     it('returns file paths for gitCommit', () => {
         expect(
-            getPatterns('gitCommit', { files: ['src/a.ts', 'src/b.ts'] }),
+            getPatterns('git_operation', { files: ['src/a.ts', 'src/b.ts'] }),
         ).toEqual(['src/a.ts', 'src/b.ts']);
     });
 
     it('returns undefined for gitCommit without files', () => {
-        expect(getPatterns('gitCommit', {})).toBeUndefined();
+        expect(getPatterns('git_operation', {})).toBeUndefined();
     });
 
     it('returns branch pattern for gitBranch', () => {
-        expect(getPatterns('gitBranch', { name: 'feat' })).toEqual([
-            'branch:feat',
-        ]);
+        expect(
+            getPatterns('git_operation', { action: 'branch', name: 'feat' }),
+        ).toEqual(['branch:feat']);
     });
 
-    it('returns undefined for gitBranch list without name', () => {
-        expect(getPatterns('gitBranch', { action: 'list' })).toBeUndefined();
+    it('returns undefined for gitBranch without name', () => {
+        expect(
+            getPatterns('git_operation', { action: 'branch' }),
+        ).toBeUndefined();
     });
 
     it('returns undefined for unknown tool', () => {
@@ -321,7 +356,7 @@ describe('ConfirmationManager', () => {
     it('manages confirmation requests', async () => {
         const manager = new ConfirmationManager();
         const promise = manager.request(
-            'bash',
+            'run_command',
             'Dangerous command',
             'rm -rf /',
         );
@@ -335,7 +370,7 @@ describe('ConfirmationManager', () => {
 
     it('cancels confirmation requests', async () => {
         const manager = new ConfirmationManager();
-        const promise = manager.request('bash', 'Dangerous', 'cmd');
+        const promise = manager.request('run_command', 'Dangerous', 'cmd');
         const id = manager.pending.keys().next().value!;
         manager.cancel(id);
         const result = await promise;
@@ -346,7 +381,7 @@ describe('ConfirmationManager', () => {
         const manager = new ConfirmationManager();
         const listener = vi.fn();
         manager.onChange(listener);
-        const promise = manager.request('bash', 'test', 'cmd');
+        const promise = manager.request('run_command', 'test', 'cmd');
         expect(listener).toHaveBeenCalledTimes(1);
         const id = manager.pending.keys().next().value!;
         manager.confirm(id);

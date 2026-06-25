@@ -56,7 +56,7 @@ export function CommitDialogContent({
             } else {
                 setError(statusResult.stderr || 'Failed to check git status');
             }
-        } catch (err) {
+        } catch {
             if (signal?.aborted) return;
             setError('Failed to fetch staged files');
         } finally {

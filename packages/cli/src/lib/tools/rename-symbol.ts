@@ -1,7 +1,6 @@
 import { readFile, writeFile } from 'fs/promises';
 import { resolve, relative } from 'path';
 import { existsSync } from 'fs';
-import { toolInputSchemas } from '@nightcode/shared';
 import { globCache } from '../glob-cache';
 import { undoManager } from '../undo-manager';
 import { generateDiff, formatDiff } from '../diff-utils';
@@ -162,14 +161,14 @@ function applyWorkspaceEdits(content: string, edits: TextEdit[]): string {
     return lines.join('\n');
 }
 
-export async function renameSymbolTool(input: unknown) {
+export async function renameSymbolTool(input: any) {
     const {
         oldName,
         newName,
         glob: globPattern,
         dryRun = false,
         fileTypes,
-    } = toolInputSchemas.renameSymbol.parse(input);
+    } = input;
 
     if (oldName === newName) {
         return { filesChanged: 0, changes: [], diff: '' };
@@ -275,7 +274,7 @@ export async function renameSymbolTool(input: unknown) {
                     }
                     lspUsed = true;
                 }
-            } catch (err) {
+            } catch {
                 // Fail silently and fall back to regex
             } finally {
                 await lsp.shutdown();

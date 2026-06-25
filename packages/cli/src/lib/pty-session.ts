@@ -47,7 +47,7 @@ export class PtySessionManager extends EventEmitter {
                     }
                     this.appendOutput(chunk);
                 }
-            } catch (e) {
+            } catch {
                 // stream closed
             }
         };
@@ -67,7 +67,7 @@ export class PtySessionManager extends EventEmitter {
                     }
                     this.appendOutput(chunk);
                 }
-            } catch (e) {
+            } catch {
                 // stream closed
             }
         };
@@ -147,7 +147,7 @@ export class PtySessionManager extends EventEmitter {
             ) {
                 this.appendOutput(data);
             }
-        } catch (e) {
+        } catch {
             // failed to write
         }
     }
@@ -160,7 +160,7 @@ export class PtySessionManager extends EventEmitter {
             } else {
                 this.activeProc.kill('SIGINT');
             }
-        } catch (e) {
+        } catch {
             // failed to kill
         }
     }

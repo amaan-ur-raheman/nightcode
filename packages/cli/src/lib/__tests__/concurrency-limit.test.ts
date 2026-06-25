@@ -4,12 +4,19 @@ import { detectConflict } from '../concurrency-limit';
 describe('concurrency-limit conflict detection', () => {
     it('should not conflict for non-file-modifying tools', () => {
         expect(
-            detectConflict('bash', { command: 'echo 1' }, 'bash', {
-                command: 'echo 1',
-            }),
+            detectConflict(
+                'run_command',
+                { action: 'bash', command: 'echo 1' },
+                'run_command',
+                {
+                    action: 'bash',
+                    command: 'echo 1',
+                },
+            ),
         ).toBe(false);
         expect(
-            detectConflict('writeFile', { path: 'a.txt' }, 'bash', {
+            detectConflict('write_file', { path: 'a.txt' }, 'run_command', {
+                action: 'bash',
                 command: 'echo 1',
             }),
         ).toBe(false);
@@ -17,22 +24,22 @@ describe('concurrency-limit conflict detection', () => {
 
     it('should conflict when two tools target the same file', () => {
         expect(
-            detectConflict('writeFile', { path: 'a.txt' }, 'editFile', {
+            detectConflict('write_file', { path: 'a.txt' }, 'edit_file', {
                 path: 'a.txt',
             }),
         ).toBe(true);
         expect(
-            detectConflict('writeFile', { path: 'a.txt' }, 'editFile', {
+            detectConflict('write_file', { path: 'a.txt' }, 'edit_file', {
                 filePath: 'a.txt',
             }),
         ).toBe(true);
         expect(
-            detectConflict('writeFile', { path: 'a.txt' }, 'editFile', {
+            detectConflict('write_file', { path: 'a.txt' }, 'edit_file', {
                 file: 'a.txt',
             }),
         ).toBe(true);
         expect(
-            detectConflict('writeFile', { path: 'a.txt' }, 'editFile', {
+            detectConflict('write_file', { path: 'a.txt' }, 'edit_file', {
                 target: 'a.txt',
             }),
         ).toBe(true);
@@ -40,90 +47,136 @@ describe('concurrency-limit conflict detection', () => {
 
     it('should normalize paths correctly', () => {
         expect(
-            detectConflict('writeFile', { path: './a.txt' }, 'editFile', {
+            detectConflict('write_file', { path: './a.txt' }, 'edit_file', {
                 path: 'a.txt',
             }),
         ).toBe(true);
         expect(
-            detectConflict('writeFile', { path: 'a.txt/' }, 'editFile', {
+            detectConflict('write_file', { path: 'a.txt/' }, 'edit_file', {
                 path: 'a.txt',
             }),
         ).toBe(true);
         expect(
-            detectConflict('writeFile', { path: 'a//b.txt' }, 'editFile', {
+            detectConflict('write_file', { path: 'a//b.txt' }, 'edit_file', {
                 path: 'a/b.txt',
             }),
         ).toBe(true);
     });
 
-    it('should detect conflicts symmetrically for moveFile (source vs source, source vs destination, destination vs destination, destination vs source)', () => {
-        // moveFile inputs:
-        // moveFile uses from/source for source, and to/path for destination
+    it('should detect conflicts symmetrically for edit_file with move action (source vs source, source vs destination, destination vs destination, destination vs source)', () => {
+        // edit_file with move action inputs:
+        // uses from/source for source, and destPath/path for destination
 
-        // 1. Source (moveFile A) vs Source (moveFile B)
+        // 1. Source (edit_file A) vs Source (edit_file B)
         expect(
             detectConflict(
-                'moveFile',
-                { source: 'src/old.txt', to: 'dest/new.txt' },
-                'moveFile',
-                { from: 'src/old.txt', path: 'dest/other.txt' },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/new.txt',
+                },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/other.txt',
+                },
             ),
         ).toBe(true);
 
-        // 2. Destination (moveFile A) vs Destination (moveFile B)
+        // 2. Destination (edit_file A) vs Destination (edit_file B)
         expect(
             detectConflict(
-                'moveFile',
-                { source: 'src/old.txt', to: 'dest/new.txt' },
-                'moveFile',
-                { from: 'src/other.txt', path: 'dest/new.txt' },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/new.txt',
+                },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/other.txt',
+                    destPath: 'dest/new.txt',
+                },
             ),
         ).toBe(true);
 
-        // 3. Source (moveFile A) vs Destination (moveFile B)
+        // 3. Source (edit_file A) vs Destination (edit_file B)
         expect(
             detectConflict(
-                'moveFile',
-                { source: 'dest/new.txt', to: 'dest/other.txt' },
-                'moveFile',
-                { from: 'src/old.txt', to: 'dest/new.txt' },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'dest/new.txt',
+                    destPath: 'dest/other.txt',
+                },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/new.txt',
+                },
             ),
         ).toBe(true);
 
-        // 4. Source (moveFile) vs normal writeFile (target conflict)
+        // 4. Source (edit_file) vs normal write_file (target conflict)
         expect(
             detectConflict(
-                'moveFile',
-                { source: 'src/old.txt', to: 'dest/new.txt' },
-                'writeFile',
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/new.txt',
+                },
+                'write_file',
                 { path: 'src/old.txt' },
             ),
         ).toBe(true);
 
         expect(
             detectConflict(
-                'moveFile',
-                { source: 'src/old.txt', to: 'dest/new.txt' },
-                'writeFile',
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/new.txt',
+                },
+                'write_file',
                 { path: 'dest/new.txt' },
             ),
         ).toBe(true);
 
-        // 5. Symmetric: writeFile vs moveFile
+        // 5. Symmetric: write_file vs edit_file
         expect(
-            detectConflict('writeFile', { path: 'dest/new.txt' }, 'moveFile', {
-                source: 'src/old.txt',
-                to: 'dest/new.txt',
-            }),
+            detectConflict(
+                'write_file',
+                { path: 'dest/new.txt' },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/new.txt',
+                },
+            ),
         ).toBe(true);
 
         // 6. No conflict
         expect(
             detectConflict(
-                'moveFile',
-                { source: 'src/old.txt', to: 'dest/new.txt' },
-                'moveFile',
-                { source: 'src/other.txt', to: 'dest/other.txt' },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/old.txt',
+                    destPath: 'dest/new.txt',
+                },
+                'edit_file',
+                {
+                    action: 'move',
+                    from: 'src/other.txt',
+                    destPath: 'dest/other.txt',
+                },
             ),
         ).toBe(false);
     });

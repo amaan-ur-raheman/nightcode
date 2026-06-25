@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
-import { TextAttributes, RGBA } from '@opentui/core';
+import { TextAttributes } from '@opentui/core';
 import { useTheme } from '@/providers/theme';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
 import { knowledgeGraphManager } from '@/lib/knowledge-graph';
@@ -45,7 +45,7 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
                 if (defaultNode) {
                     setCurrentNodeId(defaultNode.id);
                 }
-            } catch (e) {
+            } catch {
                 // ignore
             } finally {
                 setLoading(false);
@@ -114,7 +114,7 @@ export function GraphViewer({ onClose, onSelectFile }: GraphViewerProps) {
             if (defaultNode) {
                 setCurrentNodeId(defaultNode.id);
             }
-        } catch (e) {
+        } catch {
             // ignore
         } finally {
             setLoading(false);

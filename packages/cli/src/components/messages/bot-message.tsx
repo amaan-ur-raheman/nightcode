@@ -314,42 +314,6 @@ export const BotMessage = React.memo(function BotMessage({
     const { colors } = useTheme();
     const { activeGraphs } = useOrchestration();
 
-    // Collect tool executions for summary
-    const toolExecutions = React.useMemo(() => {
-        const executions: {
-            name: string;
-            durationMs: number;
-            success: boolean;
-        }[] = [];
-        for (const part of parts) {
-            if (isToolPart(part)) {
-                const toolName =
-                    part.type === 'dynamic-tool'
-                        ? part.toolName
-                        : part.type.slice('tool-'.length);
-                const isRunning =
-                    part.state !== 'output-available' &&
-                    part.state !== 'output-error';
-                const isError = part.state === 'output-error';
-                const isComplete =
-                    part.state === 'output-available' && !isError;
-
-                if (isComplete || isError) {
-                    const startTime = (part as any).startTime;
-                    const endTime = (part as any).endTime;
-                    const duration =
-                        startTime && endTime ? endTime - startTime : 0;
-                    executions.push({
-                        name: toolName,
-                        durationMs: duration,
-                        success: isComplete,
-                    });
-                }
-            }
-        }
-        return executions;
-    }, [parts]);
-
     return (
         <box alignItems="center" width="100%">
             {groupConsecutiveParts(parts).map((group, i) => (
@@ -402,16 +366,23 @@ export const BotMessage = React.memo(function BotMessage({
                                   ? colors.success
                                   : colors.info;
                             const isSpawnAgent =
+                                toolName === 'spawn_agent' ||
                                 toolName === 'spawnAgent' ||
                                 toolName === 'spawnCodeReviewer' ||
                                 toolName === 'spawnTestWriter' ||
                                 toolName === 'spawnDebugger' ||
                                 toolName === 'spawnRefactor' ||
                                 toolName === 'spawnResearcher';
-                            const isOrchestrator = toolName === 'orchestrator';
+                            const isOrchestrator =
+                                toolName === 'orchestrate_task' ||
+                                toolName === 'orchestrator';
 
-                            const isEditFile = toolName === 'editFile';
-                            const isWriteFile = toolName === 'writeFile';
+                            const isEditFile =
+                                toolName === 'edit_file' ||
+                                toolName === 'editFile';
+                            const isWriteFile =
+                                toolName === 'write_file' ||
+                                toolName === 'writeFile';
 
                             // Find the graph for this orchestrator tool call
                             const graphForTool = isOrchestrator
@@ -428,44 +399,72 @@ export const BotMessage = React.memo(function BotMessage({
                             // Build unified diff for editFile/writeFile
                             let diffText: string | undefined;
                             let filePath: string | undefined;
+
+                            // Try to retrieve the diff directly from the tool output first
                             if (
-                                isEditFile &&
-                                'input' in part &&
-                                part.input &&
-                                typeof part.input === 'object'
+                                isComplete &&
+                                'output' in part &&
+                                part.output &&
+                                typeof part.output === 'object' &&
+                                'diff' in part.output &&
+                                typeof (part.output as any).diff === 'string'
                             ) {
-                                const input = part.input as Record<
-                                    string,
-                                    unknown
-                                >;
-                                filePath = String(input.path ?? '');
-                                const oldStr = String(input.oldString ?? '');
-                                const newStr = String(input.newString ?? '');
-                                if (filePath && (oldStr || newStr)) {
-                                    diffText = toUnifiedDiff(
-                                        filePath,
-                                        oldStr,
-                                        newStr,
+                                diffText = (part.output as any).diff;
+                                if (
+                                    'input' in part &&
+                                    part.input &&
+                                    typeof part.input === 'object'
+                                ) {
+                                    filePath = String(
+                                        (part.input as any).path ?? '',
                                     );
                                 }
-                            } else if (
-                                isWriteFile &&
-                                'input' in part &&
-                                part.input &&
-                                typeof part.input === 'object'
-                            ) {
-                                const input = part.input as Record<
-                                    string,
-                                    unknown
-                                >;
-                                filePath = String(input.path ?? '');
-                                const content = String(input.content ?? '');
-                                if (filePath && content) {
-                                    const lines = content.split('\n');
-                                    const added = lines
-                                        .map((l) => `+${l}`)
-                                        .join('\n');
-                                    diffText = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n${added}`;
+                            }
+
+                            if (!diffText) {
+                                if (
+                                    isEditFile &&
+                                    'input' in part &&
+                                    part.input &&
+                                    typeof part.input === 'object'
+                                ) {
+                                    const input = part.input as Record<
+                                        string,
+                                        unknown
+                                    >;
+                                    filePath = String(input.path ?? '');
+                                    const oldStr = String(
+                                        input.oldString ?? '',
+                                    );
+                                    const newStr = String(
+                                        input.newString ?? '',
+                                    );
+                                    if (filePath && (oldStr || newStr)) {
+                                        diffText = toUnifiedDiff(
+                                            filePath,
+                                            oldStr,
+                                            newStr,
+                                        );
+                                    }
+                                } else if (
+                                    isWriteFile &&
+                                    'input' in part &&
+                                    part.input &&
+                                    typeof part.input === 'object'
+                                ) {
+                                    const input = part.input as Record<
+                                        string,
+                                        unknown
+                                    >;
+                                    filePath = String(input.path ?? '');
+                                    const content = String(input.content ?? '');
+                                    if (filePath && content) {
+                                        const lines = content.split('\n');
+                                        const added = lines
+                                            .map((l) => `+${l}`)
+                                            .join('\n');
+                                        diffText = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n${added}`;
+                                    }
                                 }
                             }
 
@@ -504,10 +503,21 @@ export const BotMessage = React.memo(function BotMessage({
                                                                 string,
                                                                 unknown
                                                             >
-                                                        )?.path ?? '',
+                                                        )?.path ??
+                                                            (
+                                                                part.input as Record<
+                                                                    string,
+                                                                    unknown
+                                                                >
+                                                            )?.glob ??
+                                                            '',
                                                     )}
                                                 </em>
-                                            ) : toolName === 'bash' ? null : (
+                                            ) : toolName === 'bash' ||
+                                              (toolName === 'run_command' &&
+                                                  (part.input as any)
+                                                      ?.action ===
+                                                      'bash') ? null : (
                                                 formatToolArgs(part)
                                             )}
                                             {isRunning && <ToolTimer />}
@@ -515,7 +525,10 @@ export const BotMessage = React.memo(function BotMessage({
                                     </box>
 
                                     {/* Show inline terminal for bash tool */}
-                                    {toolName === 'bash' &&
+                                    {(toolName === 'bash' ||
+                                        (toolName === 'run_command' &&
+                                            (part.input as any)?.action ===
+                                                'bash')) &&
                                     'input' in part &&
                                     part.input &&
                                     typeof part.input === 'object' ? (
@@ -538,7 +551,8 @@ export const BotMessage = React.memo(function BotMessage({
 
                                     {/* Show inline search matches for grep/codeSearch */}
                                     {(toolName === 'grep' ||
-                                        toolName === 'codeSearch') &&
+                                        toolName === 'codeSearch' ||
+                                        toolName === 'code_search') &&
                                     isComplete &&
                                     'output' in part &&
                                     part.output &&
@@ -554,7 +568,10 @@ export const BotMessage = React.memo(function BotMessage({
 
                                     {/* Show inline status for gitStatus/gitStatusExtended */}
                                     {(toolName === 'gitStatus' ||
-                                        toolName === 'gitStatusExtended') &&
+                                        toolName === 'gitStatusExtended' ||
+                                        (toolName === 'git_operation' &&
+                                            (part.input as any)?.action ===
+                                                'status')) &&
                                     isComplete &&
                                     'output' in part &&
                                     part.output &&
@@ -562,7 +579,9 @@ export const BotMessage = React.memo(function BotMessage({
                                         ? (() => {
                                               const out = part.output as any;
                                               if (
-                                                  toolName === 'gitStatus' &&
+                                                  (toolName === 'gitStatus' ||
+                                                      toolName ===
+                                                          'git_operation') &&
                                                   typeof out.status === 'string'
                                               ) {
                                                   const parsed =
@@ -619,7 +638,10 @@ export const BotMessage = React.memo(function BotMessage({
                                     ) : null}
 
                                     {/* Show inline profile results for profileCode */}
-                                    {toolName === 'profileCode' &&
+                                    {(toolName === 'profileCode' ||
+                                        (toolName === 'run_command' &&
+                                            (part.input as any)?.action ===
+                                                'profile_code')) &&
                                     isComplete &&
                                     'output' in part &&
                                     part.output &&
@@ -646,7 +668,10 @@ export const BotMessage = React.memo(function BotMessage({
                                     ) : null}
 
                                     {/* Show inline timeline for gitLog */}
-                                    {toolName === 'gitLog' &&
+                                    {(toolName === 'gitLog' ||
+                                        (toolName === 'git_operation' &&
+                                            (part.input as any)?.action ===
+                                                'log')) &&
                                     isComplete &&
                                     'output' in part &&
                                     part.output &&
@@ -711,7 +736,13 @@ export const BotMessage = React.memo(function BotMessage({
                                         </box>
                                     ) : null}
                                     {/* Show inline task list for taskList tools — only on the last one */}
-                                    {toolName === 'taskList' &&
+                                    {(toolName === 'taskList' ||
+                                        (toolName === 'orchestrate_task' &&
+                                            (
+                                                part.input as any
+                                            )?.action?.startsWith(
+                                                'checklist_',
+                                            ))) &&
                                         (() => {
                                             // Find the last taskList tool call in this message
                                             const allToolParts =
@@ -728,7 +759,15 @@ export const BotMessage = React.memo(function BotMessage({
                                                                           .length,
                                                                   );
                                                         return (
-                                                            name === 'taskList'
+                                                            name ===
+                                                                'taskList' ||
+                                                            (name ===
+                                                                'orchestrate_task' &&
+                                                                (
+                                                                    p.input as any
+                                                                )?.action?.startsWith(
+                                                                    'checklist_',
+                                                                ))
                                                         );
                                                     },
                                                 );
@@ -746,7 +785,8 @@ export const BotMessage = React.memo(function BotMessage({
                                             );
                                         })()}
                                     {/* Show QuestionResult for askQuestion tools */}
-                                    {toolName === 'askQuestion' &&
+                                    {(toolName === 'askQuestion' ||
+                                        toolName === 'ask_question') &&
                                         isComplete &&
                                         'output' in part &&
                                         !!part.output && (

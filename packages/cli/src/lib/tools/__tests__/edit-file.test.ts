@@ -23,6 +23,7 @@ describe('editFileTool', () => {
         writeFileSync(join(TEST_DIR, 'test.ts'), 'const x = 1;\nconst y = 2;');
         const { editFileTool } = await import('../edit-file');
         const result = await editFileTool({
+            action: 'edit',
             path: 'test.ts',
             oldString: 'const x = 1;',
             newString: 'const x = 100;',
@@ -37,6 +38,7 @@ describe('editFileTool', () => {
         writeFileSync(join(TEST_DIR, 'test.ts'), 'const x = 1;');
         const { editFileTool } = await import('../edit-file');
         const result = await editFileTool({
+            action: 'edit',
             path: 'test.ts',
             oldString: 'not here',
             newString: 'replacement',
@@ -54,6 +56,7 @@ describe('editFileTool', () => {
         );
         const { editFileTool } = await import('../edit-file');
         const result = await editFileTool({
+            action: 'edit',
             path: 'test.ts',
             oldString: 'const x = 1;\nconst y = 2;',
             newString: 'const x = 100;\nconst y = 200;',

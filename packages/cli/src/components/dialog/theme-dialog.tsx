@@ -4,7 +4,7 @@ import { useKeyboard } from '@opentui/react';
 import { TextAttributes } from '@opentui/core';
 
 import { THEMES } from '@/theme';
-import type { Theme, ThemeColors } from '@/theme';
+import type { Theme } from '@/theme';
 import { useDialog } from '@/providers/dialog';
 import { useTheme } from '@/providers/theme';
 import { useKeyboardLayer } from '@/providers/keyboard-layer';
@@ -18,7 +18,7 @@ export function ThemeDialogContent({
     defaultView = 'list',
 }: { defaultView?: View } = {}) {
     const dialog = useDialog();
-    const { setTheme, currentTheme, colors } = useTheme();
+    const { setTheme, currentTheme } = useTheme();
     const originalThemeRef = useRef(currentTheme);
     const confirmedRef = useRef(false);
     const [view, setView] = useState<View>(defaultView);
@@ -202,7 +202,6 @@ function CreateThemeView({
     const { isTopLayer } = useKeyboardLayer();
     const [name, setName] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const inputRef = useRef<any>(null);
 
     useKeyboard((key) => {
         if (!isTopLayer('dialog')) return;
@@ -273,16 +272,12 @@ function CreateThemeView({
 
 function DeleteThemeView({
     customThemes,
-    onBack,
     onDeleted,
 }: {
     customThemes: Theme[];
     onBack: () => void;
     onDeleted: () => void;
 }) {
-    const { setTheme } = useTheme();
-    const [selectedIndex, setSelectedIndex] = useState(0);
-
     const handleDelete = async (theme: Theme) => {
         await themeManager.deleteTheme(theme.name);
         onDeleted();

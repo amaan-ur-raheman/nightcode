@@ -1,7 +1,8 @@
-import { lstat, readdir } from 'fs/promises';
-import { join, relative } from 'path';
+import { readdir, lstat } from 'fs/promises';
+import { relative, resolve, join } from 'path';
 import { toolInputSchemas } from '@nightcode/shared';
-import { IGNORE, MAX_TREE_LINES, resolveInsideCwd } from './utils';
+import { IGNORE, MAX_TREE_LINES, MAX_RESULTS, resolveInsideCwd } from './utils';
+import { globCache } from '../glob-cache';
 
 async function buildTree(
     dir: string,
@@ -15,7 +16,6 @@ async function buildTree(
         .sort((a, b) => a.name.localeCompare(b.name));
     const lines: string[] = [];
 
-    const infos: { name: string; isDir: boolean }[] = [];
     const lstatPromises = entries.map(async (entry) => {
         try {
             const info = await lstat(join(dir, entry.name));
@@ -32,7 +32,6 @@ async function buildTree(
         (info) => info !== null,
     );
 
-    // Collect subdirectory tree promises (parallel sibling traversal)
     const childTreePromises: Promise<string[]>[] = [];
     for (let i = 0; i < resolvedInfos.length; i++) {
         const item = resolvedInfos[i];
@@ -75,14 +74,68 @@ async function buildTree(
     return lines;
 }
 
-export async function treeTool(input: unknown) {
-    const { path, depth } = toolInputSchemas.tree.parse(input);
+export async function listDirTool(input: unknown) {
+    const { path, recursive, depth, pattern } =
+        toolInputSchemas.list_dir.parse(input);
     const { cwd, resolved } = resolveInsideCwd(path);
-    const root = relative(cwd, resolved) || '.';
-    const lines = [root + '/', ...(await buildTree(resolved, '', 0, depth))];
-    const truncated = lines.length > MAX_TREE_LINES;
+
+    if (pattern !== undefined) {
+        // Glob pattern behavior
+        const allMatches = await globCache.getCachedGlob(pattern, resolved);
+        const files: string[] = [];
+        let truncated = false;
+
+        for (const match of allMatches) {
+            if (match.split('/').some((seg) => IGNORE.has(seg))) continue;
+            if (files.length >= MAX_RESULTS) {
+                truncated = true;
+                break;
+            }
+            files.push(relative(cwd, resolve(resolved, match)));
+        }
+
+        files.sort();
+        return { files, ...(truncated ? { truncated: true } : {}) };
+    }
+
+    if (recursive) {
+        // Tree behavior
+        const root = relative(cwd, resolved) || '.';
+        const lines = [
+            root + '/',
+            ...(await buildTree(resolved, '', 0, depth)),
+        ];
+        const truncated = lines.length > MAX_TREE_LINES;
+        return {
+            tree: (truncated ? lines.slice(0, MAX_TREE_LINES) : lines).join(
+                '\n',
+            ),
+            ...(truncated ? { truncated: true, totalLines: lines.length } : {}),
+        };
+    }
+
+    // Standard list directory behavior
+    const entries = await readdir(resolved, { withFileTypes: true });
+
+    const results = entries
+        .filter(
+            (entry) => !entry.name.startsWith('.') && !IGNORE.has(entry.name),
+        )
+        .map((entry) => ({
+            name: entry.name,
+            type: entry.isDirectory()
+                ? ('directory' as const)
+                : ('file' as const),
+        }));
+
     return {
-        tree: (truncated ? lines.slice(0, MAX_TREE_LINES) : lines).join('\n'),
-        ...(truncated ? { truncated: true, totalLines: lines.length } : {}),
+        path: relative(cwd, resolved) || '.',
+        entries: results.sort((a, b) =>
+            a.type !== b.type
+                ? a.type === 'directory'
+                    ? -1
+                    : 1
+                : a.name.localeCompare(b.name),
+        ),
     };
 }

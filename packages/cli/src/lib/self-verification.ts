@@ -250,12 +250,10 @@ export function calculateConfidence(
     }
 
     // Tool usage: balanced usage = higher confidence
-    // Too many retries or editFile calls may indicate struggling
-    const editCount =
-        (toolUsage.get('editFile') ?? 0) +
-        (toolUsage.get('searchReplace') ?? 0);
-    const readFileCount = toolUsage.get('readFile') ?? 0;
-    const bashCount = toolUsage.get('bash') ?? 0;
+    // Too many retries or edit_file calls may indicate struggling
+    const editCount = toolUsage.get('edit_file') ?? 0;
+    const readFileCount = toolUsage.get('read_file') ?? 0;
+    const bashCount = toolUsage.get('run_command') ?? 0;
 
     let toolScore = 1.0;
     if (editCount > 10) {
@@ -302,12 +300,7 @@ export function calculateConfidence(
 /**
  * Critical operations that should trigger multi-pass verification.
  */
-const CRITICAL_TOOLS = new Set([
-    'gitCommit',
-    'deleteFile',
-    'moveFile',
-    'renameSymbol',
-]);
+const CRITICAL_TOOLS = new Set(['git_operation', 'edit_file', 'code_search']);
 
 /**
  * Check if a tool call is critical and needs multi-pass verification.
@@ -319,7 +312,7 @@ export function isCriticalOperation(toolName: string, input: any): boolean {
     // NOTE: This heuristic parses only the leading command tokens and has
     // inherent limitations — it may not catch aliased commands, subshells,
     // variable expansions, or unusual invocations of destructive operations.
-    if (toolName === 'bash' && typeof input?.command === 'string') {
+    if (toolName === 'run_command' && typeof input?.command === 'string') {
         const tokens = input.command.trim().toLowerCase().split(/\s+/);
         const base = tokens[0] ?? '';
         const sub = tokens[1] ?? '';
@@ -345,29 +338,29 @@ export function isCriticalOperation(toolName: string, input: any): boolean {
 export function generateVerificationPrompt(
     toolName: string,
     input: any,
-    output: string,
+    _output: string,
 ): string {
     const parts: string[] = [
         'The previous operation was critical. Please verify:',
         '',
     ];
 
-    if (toolName === 'gitCommit') {
+    if (toolName === 'git_operation' && input?.action === 'commit') {
         parts.push('1. The commit message accurately describes the changes');
         parts.push('2. Only intended files were included (check git status)');
         parts.push('3. No sensitive data was committed');
-    } else if (toolName === 'deleteFile') {
+    } else if (toolName === 'edit_file' && input?.action === 'delete') {
         parts.push(
             `1. The file ${input?.path ?? 'unknown'} was intentionally deleted`,
         );
         parts.push('2. No other files depend on the deleted file');
         parts.push('3. The deletion was not a mistake');
-    } else if (toolName === 'moveFile') {
+    } else if (toolName === 'edit_file' && input?.action === 'move') {
         parts.push(
-            `1. Moving ${input?.from ?? '?'} → ${input?.to ?? '?'} is correct`,
+            `1. Moving ${input?.path ?? '?'} → ${input?.to ?? input?.destPath ?? '?'} is correct`,
         );
         parts.push('2. All references to the old path have been updated');
-    } else if (toolName === 'bash') {
+    } else if (toolName === 'run_command' && input?.action === 'bash') {
         parts.push('1. The command executed correctly');
         parts.push('2. The output is as expected');
         parts.push('3. No unintended side effects occurred');
@@ -450,7 +443,7 @@ export async function recordVerificationOutcome(
         // High confidence — record top tool as positive pattern
         const topTool = [...toolUsage.entries()]
             .sort((a, b) => b[1] - a[1])
-            .find(([tool]) => tool !== 'readFile')?.[0];
+            .find(([tool]) => tool !== 'read_file')?.[0];
         if (topTool) {
             await correctionTracker.onAccept(
                 topTool,
@@ -504,15 +497,11 @@ export async function runTypeCheck(
     const start = Date.now();
     try {
         // Try project's typecheck command first, then fall back to tsc
-        const { stdout, stderr } = await execFileAsync(
-            'bun',
-            ['run', 'typecheck'],
-            {
-                cwd,
-                timeout: VERIFICATION_TIMEOUT_MS,
-                encoding: 'utf-8',
-            },
-        );
+        const { stdout } = await execFileAsync('bun', ['run', 'typecheck'], {
+            cwd,
+            timeout: VERIFICATION_TIMEOUT_MS,
+            encoding: 'utf-8',
+        });
         return {
             type: 'typecheck',
             passed: true,
@@ -561,15 +550,11 @@ export async function runTests(
 
     const start = Date.now();
     try {
-        const { stdout, stderr } = await execFileAsync(
-            'bun',
-            ['test', ...testFiles],
-            {
-                cwd,
-                timeout: VERIFICATION_TIMEOUT_MS,
-                encoding: 'utf-8',
-            },
-        );
+        const { stdout } = await execFileAsync('bun', ['test', ...testFiles], {
+            cwd,
+            timeout: VERIFICATION_TIMEOUT_MS,
+            encoding: 'utf-8',
+        });
         return {
             type: 'test',
             passed: true,
@@ -618,7 +603,7 @@ export async function runLint(
     const start = Date.now();
     try {
         // Try biome first (faster), then eslint
-        const { stdout, stderr } = await execFileAsync(
+        const { stdout } = await execFileAsync(
             'bunx',
             ['biome', 'check', ...lintableFiles],
             {

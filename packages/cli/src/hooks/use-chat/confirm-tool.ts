@@ -9,6 +9,7 @@ import { isConfirmationEnabled } from '@/lib/settings';
 import { toUnifiedDiff } from '@/lib/diff-utils';
 import { readFile } from 'fs/promises';
 import { resolveInsideCwd } from '@/lib/tools/utils';
+import { debug } from '@/lib/debug';
 
 /**
  * Unified confirmation gate for tool execution.
@@ -32,7 +33,7 @@ export async function confirmToolIfNeeded(
 
     // Compute preview diff if appropriate
     let diff: string | undefined;
-    if (toolName === 'editFile') {
+    if (toolName === 'edit_file' && (input as any)?.action !== 'patch') {
         try {
             const { path, oldString, newString } = input as {
                 path: string;
@@ -78,7 +79,11 @@ export async function confirmToolIfNeeded(
                         occurrences = matches.length;
                     }
                 } catch (e) {
-                    // ignore
+                    debug.error(
+                        'confirm-tool',
+                        'Fuzzy match parsing failed',
+                        e instanceof Error ? e : undefined,
+                    );
                 }
             }
 
@@ -90,9 +95,13 @@ export async function confirmToolIfNeeded(
                 diff = toUnifiedDiff(path, content, newContent);
             }
         } catch (e) {
-            // ignore
+            debug.error(
+                'confirm-tool',
+                'Diff generation failed for edit_file',
+                e instanceof Error ? e : undefined,
+            );
         }
-    } else if (toolName === 'writeFile') {
+    } else if (toolName === 'write_file') {
         try {
             const { path, content } = input as {
                 path: string;
@@ -107,14 +116,22 @@ export async function confirmToolIfNeeded(
             }
             diff = toUnifiedDiff(path, existingContent, content);
         } catch (e) {
-            // ignore
+            debug.error(
+                'confirm-tool',
+                'Diff generation failed for write_file',
+                e instanceof Error ? e : undefined,
+            );
         }
-    } else if (toolName === 'patch') {
+    } else if (toolName === 'edit_file' && (input as any)?.action === 'patch') {
         try {
-            const { patch } = input as { patch: string };
+            const patch = (input as any).patch as string;
             diff = patch;
         } catch (e) {
-            // ignore
+            debug.error(
+                'confirm-tool',
+                'Diff generation failed for patch',
+                e instanceof Error ? e : undefined,
+            );
         }
     }
 

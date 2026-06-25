@@ -65,7 +65,7 @@ export class QuestionManager {
     }
 
     rejectAll() {
-        for (const [id, req] of this.pending) {
+        for (const [, req] of this.pending) {
             const empty = req.questions.map(() => '');
             req.resolve(empty);
         }

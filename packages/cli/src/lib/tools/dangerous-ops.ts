@@ -25,7 +25,7 @@ const DANGEROUS_FLAGS = [
 ];
 
 const SUSPICIOUS_PATTERNS: RegExp[] = [
-    /rm\s+(-[rRf]+\s+)*[\/~]/,
+    /rm\s+(-[rRf]+\s+)*[/~]/,
     />\s*\/dev\/sd/,
     /chmod\s+777/,
     /curl\s+.*\|\s*sh/,
@@ -183,48 +183,46 @@ export function getConfirmationLevel(
         return { level: 'none', reason: '' };
     }
 
-    if (toolName === 'bash') {
-        const command = input?.command ?? '';
-        const level = getBashConfirmationLevel(command);
-        return { level, reason: getBashReason(command) };
-    }
-
-    if (toolName === 'deleteFile') {
-        return { level: 'confirm', reason: 'File deletion' };
-    }
-
-    if (toolName === 'editFile') {
-        return { level: 'confirm', reason: 'Edit file' };
-    }
-
-    if (toolName === 'writeFile') {
-        return { level: 'confirm', reason: 'Write file' };
-    }
-
-    if (toolName === 'patch') {
-        return { level: 'confirm', reason: 'Apply patch' };
-    }
-
-    if (toolName === 'gitCommit') {
-        if (autonomy === 'balanced') {
-            return { level: 'none', reason: '' };
+    if (toolName === 'run_command') {
+        const action = typeof input?.action === 'string' ? input.action : '';
+        if (action === 'bash') {
+            const command = input?.command ?? '';
+            const level = getBashConfirmationLevel(command);
+            return { level, reason: getBashReason(command) };
         }
-        return { level: 'confirm', reason: 'Git commit (creates a commit)' };
+        if (action === 'code_analysis' || action === 'env') {
+            return { level: 'confirm', reason: `run_command (${action})` };
+        }
     }
 
-    if (toolName === 'gitBranch') {
-        const action = input?.action;
-        if (action === 'checkout') {
+    if (toolName === 'git_operation') {
+        const action = typeof input?.action === 'string' ? input.action : '';
+        if (action === 'commit') {
             if (autonomy === 'balanced') {
                 return { level: 'none', reason: '' };
             }
             return {
                 level: 'confirm',
-                reason: 'Git checkout (switches branch)',
+                reason: 'Git commit (creates a commit)',
             };
         }
-        if (action === 'delete') {
-            return { level: 'confirm', reason: 'Git branch delete' };
+        if (action === 'branch') {
+            const branchAction =
+                typeof input?.branchAction === 'string'
+                    ? input.branchAction
+                    : '';
+            if (branchAction === 'checkout') {
+                if (autonomy === 'balanced') {
+                    return { level: 'none', reason: '' };
+                }
+                return {
+                    level: 'confirm',
+                    reason: 'Git checkout (switches branch)',
+                };
+            }
+            if (branchAction === 'delete') {
+                return { level: 'confirm', reason: 'Git branch delete' };
+            }
         }
     }
 
@@ -232,32 +230,54 @@ export function getConfirmationLevel(
 }
 
 export function formatToolInput(toolName: string, input: any): string {
+    const getAction = (): string =>
+        typeof input?.action === 'string' ? input.action : '';
+
     switch (toolName) {
-        case 'bash':
-            return `Command: ${input?.command ?? ''}`;
-        case 'deleteFile':
-            return `File: ${input?.path ?? ''}`;
-        case 'editFile':
+        case 'run_command': {
+            const act = getAction();
+            if (act === 'bash') {
+                return `Command: ${input?.command ?? ''}`;
+            }
+            return `run_command (${act})`;
+        }
+        case 'edit_file': {
+            const act = getAction();
+            if (act === 'delete') {
+                return `File: ${input?.path ?? ''}`;
+            }
+            if (act === 'move') {
+                return `Move: ${input?.path ?? ''} → ${input?.destPath ?? ''}`;
+            }
             return `Edit: ${input?.path ?? ''}`;
-        case 'writeFile':
+        }
+        case 'write_file':
             return `Write: ${input?.path ?? ''}`;
-        case 'patch':
-            return `Patch length: ${input?.patch?.length ?? 0} chars`;
-        case 'gitCommit': {
-            const msg = input?.message ?? '';
-            const files = input?.files;
-            const fileStr = files?.length
-                ? ` | Files: ${files.join(', ')}`
-                : '';
-            return `Message: "${msg}"${fileStr}`;
+        case 'git_operation': {
+            const act = getAction();
+            if (act === 'commit') {
+                const msg = input?.message ?? '';
+                const files = input?.files;
+                const fileStr = files?.length
+                    ? ` | Files: ${files.join(', ')}`
+                    : '';
+                return `Message: "${msg}"${fileStr}`;
+            }
+            if (act === 'branch') {
+                const branchAction = input?.branchAction ?? '';
+                const branch = input?.name;
+                return branch
+                    ? `Action: ${branchAction} | Branch: ${branch}`
+                    : `Action: ${branchAction}`;
+            }
+            return `git_operation (${act})`;
         }
-        case 'gitBranch': {
-            const action = input?.action ?? '';
-            const branch = input?.name;
-            return branch
-                ? `Action: ${action} | Branch: ${branch}`
-                : `Action: ${action}`;
-        }
+        case 'workspace_memory':
+            return `Key: ${input?.key ?? ''}`;
+        case 'manage_keychain':
+            return `Key: ${input?.key ?? ''}`;
+        case 'knowledge_graph':
+            return `Action: ${getAction()}`;
         default:
             return JSON.stringify(input, null, 2);
     }
@@ -268,14 +288,13 @@ export function getAccessPath(
     input: any,
 ): string | undefined {
     switch (toolName) {
-        case 'bash':
+        case 'run_command':
             return input?.workingDirectory;
-        case 'deleteFile':
-        case 'writeFile':
-        case 'editFile':
-        case 'readFile':
+        case 'edit_file':
+        case 'write_file':
+        case 'read_file':
             return input?.path;
-        case 'gitBranch':
+        case 'git_operation':
             return input?.name;
         default:
             return undefined;
@@ -287,19 +306,18 @@ export function getPatterns(
     input: any,
 ): string[] | undefined {
     switch (toolName) {
-        case 'bash':
+        case 'run_command':
             return input?.workingDirectory
                 ? [`${input.workingDirectory}/*`]
                 : undefined;
-        case 'deleteFile':
-        case 'writeFile':
-        case 'editFile':
-        case 'readFile':
+        case 'edit_file':
+        case 'write_file':
+        case 'read_file':
             return input?.path ? [input.path] : undefined;
-        case 'gitCommit':
-            return input?.files?.length ? input.files : undefined;
-        case 'gitBranch':
-            return input?.name ? [`branch:${input.name}`] : undefined;
+        case 'git_operation':
+            if (input?.files?.length) return input.files;
+            if (input?.name) return [`branch:${input.name}`];
+            return undefined;
         default:
             return undefined;
     }
