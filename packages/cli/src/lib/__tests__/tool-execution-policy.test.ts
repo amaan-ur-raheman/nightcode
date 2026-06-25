@@ -11,26 +11,48 @@ describe('tool execution policy', () => {
         vi.useRealTimers();
     });
 
-    it('uses command timeout input plus grace for bash', () => {
-        expect(getToolExecutionPolicy('bash', { timeout: 1234 })).toMatchObject(
-            {
-                timeoutMs: 3234,
-                longRunning: true,
-            },
-        );
+    it('uses command timeout input plus grace for run_command bash', () => {
+        expect(
+            getToolExecutionPolicy('run_command', {
+                action: 'bash',
+                timeout: 1234,
+            }),
+        ).toMatchObject({
+            timeoutMs: 3234,
+            longRunning: true,
+        });
     });
 
     it('uses short timeouts for fast read-only tools', () => {
-        expect(getToolExecutionPolicy('readFile')).toMatchObject({
+        expect(getToolExecutionPolicy('read_file')).toMatchObject({
             timeoutMs: 20_000,
             longRunning: false,
         });
     });
 
-    it('uses long timeouts and behavior for reviewPr', () => {
+    it('uses long timeouts and behavior for reviewPr and review_pr', () => {
         expect(getToolExecutionPolicy('reviewPr')).toMatchObject({
             timeoutMs: 600_000,
             longRunning: true,
+        });
+        expect(getToolExecutionPolicy('review_pr')).toMatchObject({
+            timeoutMs: 600_000,
+            longRunning: true,
+        });
+    });
+
+    it('uses action-aware timeouts for orchestrate_task', () => {
+        expect(
+            getToolExecutionPolicy('orchestrate_task', { action: 'run' }),
+        ).toMatchObject({
+            timeoutMs: 600_000,
+            longRunning: true,
+        });
+        expect(
+            getToolExecutionPolicy('orchestrate_task', { action: 'status' }),
+        ).toMatchObject({
+            timeoutMs: 20_000,
+            longRunning: false,
         });
     });
 
@@ -38,7 +60,7 @@ describe('tool execution policy', () => {
         vi.useFakeTimers();
 
         const promise = runWithToolExecutionPolicy(
-            'readFile',
+            'read_file',
             {},
             undefined,
             () => new Promise(() => {}),
@@ -112,7 +134,7 @@ describe('model-aware timeout multipliers', () => {
     it('applies model multiplier to tool timeouts', () => {
         // readFile with claude-opus-4: 20_000 * 1.5 = 30_000
         expect(
-            getToolExecutionPolicy('readFile', undefined, 'claude-opus-4'),
+            getToolExecutionPolicy('read_file', undefined, 'claude-opus-4'),
         ).toMatchObject({
             timeoutMs: 30_000,
             longRunning: false,

@@ -40,7 +40,7 @@ describe('UndoManager', () => {
         const { undoManager } = await import('../undo-manager');
         const id = await undoManager.backup(
             TEST_FILE,
-            'editFile',
+            'edit_file',
             'Edit test-file.txt',
         );
         expect(id).toBeTruthy();
@@ -51,7 +51,7 @@ describe('UndoManager', () => {
         const { undoManager } = await import('../undo-manager');
         const id = await undoManager.backup(
             TEST_FILE,
-            'writeFile',
+            'write_file',
             'Create test-file.txt',
         );
         expect(id).toBeTruthy();
@@ -60,7 +60,7 @@ describe('UndoManager', () => {
     it('undoLast restores original content', async () => {
         writeFileSync(TEST_FILE, 'original content', 'utf-8');
         const { undoManager } = await import('../undo-manager');
-        await undoManager.backup(TEST_FILE, 'editFile', 'Edit');
+        await undoManager.backup(TEST_FILE, 'edit_file', 'Edit');
         writeFileSync(TEST_FILE, 'modified content', 'utf-8');
         const result = await undoManager.undoLast();
         expect(result).not.toBeNull();

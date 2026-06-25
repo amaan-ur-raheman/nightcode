@@ -34,13 +34,13 @@ describe('ToolAnalytics', () => {
 
     it('records tool calls and retrieves stats', async () => {
         const { toolAnalytics } = await import('../tool-analytics');
-        await toolAnalytics.recordToolCall('readFile', 100, true);
+        await toolAnalytics.recordToolCall('read_file', 100, true);
         await toolAnalytics.recordToolCall('bash', 500, true);
-        await toolAnalytics.recordToolCall('readFile', 200, true);
+        await toolAnalytics.recordToolCall('read_file', 200, true);
         const stats = await toolAnalytics.getStats();
         expect(stats.totalCalls).toBe(3);
         expect(stats.topTools).toHaveLength(2);
-        expect(stats.topTools[0]!.tool).toBe('readFile');
+        expect(stats.topTools[0]!.tool).toBe('read_file');
         expect(stats.topTools[0]!.count).toBe(2);
         expect(stats.topTools[1]!.tool).toBe('bash');
     });
@@ -54,7 +54,7 @@ describe('ToolAnalytics', () => {
 
     it('clears stats', async () => {
         const { toolAnalytics } = await import('../tool-analytics');
-        await toolAnalytics.recordToolCall('readFile', 100, true);
+        await toolAnalytics.recordToolCall('read_file', 100, true);
         await toolAnalytics.clearStats();
         const stats = await toolAnalytics.getStats();
         expect(stats.totalCalls).toBe(0);

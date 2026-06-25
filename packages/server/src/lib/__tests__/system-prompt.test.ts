@@ -77,9 +77,9 @@ describe('buildSystemPrompt', () => {
         expect(prompt).toContain('Subagent');
     });
 
-    it('includes spawnAgent section for BUILD mode', () => {
+    it('includes spawn_agent section for BUILD mode', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('spawnAgent');
+        expect(prompt).toContain('spawn_agent');
     });
 
     it('includes current model name in spawnAgent description', () => {
@@ -93,22 +93,21 @@ describe('buildSystemPrompt', () => {
     it('includes batching guidance in PLAN mode spawning section', () => {
         const prompt = buildSystemPrompt({ mode: 'PLAN' });
         expect(prompt).toContain('Batching');
-        expect(prompt).toContain('spawnResearcher');
-        expect(prompt).toContain('spawnCodeReviewer');
+        expect(prompt).toContain('subagentType: "researcher"');
+        expect(prompt).toContain('subagentType: "reviewer"');
     });
 
-    it('includes batching guidance in BUILD mode spawning section', () => {
+    it('includes specialized subagent guidance in BUILD mode', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('Batching');
-        expect(prompt).toContain('spawnTestWriter');
-        expect(prompt).toContain('spawnDebugger');
-        expect(prompt).toContain('spawnRefactor');
+        expect(prompt).toContain('"tester"');
+        expect(prompt).toContain('"debugger"');
+        expect(prompt).toContain('"refactorer"');
     });
 
     it('includes parallel tool execution rules in subagent prompt', () => {
         const prompt = buildSubagentSystemPrompt({ mode: 'PLAN' });
         expect(prompt).toContain(
-            'Emit ALL independent readFile/glob/grep calls in ONE response',
+            'Emit ALL independent `read_file`/`code_search` calls in ONE response',
         );
         expect(prompt).toContain('they execute in parallel');
     });
@@ -123,40 +122,42 @@ describe('buildSystemPrompt', () => {
 
     it('includes git history tools', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('gitLog');
-        expect(prompt).toContain('gitBlame');
-        expect(prompt).toContain('gitBranch');
-        expect(prompt).toContain('gitStatusExtended');
-        expect(prompt).toContain('diffFiles');
+        expect(prompt).toContain('git_operation');
+        expect(prompt).toContain('action: "log"');
+        expect(prompt).toContain('action: "blame"');
+        expect(prompt).toContain('action: "branch"');
+        expect(prompt).toContain('action: "status_extended"');
+        expect(prompt).toContain('action: "diff"');
     });
 
     it('includes file intelligence tools', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('getOutline');
-        expect(prompt).toContain('fileInfo');
-        expect(prompt).toContain('createDirectory');
+        expect(prompt).toContain('action: "outline"');
+        expect(prompt).toContain('infoOnly: true');
+        expect(prompt).toContain('Create directories');
     });
 
     it('includes web fetch tool', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('webFetch');
+        expect(prompt).toContain('action: "web_fetch"');
     });
 
     it('includes persistent REPL tool', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('replExecute');
+        expect(prompt).toContain('action: "repl"');
     });
 
     it('includes keychain tools', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('keychainSet');
-        expect(prompt).toContain('keychainGet');
-        expect(prompt).toContain('keychainDelete');
+        expect(prompt).toContain('manage_keychain');
+        expect(prompt).toContain('action: "set"');
+        expect(prompt).toContain('action: "get"');
+        expect(prompt).toContain('action: "delete"');
     });
 
     it('includes knowledge graph lifecycle guidance', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        expect(prompt).toContain('buildKnowledgeGraph');
+        expect(prompt).toContain('knowledge_graph');
         expect(prompt).toContain('Build once at session start');
     });
 
@@ -179,7 +180,7 @@ describe('buildSystemPrompt', () => {
     it('includes anti-patterns section', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
         // Anti-patterns were consolidated into Workflows & Patterns and Error Recovery
-        expect(prompt).toContain("don't use searchReplace for code symbols");
+        expect(prompt).toContain('never for code symbols');
         expect(prompt).toContain("don't store secrets in memory");
     });
 
@@ -187,7 +188,7 @@ describe('buildSystemPrompt', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
         // Tool combinations were consolidated into Workflows & Patterns
         expect(prompt).toContain('Architecture');
-        expect(prompt).toContain('buildKnowledgeGraph');
+        expect(prompt).toContain('knowledge_graph');
         expect(prompt).toContain('Pre-commit');
     });
 
@@ -233,16 +234,16 @@ describe('buildSystemPrompt', () => {
     it('includes Error Recovery section', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
         expect(prompt).toContain('Error Recovery');
-        expect(prompt).toContain('validateCode fails');
-        expect(prompt).toContain('editFile fails');
+        expect(prompt).toContain('validate_code fails');
+        expect(prompt).toContain('edit_file fails');
         expect(prompt).toContain('bash command fails');
     });
 
-    it('resolves grep vs semanticSearch correctly', () => {
+    it('resolves grep vs semantic correctly', () => {
         const prompt = buildSystemPrompt({ mode: 'BUILD' });
-        // grep for string literals, semanticSearch for symbols
-        expect(prompt).toContain('Use grep for string literals');
-        expect(prompt).toContain('semanticSearch');
+        // code_search with action "search" for string literals, "semantic" for symbols
+        expect(prompt).toContain('code_search');
+        expect(prompt).toContain('action: "semantic"');
         expect(prompt).toContain('NOT for string literals');
     });
 

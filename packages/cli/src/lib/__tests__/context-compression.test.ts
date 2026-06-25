@@ -96,7 +96,7 @@ describe('context-compression', () => {
             // 14 old messages to push into tier2/tier3
             ...Array.from({ length: 14 }, (_, i) =>
                 makeToolResult(
-                    'readFile',
+                    'read_file',
                     i % 2 === 0 ? largeOutput : largeError,
                 ),
             ),
@@ -147,7 +147,7 @@ describe('context-compression', () => {
         const msgs = [
             makeTextMsg('user', 'Start'),
             ...Array.from({ length: 30 }, (_, i) =>
-                makeToolResult('writeFile', `wrote file ${i}`, {
+                makeToolResult('write_file', `wrote file ${i}`, {
                     path: `/src/file${i}.ts`,
                 }),
             ),
@@ -237,5 +237,50 @@ describe('context-compression', () => {
         const batch3 = loader.getNextBatch(10);
         expect(batch3.messages.length).toBe(5);
         expect(batch3.hasMore).toBe(false);
+    });
+
+    it('does not classify read-only git_operation and run_command as write tools', () => {
+        const msgs = [
+            makeTextMsg('user', 'Start'),
+            makeToolResult('git_operation', 'status output', {
+                action: 'status',
+                path: '/src/ignored-status.ts',
+            }),
+            makeToolResult('git_operation', 'diff output', {
+                action: 'diff',
+                path: '/src/ignored-diff.ts',
+            }),
+            makeToolResult('git_operation', 'log output', {
+                action: 'log',
+                path: '/src/ignored-log.ts',
+            }),
+            makeToolResult('run_command', 'token output', {
+                action: 'token_count',
+                path: '/src/ignored-tokens.ts',
+            }),
+            // True write operations
+            makeToolResult('git_operation', 'commit output', {
+                action: 'commit',
+                path: '/src/committed-file.ts',
+            }),
+            makeToolResult('run_command', 'bash output', {
+                action: 'bash',
+                path: '/src/bash-modified-file.ts',
+            }),
+            // Filler to push everything above into tier 3
+            ...Array.from({ length: 10 }, (_, i) =>
+                makeTextMsg('assistant', `Filler ${i}`),
+            ),
+        ];
+
+        const result = compressContext(msgs, { tier1Count: 5, tier2Count: 5 });
+
+        expect(result.anchor).toContain(
+            'Files modified: /src/committed-file.ts, /src/bash-modified-file.ts',
+        );
+        expect(result.anchor).not.toContain('ignored-status.ts');
+        expect(result.anchor).not.toContain('ignored-diff.ts');
+        expect(result.anchor).not.toContain('ignored-log.ts');
+        expect(result.anchor).not.toContain('ignored-tokens.ts');
     });
 });

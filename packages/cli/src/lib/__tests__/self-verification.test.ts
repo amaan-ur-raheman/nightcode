@@ -89,7 +89,7 @@ describe('self-verification', () => {
         });
 
         it('lowers confidence when high edit count or errors are present', () => {
-            const toolUsage = new Map<string, number>([['editFile', 15]]);
+            const toolUsage = new Map<string, number>([['edit_file', 15]]);
             const score = calculateConfidence(
                 ['/path/to/nonexistent.ts'],
                 toolUsage,
@@ -105,36 +105,104 @@ describe('self-verification', () => {
     });
 
     describe('isCriticalOperation', () => {
-        it('identifies critical built-in tools', () => {
-            expect(isCriticalOperation('gitCommit', {})).toBe(true);
-            expect(isCriticalOperation('deleteFile', {})).toBe(true);
-            expect(isCriticalOperation('readFile', {})).toBe(false);
+        it('marks all CRITICAL_TOOLS as critical', () => {
+            expect(isCriticalOperation('git_operation', {})).toBe(true);
+            expect(isCriticalOperation('edit_file', {})).toBe(true);
+            expect(isCriticalOperation('code_search', {})).toBe(true);
         });
 
-        it('identifies critical/destructive bash commands', () => {
-            expect(isCriticalOperation('bash', { command: 'rm -rf foo' })).toBe(
+        it('marks read-like and non-destructive tools as non-critical', () => {
+            expect(isCriticalOperation('read_file', {})).toBe(false);
+            expect(isCriticalOperation('list_files', {})).toBe(false);
+            expect(isCriticalOperation('search', {})).toBe(false);
+            expect(isCriticalOperation('web_search', {})).toBe(false);
+            expect(isCriticalOperation('unknown_tool', {})).toBe(false);
+        });
+
+        it('marks all destructive bash commands as critical', () => {
+            const destructiveCommands = [
+                'rm -rf foo',
+                'rmdir bar',
+                'del baz.txt',
+                'unlink somefile',
+                'drop table users',
+                'truncate log.txt',
+                'git push origin main --force',
+                'git reset --hard HEAD~1',
+            ];
+            for (const command of destructiveCommands) {
+                expect(
+                    isCriticalOperation('run_command', {
+                        action: 'bash',
+                        command,
+                    }),
+                ).toBe(true);
+            }
+        });
+
+        it('marks non-destructive bash commands as non-critical', () => {
+            const safeCommands = [
+                'npm install',
+                'ls -la',
+                'cat file.txt',
+                'grep pattern src/',
+                'mkdir newdir',
+                'echo hello',
+                'git status',
+                'git log --oneline',
+                'git diff',
+            ];
+            for (const command of safeCommands) {
+                expect(
+                    isCriticalOperation('run_command', {
+                        action: 'bash',
+                        command,
+                    }),
+                ).toBe(false);
+            }
+        });
+
+        it('treats edit_file actions (create/update/delete/move) as critical', () => {
+            expect(isCriticalOperation('edit_file', { action: 'create' })).toBe(
                 true,
             );
-            expect(
-                isCriticalOperation('bash', { command: 'git reset --hard' }),
-            ).toBe(true);
-            expect(
-                isCriticalOperation('bash', { command: 'npm install' }),
-            ).toBe(false);
+            expect(isCriticalOperation('edit_file', { action: 'update' })).toBe(
+                true,
+            );
+            expect(isCriticalOperation('edit_file', { action: 'delete' })).toBe(
+                true,
+            );
+            expect(isCriticalOperation('edit_file', { action: 'move' })).toBe(
+                true,
+            );
+        });
+
+        it('returns false for run_command with missing or non-string command', () => {
+            expect(isCriticalOperation('run_command', {})).toBe(false);
+            expect(isCriticalOperation('run_command', { action: 'bash' })).toBe(
+                false,
+            );
+            expect(isCriticalOperation('run_command', { command: 123 })).toBe(
+                false,
+            );
         });
     });
 
     describe('generateVerificationPrompt', () => {
         it('creates prompt for gitCommit', () => {
-            const prompt = generateVerificationPrompt('gitCommit', {}, '');
+            const prompt = generateVerificationPrompt(
+                'git_operation',
+                { action: 'commit', message: 'test' },
+                '',
+            );
             expect(prompt).toContain('commit message');
             expect(prompt).toContain('verified');
         });
 
         it('creates prompt for deleteFile', () => {
             const prompt = generateVerificationPrompt(
-                'deleteFile',
-                { path: 'foo.ts' },
+                'edit_file',
+                { path: 'foo.ts', action: 'delete' },
                 '',
             );
             expect(prompt).toContain('deleted');

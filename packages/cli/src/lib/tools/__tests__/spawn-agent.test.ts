@@ -36,7 +36,7 @@ describe('injectWorkspaceContext', () => {
                 filePath: join(TEST_DIR, 'index.ts'),
                 backupPath: join(TEST_DIR, 'index.ts.backup'),
                 timestamp: Date.now(),
-                tool: 'editFile',
+                tool: 'edit_file',
                 description: 'test edit',
             },
         ]);
